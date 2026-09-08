@@ -243,6 +243,71 @@ describe('page bodies', () => {
         .map((f) => f.split(sep).join('/').split('/')[1]),
     );
     expect(namespaces.size).toBe(1);
+  });
+});
+
+describe('search', () => {
+  it('finds a page by title as soon as it is created', async () => {
+    const host = await open(await dataDir());
+    host.createPage({ title: 'Quarterly budget review' });
+    expect(host.search('budget').map((h) => h.title)).toEqual(['Quarterly budget review']);
     await host.close();
+  });
+
+  it('reflects a rename immediately', async () => {
+    const host = await open(await dataDir());
+    const page = host.createPage({ title: 'Old name' });
+    host.renamePage(page.id, 'New name');
+
+    expect(host.search('Old')).toEqual([]);
+    expect(host.search('New').map((h) => h.title)).toEqual(['New name']);
+    await host.close();
+  });
+
+  it('drops a trashed page out of results', async () => {
+    const host = await open(await dataDir());
+    const page = host.createPage({ title: 'Sensitive draft' });
+    expect(host.search('sensitive')).toHaveLength(1);
+
+    host.archivePage(page.id);
+    expect(host.search('sensitive')).toEqual([]);
+    await host.close();
+  });
+
+  it('indexes body text, and keeps it searchable across a restart', async () => {
+    // The index is derived and rebuildable, but it is not thrown away on every launch:
+    // it persists, so body text stays searchable without reopening every page. That is
+    // what makes search useful at startup rather than only for pages visited this
+    // session. It can go stale once another device edits a body we have not opened;
+    // re-indexing on pull is part of the sync work, not of local editing.
+    const dir = await dataDir();
+    let pageId: string;
+
+    {
+      const host = await open(dir);
+      const page = host.createPage({ title: 'Untitled' });
+      pageId = page.id;
+      await host.openBody(page.id);
+
+      const { LoroDoc } = await import('loro-crdt');
+      const edit = new LoroDoc();
+      edit.setPeerId(9n);
+      edit.getMap('doc').set('nodeName', 'doc');
+      edit.getMap('doc').set('text', 'remember the pomegranate molasses');
+      edit.commit();
+      await host.applyBodyUpdate(page.id, edit.export({ mode: 'update' }));
+
+      expect(host.search('pomegranate')).toHaveLength(1);
+      await host.close();
+    }
+
+    {
+      const host = await open(dir);
+      expect(host.search('pomegranate')).toHaveLength(1);
+      // And reopening the page does not duplicate or disturb the entry.
+      await host.openBody(pageId as never);
+      expect(host.search('pomegranate')).toHaveLength(1);
+      await host.close();
+    }
   });
 });

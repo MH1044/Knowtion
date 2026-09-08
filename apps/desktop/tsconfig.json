@@ -13,9 +13,20 @@
   },
   "include": ["src/**/*"],
   "references": [
-    { "path": "../../packages/engine" },
-    { "path": "../../packages/sync" },
-    { "path": "../../packages/editor" },
-    { "path": "../../packages/format" }
+    {
+      "path": "../../packages/engine"
+    },
+    {
+      "path": "../../packages/sync"
+    },
+    {
+      "path": "../../packages/editor"
+    },
+    {
+      "path": "../../packages/format"
+    },
+    {
+      "path": "../../packages/readmodel"
+    }
   ]
 }

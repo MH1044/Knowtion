@@ -92,6 +92,9 @@ function registerHandlers(): void {
   handle('workspace:archive', (input: { id: string }) => host!.archivePage(input.id as never));
   handle('workspace:restore', (input: { id: string }) => host!.restorePage(input.id as never));
   handle('workspace:delete', (input: { id: string }) => host!.deletePage(input.id as never));
+  handle('workspace:search', (input: { query: string; limit?: number }) =>
+    host!.search(input.query, input.limit),
+  );
   ipcMain.handle('workspace:flush', async () => {
     await host!.flush();
     return { ok: true, value: null };
