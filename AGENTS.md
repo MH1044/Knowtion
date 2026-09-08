@@ -18,12 +18,12 @@ agents exactly as they do to humans.
 
 ## Branch and merge
 
-- Never push directly to `main`. Create a branch for the change, push the branch, and
-  open a pull request — the same discipline CONTRIBUTING.md asks of human contributors,
-  so CI (typecheck, lint, format, the licence gate, tests) runs before anything lands.
-- Once CI passes, the agent may merge its own PR to `main` without waiting for human
-  review — there is no review-latency requirement here, but the CI gate is mandatory.
-- Delete the branch after merging.
+- Knowtion's main build is authored solely by the project owner and AI coding agents —
+  there is no external-contributor review process to protect main from, so push commits
+  directly to `main`. Branches and PRs are not required.
+- CI still runs on every push to `main` (typecheck, lint, format, the licence gate,
+  tests). It's a safety net, not a merge gate: if it goes red after a push, the very
+  next commit should fix or revert it, not leave main broken.
 
 ## Format and ADR changes
 
