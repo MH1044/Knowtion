@@ -20,7 +20,7 @@ covering prior art we may read but not copy.
 
 <!-- GENERATED: dependency table below is written by scripts/write-third-party.mjs -->
 
-## Shipped dependencies (9)
+## Shipped dependencies (10)
 
 Dependencies that are distributed with the application. Development-only tooling is
 excluded: it is not redistributed. Workspace packages are our own and are covered by
@@ -28,6 +28,7 @@ the repository LICENSE.
 
 | Package | Version | Licence |
 |---|---|---|
+| @noble/hashes | 2.4.0 | MIT |
 | isomorphic.js | 0.2.5 | MIT |
 | lib0 | 0.2.117 | MIT |
 | loro-crdt | 1.16.0 | MIT |
