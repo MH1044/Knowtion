@@ -5,7 +5,7 @@
 
 ## Context
 
-The data goes into the user's *own* cloud folder, so the adversary is not a Knowtion
+The data goes into the user's _own_ cloud folder, so the adversary is not a Knowtion
 server. It is the cloud provider, an over-shared folder, a compromised account, a
 backup, or a provider-side breach.
 
