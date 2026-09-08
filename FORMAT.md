@@ -165,9 +165,9 @@ CI asserts every build still reads all of them.
       devices/<deviceId>.dev
       keys/<keyEpoch>/<deviceId>.wrap
       keys/<keyEpoch>/recovery.wrap
-      d/<deviceId>/<seq>.kpack
-      d/<deviceId>/snap/<seq>.ksnap
-      d/<deviceId>/head.json
+      d/<deviceId>/<documentId>/<seq>.kpack
+      d/<deviceId>/<documentId>/snap/<seq>.ksnap
+      d/<deviceId>/<documentId>/head.json
       d/<deviceId>/ack.json
       blobs/<first two hex chars>/<full hex>.kblob
 
@@ -179,7 +179,15 @@ Rules, all forced by OneDrive and SharePoint naming restrictions:
   and case-insensitive path handling silently collides aB with Ab, which would corrupt
   a content-addressed store.
 - Colons MUST NOT appear, so timestamps MUST NOT be used in names.
-- seq is zero-padded to exactly 12 digits, so lexical order equals numeric order.
+- seq is zero-padded to exactly 12 digits, so lexical order equals numeric order. It
+  counts per (device, document) pair, not per device.
+- documentId is 32 lowercase hex characters. The page hierarchy uses the reserved
+  all-zeros identifier; a page body uses that page's own UUID. See ADR-0010. UUIDv7
+  cannot produce the all-zeros value, so the reservation is structural rather than a
+  convention anyone could break.
+- A reader that does not recognise a documentId MUST ignore that subtree rather than
+  fail. An unknown document is a page this client has not been told about yet, which is
+  a normal state during sync, not damage.
 - A pack filename MUST match exactly twelve digits followed by .kpack. Anything else —
   a sync client's conflict copy, a partial download — is ignored rather than parsed.
 - Generated paths SHOULD stay under 250 characters.
@@ -192,7 +200,8 @@ Rules, all forced by OneDrive and SharePoint naming restrictions:
 
 Every path has exactly one legitimate writer.
 
-- The whole of d/deviceId is written only by that device.
+- The whole of d/deviceId, including every document namespace beneath it, is written
+  only by that device.
 - blobs may be written by any device. Safe because content is identical on collision,
   so losing the race means the winner wrote the same bytes.
 - A key wrap under keys/epoch is written by the **approving** device, not the subject.

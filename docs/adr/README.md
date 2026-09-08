@@ -25,3 +25,4 @@ An ADR records a decision that was **expensive to make and expensive to reverse*
 | [0007](0007-encryption.md)                    | Encrypted by default; OS keychain + recovery phrase          | Accepted |
 | [0008](0008-project-licence.md)               | MIT                                                          | Accepted |
 | [0009](0009-loro-prosemirror-spike-result.md) | Loro and ProseMirror bind correctly; four constraints follow | Accepted |
+| [0010](0010-per-document-pack-namespaces.md)  | Packs are namespaced by document, not only by device         | Accepted |

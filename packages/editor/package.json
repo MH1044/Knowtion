@@ -20,7 +20,11 @@
     "@knowtion/engine": "*",
     "loro-crdt": "1.16.0",
     "loro-prosemirror": "0.4.4",
+    "prosemirror-commands": "^1.7.2",
+    "prosemirror-inputrules": "^1.5.1",
+    "prosemirror-keymap": "^1.2.3",
     "prosemirror-model": "^1.25.11",
+    "prosemirror-schema-list": "^1.5.1",
     "prosemirror-state": "^1.4.4",
     "prosemirror-view": "^1.41.3"
   }

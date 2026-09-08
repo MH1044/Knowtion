@@ -190,3 +190,78 @@ input:focus-visible {
   border-color: rgb(255 107 107 / 45%);
   color: var(--danger);
 }
+
+/* Block editor */
+.editor .ProseMirror {
+  line-height: 1.65;
+  min-height: 40vh;
+  outline: none;
+}
+
+.editor .ProseMirror > * + * {
+  margin-top: 0.6em;
+}
+
+.editor .ProseMirror h1 {
+  font-size: 1.7em;
+  margin: 1em 0 0.3em;
+}
+
+.editor .ProseMirror h2 {
+  font-size: 1.4em;
+  margin: 1em 0 0.3em;
+}
+
+.editor .ProseMirror h3 {
+  font-size: 1.15em;
+  margin: 1em 0 0.3em;
+}
+
+.editor .ProseMirror blockquote {
+  border-left: 3px solid var(--border);
+  color: var(--muted);
+  margin-left: 0;
+  padding-left: 14px;
+}
+
+.editor .ProseMirror pre {
+  background: rgb(0 0 0 / 30%);
+  border-radius: 6px;
+  overflow-x: auto;
+  padding: 12px 14px;
+}
+
+.editor .ProseMirror code {
+  background: rgb(255 255 255 / 8%);
+  border-radius: 4px;
+  font-size: 0.92em;
+  padding: 1px 4px;
+}
+
+.editor .ProseMirror pre code {
+  background: none;
+  padding: 0;
+}
+
+.editor .ProseMirror hr {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 1.4em 0;
+}
+
+.editor .ProseMirror a {
+  color: var(--accent);
+}
+
+.editor .ProseMirror li[data-todo] {
+  list-style: none;
+}
+
+/* Shown only when the document is empty, so a new page is not a blank void. */
+.editor .ProseMirror p.is-empty:first-child::before {
+  color: var(--muted);
+  content: 'Start writing, or type # for a heading';
+  float: left;
+  height: 0;
+  pointer-events: none;
+}

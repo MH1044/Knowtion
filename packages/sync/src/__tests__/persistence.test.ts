@@ -18,6 +18,7 @@ const WORKSPACE_ID = new Uint8Array(16).fill(0x11);
 const DEVICE_A = new Uint8Array(16).fill(0xaa);
 const DEVICE_B = new Uint8Array(16).fill(0xbb);
 const hexA = 'aa'.repeat(16);
+const TREE = '0'.repeat(32);
 
 const roots: string[] = [];
 afterAll(async () => {
@@ -87,9 +88,11 @@ describe('a workspace survives a restart', () => {
     expect(titles(workspace.tree())).toEqual(['Page 1', 'Page 2', 'Page 3', 'Page 4', 'Page 5']);
 
     // One pack per session, none rewritten.
-    const packs = (await storage.list(`d/${hexA}`)).filter((o) => o.path.endsWith('.kpack'));
+    const packs = (await storage.list(`d/${hexA}/${TREE}`)).filter((o) =>
+      o.path.endsWith('.kpack'),
+    );
     expect(packs).toHaveLength(5);
-    expect(packs.map((p) => p.path)).toContain(packPath(hexA, 5));
+    expect(packs.map((p) => p.path)).toContain(packPath(hexA, TREE, 5));
   });
 
   it('two devices sharing one folder converge, including page moves', async () => {

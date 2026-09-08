@@ -11,7 +11,15 @@
 import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 
-import { Workspace, systemRuntime, type NodeId, type Page, type PageNode } from '@knowtion/engine';
+import { LoroDoc } from 'loro-crdt';
+import {
+  Workspace,
+  systemRuntime,
+  uuidToBytes,
+  type NodeId,
+  type Page,
+  type PageNode,
+} from '@knowtion/engine';
 import { NodeStorage, PackStore } from '@knowtion/sync';
 
 /** How long to wait after the last edit before sealing a pack. */
@@ -27,9 +35,26 @@ export interface WorkspaceHostOptions {
   flushDelayMs?: number;
 }
 
+/** One open page body: its document and the store that persists it. */
+interface OpenBody {
+  doc: LoroDoc;
+  store: PackStore;
+  dirty: boolean;
+}
+
 export class WorkspaceHost {
   #workspace!: Workspace;
   #store!: PackStore;
+  #storage!: NodeStorage;
+  /**
+   * Page bodies currently loaded.
+   *
+   * Loaded on demand and kept, because reopening a page the user is switching between
+   * should not re-read its packs. Nothing evicts them yet: at v0.1 page counts the
+   * memory is trivial, and an eviction policy written before there is a measurement to
+   * justify it would be guesswork.
+   */
+  readonly #bodies = new Map<string, OpenBody>();
   readonly #options: WorkspaceHostOptions;
   #pendingFlush: NodeJS.Timeout | undefined;
   #flushing: Promise<void> = Promise.resolve();
@@ -44,6 +69,7 @@ export class WorkspaceHost {
     await mkdir(options.dataDir, { recursive: true });
 
     const storage = new NodeStorage(join(options.dataDir, 'log'));
+    host.#storage = storage;
     host.#workspace = Workspace.create({ runtime: systemRuntime(), peerId: options.peerId });
     host.#store = new PackStore({
       storage,
@@ -142,6 +168,12 @@ export class WorkspaceHost {
     }
     try {
       await this.#store.push(this.#workspace.doc);
+      for (const [id, body] of this.#bodies) {
+        if (!body.dirty) continue; // an untouched page must not write a file
+        await body.store.push(body.doc);
+        body.dirty = false;
+        void id;
+      }
     } catch (error) {
       console.error('[knowtion] failed to write a pack:', error);
       throw error;
@@ -152,5 +184,51 @@ export class WorkspaceHost {
   async close(): Promise<void> {
     await this.#flushing;
     await this.flush();
+  }
+
+  // ---- page bodies -------------------------------------------------------
+
+  /**
+   * Open a page's body, replaying only that page's packs.
+   *
+   * ADR-0002: the hierarchy is the only document loaded at startup. A body is read the
+   * first time someone actually opens the page, which is what keeps a ten-thousand-page
+   * workspace from costing fifty seconds before the first pixel.
+   */
+  async openBody(id: NodeId): Promise<Uint8Array> {
+    const existing = this.#bodies.get(id);
+    if (existing) return existing.doc.export({ mode: 'snapshot' });
+
+    const page = this.#workspace.getPage(id);
+    const doc = new LoroDoc();
+    doc.setPeerId(this.#options.peerId);
+    const store = new PackStore({
+      storage: this.#storage,
+      workspaceId: this.#options.workspaceId,
+      deviceId: this.#options.deviceId,
+      documentId: uuidToBytes(page.uuid),
+    });
+
+    const result = await store.pull(doc);
+    for (const rejected of result.rejected) {
+      console.error(`[knowtion] rejected pack ${rejected.path}: ${rejected.message}`);
+    }
+
+    this.#bodies.set(id, { doc, store, dirty: false });
+    return doc.export({ mode: 'snapshot' });
+  }
+
+  /** Merge an edit made in the renderer into the page's document. */
+  async applyBodyUpdate(id: NodeId, update: Uint8Array): Promise<void> {
+    const body = this.#bodies.get(id);
+    if (!body) {
+      // The renderer is editing a page this process has not opened. Refusing is right:
+      // creating a fresh document here would produce a second root for the same page,
+      // and merging two independently initialised documents silently loses one side.
+      throw new Error(`page body ${id} is not open`);
+    }
+    body.doc.import(update);
+    body.dirty = true;
+    this.#scheduleFlush();
   }
 }
