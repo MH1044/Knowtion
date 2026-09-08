@@ -7,21 +7,21 @@ clean-room rule, which is not optional.
 
 Knowtion is MIT licensed. Much of the closest prior art is **not**:
 
-| Project | Licence | You may |
-|---|---|---|
-| Joplin, Logseq, SiYuan, AppFlowy, dejavu | AGPL-3.0 | Read docs and issue trackers only |
-| BlockNote xl-* packages | GPL-3.0 | Nothing — one import relicenses all of Knowtion |
-| Outline | BUSL-1.1 | Nothing (its Additional Use Grant also forbids shared workspaces) |
-| Anytype clients | Any Source Available | Nothing — commercial use is allowlist-gated |
-| automerge-prosemirror | **No LICENSE file** | Nothing — no redistribution right exists |
-| Teable, NocoDB | AGPL-3.0 | Read docs only; do **not** read their formula grammars |
+| Project                                  | Licence              | You may                                                           |
+| ---------------------------------------- | -------------------- | ----------------------------------------------------------------- |
+| Joplin, Logseq, SiYuan, AppFlowy, dejavu | AGPL-3.0             | Read docs and issue trackers only                                 |
+| BlockNote xl-* packages                  | GPL-3.0              | Nothing — one import relicenses all of Knowtion                   |
+| Outline                                  | BUSL-1.1             | Nothing (its Additional Use Grant also forbids shared workspaces) |
+| Anytype clients                          | Any Source Available | Nothing — commercial use is allowlist-gated                       |
+| automerge-prosemirror                    | **No LICENSE file**  | Nothing — no redistribution right exists                          |
+| Teable, NocoDB                           | AGPL-3.0             | Read docs only; do **not** read their formula grammars            |
 
 **The rule:** you must not have the source of any GPL, AGPL, BUSL or source-available
 project open — in an editor, a browser tab, or an AI assistant's context — while writing
 the corresponding Knowtion module.
 
-Reading a project's *documentation*, *issue tracker* or *published design write-ups* is
-fine and encouraged. Reading its *source* with intent to reimplement is not. A
+Reading a project's _documentation_, _issue tracker_ or _published design write-ups_ is
+fine and encouraged. Reading its _source_ with intent to reimplement is not. A
 copy-paste from an AGPL codebase cannot be undone: it relicenses the whole project.
 
 Permissively licensed prior art (MIT, BSD, Apache-2.0, MPL-2.0, CC0) may be studied and,

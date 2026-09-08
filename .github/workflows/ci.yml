@@ -1,0 +1,53 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: verify (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # Knowtion ships on all three, and the failures that matter here are
+        # platform specific: path handling, line endings, and filesystem watching.
+        os: [ubuntu-latest, windows-latest, macos-latest]
+
+    steps:
+      # NOTE: these are version tags, not commit SHAs. Before any workflow in this
+      # repository is given access to secrets, signing keys or a release channel,
+      # every action must be pinned to a full commit SHA. A mutable tag in a
+      # privileged workflow is a supply-chain hole; in this unprivileged one it is not.
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Formatting
+        run: npm run format:check
+
+      - name: Licence gate
+        run: npm run licences
+
+      - name: Test
+        run: npm test

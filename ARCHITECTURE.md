@@ -7,15 +7,15 @@
 ## The one invariant
 
 **The CRDT operation log is the only source of truth.** SQLite, the search index,
-formula results, rollups and view materialisations are all *derived, rebuildable and
-never synced*.
+formula results, rollups and view materialisations are all _derived, rebuildable and
+never synced_.
 
 This is forced, not chosen: syncing a live SQLite file through any cloud client
 corrupts it, because sync clients copy open, mid-write files and synced filesystems
 have broken locking. Only immutable, append-only artifacts sync safely.
 
 It pays for itself everywhere else. A corrupt database, a failed migration, a schema
-change, a projector bug and a storage-engine swap all become the *same* recovery path:
+change, a projector bug and a storage-engine swap all become the _same_ recovery path:
 delete the file and rematerialise.
 
 ## Layers

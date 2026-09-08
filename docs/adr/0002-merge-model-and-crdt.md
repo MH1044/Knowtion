@@ -42,7 +42,7 @@ state and never enters the log.
 ## Consequences
 
 - Concurrent page reparenting is correct without hand-rolling a move algorithm.
-- The pack payload *is* Loro's binary export, so we are not designing an operation
+- The pack payload _is_ Loro's binary export, so we are not designing an operation
   encoding at all — a whole subsystem disappears. Its header checksum rejects truncated
   or half-synced packs for free, which is exactly the folder-mode failure mode.
 - History can be trimmed, but only past a point every known device has acknowledged:

@@ -6,7 +6,7 @@
 ## Context
 
 The obvious design is OAuth against the Google Drive and Microsoft Graph APIs. Verified
-reconnaissance found three problems that make it unsuitable as the *foundation* for a
+reconnaissance found three problems that make it unsuitable as the _foundation_ for a
 freely downloadable open-source app.
 
 **Google will bill the OAuth project owner for users' sync traffic.** Google's current
@@ -50,7 +50,7 @@ much later, never load-bearing.
 - If Google changes scope policy or starts demanding audits, folder-mode users are
   unaffected. API mode becomes a feature that can be dropped, not infrastructure.
 - **No delta feed.** Discovery is a reconcile scan over per-device directories, and a
-  filesystem watcher is a *latency hint only*. Design so that deleting the watcher
+  filesystem watcher is a _latency hint only_. Design so that deleting the watcher
   entirely leaves the system correct, merely slower — that turns inotify limits and NFS
   silence into performance problems rather than data-loss problems.
 - Convergence is seconds-to-minutes, bounded by the third-party client. Never market it
