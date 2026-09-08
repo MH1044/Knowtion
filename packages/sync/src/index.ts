@@ -11,5 +11,5 @@ export type { StorageObject, StoragePath, StoragePort } from './storage-port.js'
 export { MemoryStorage } from './memory-storage.js';
 export type { MemoryStorageOptions } from './memory-storage.js';
 export { NodeStorage } from './node-storage.js';
-export { PackStore, packPath, parsePackPath } from './pack-store.js';
+export { PackStore, TREE_DOCUMENT_ID, packPath, parsePackPath } from './pack-store.js';
 export type { PackStoreOptions, PullResult, PushResult, RejectedPack } from './pack-store.js';

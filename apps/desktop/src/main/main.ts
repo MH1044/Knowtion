@@ -96,6 +96,25 @@ function registerHandlers(): void {
     await host!.flush();
     return { ok: true, value: null };
   });
+
+  // Page bodies are asynchronous because opening one reads that page's packs from disk.
+  ipcMain.handle('body:open', async (_event, input: { id: string }) => {
+    try {
+      // Structured clone carries a Uint8Array, so the bytes cross without base64.
+      return { ok: true, value: await host!.openBody(input.id as never) };
+    } catch (error) {
+      return { ok: false, error: error instanceof Error ? error.message : String(error) };
+    }
+  });
+
+  ipcMain.handle('body:update', async (_event, input: { id: string; update: Uint8Array }) => {
+    try {
+      await host!.applyBodyUpdate(input.id as never, input.update);
+      return { ok: true, value: null };
+    } catch (error) {
+      return { ok: false, error: error instanceof Error ? error.message : String(error) };
+    }
+  });
 }
 
 async function createWindow(): Promise<void> {

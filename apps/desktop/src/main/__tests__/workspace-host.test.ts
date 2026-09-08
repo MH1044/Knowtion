@@ -7,7 +7,7 @@
  */
 import { mkdtemp, readdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, sep } from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
 
 import { WorkspaceHost } from '../workspace-host.js';
@@ -141,5 +141,108 @@ describe('WorkspaceHost', () => {
     const backOnA = await open(dir, DEVICE_A, 1n);
     expect(titles(backOnA.tree())).toEqual(['From A', 'From B']);
     await backOnA.close();
+  });
+});
+
+describe('page bodies', () => {
+  it('opens an empty body for a new page', async () => {
+    const host = await open(await dataDir());
+    const page = host.createPage({ title: 'Notes' });
+    const snapshot = await host.openBody(page.id);
+    expect(snapshot).toBeInstanceOf(Uint8Array);
+    await host.close();
+  });
+
+  it('persists body edits and reloads them after a restart', async () => {
+    const dir = await dataDir();
+    let pageId: string;
+
+    {
+      const host = await open(dir);
+      const page = host.createPage({ title: 'Notes' });
+      pageId = page.id;
+      await host.openBody(page.id);
+
+      // Stand in for the renderer: build the edit in a separate document and send the
+      // update across, exactly as the editor does over IPC.
+      const { LoroDoc } = await import('loro-crdt');
+      const remote = new LoroDoc();
+      remote.setPeerId(9n);
+      remote.getMap('doc').set('nodeName', 'doc');
+      remote.getMap('doc').set('marker', 'body content');
+      remote.commit();
+      await host.applyBodyUpdate(page.id, remote.export({ mode: 'update' }));
+      await host.close();
+    }
+
+    {
+      const host = await open(dir);
+      const snapshot = await host.openBody(pageId as never);
+      const { LoroDoc } = await import('loro-crdt');
+      const check = new LoroDoc();
+      check.import(snapshot);
+      expect(JSON.stringify(check.toJSON())).toContain('body content');
+      await host.close();
+    }
+  });
+
+  it('keeps each page body in its own document namespace', async () => {
+    // The point of ADR-0010: one page's packs must not be read when opening another.
+    const dir = await dataDir();
+    const host = await open(dir);
+    const first = host.createPage({ title: 'First' });
+    const second = host.createPage({ title: 'Second' });
+
+    await host.openBody(first.id);
+    await host.openBody(second.id);
+
+    const { LoroDoc } = await import('loro-crdt');
+    const edit = new LoroDoc();
+    edit.setPeerId(9n);
+    edit.getMap('doc').set('marker', 'only in first');
+    edit.commit();
+    await host.applyBodyUpdate(first.id, edit.export({ mode: 'update' }));
+    await host.close();
+
+    const reopened = await open(dir);
+    const secondBody = new LoroDoc();
+    secondBody.import(await reopened.openBody(second.id));
+    expect(JSON.stringify(secondBody.toJSON())).not.toContain('only in first');
+
+    const firstBody = new LoroDoc();
+    firstBody.import(await reopened.openBody(first.id));
+    expect(JSON.stringify(firstBody.toJSON())).toContain('only in first');
+    await reopened.close();
+  });
+
+  it('refuses an update for a page it has not opened', async () => {
+    // Creating a document on demand here would produce a second root for the same page,
+    // and merging two independently initialised documents silently loses one side.
+    const host = await open(await dataDir());
+    const page = host.createPage({ title: 'Unopened' });
+    await expect(host.applyBodyUpdate(page.id, new Uint8Array([1, 2, 3]))).rejects.toThrow(
+      /not open/,
+    );
+    await host.close();
+  });
+
+  it('writes no body pack for a page that was opened but never edited', async () => {
+    const dir = await dataDir();
+    const host = await open(dir);
+    const page = host.createPage({ title: 'Read only' });
+    await host.openBody(page.id);
+    await host.close();
+
+    const { readdir } = await import('node:fs/promises');
+    const files = (await readdir(join(dir, 'log'), { recursive: true })).map(String);
+    // Exactly one document namespace has packs: the hierarchy.
+    const namespaces = new Set(
+      files
+        .filter((f) => f.endsWith('.kpack'))
+        // readdir returns native separators, so normalise before splitting.
+        .map((f) => f.split(sep).join('/').split('/')[1]),
+    );
+    expect(namespaces.size).toBe(1);
+    await host.close();
   });
 });

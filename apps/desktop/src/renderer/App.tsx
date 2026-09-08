@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 
 import { api, type Page, type PageNode } from './api.js';
+import { PageBody } from './PageBody.js';
 import { PageTree } from './PageTree.js';
 
 /** Find a page anywhere in the tree, since the sidebar only holds the nested shape. */
@@ -158,9 +159,7 @@ function PageView({
           Move to trash
         </button>
       </div>
-      <p className="placeholder">
-        The block editor lands next. Pages, nesting and persistence work today.
-      </p>
+      <PageBody pageId={page.id} />
     </article>
   );
 }
