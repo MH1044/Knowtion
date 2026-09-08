@@ -6,7 +6,8 @@ rich text, and databases with typed properties and views.
 **Your notes live on your machine.** Sync is optional and goes through storage you
 already own. There is no Knowtion server, no account to create, and no subscription.
 
-> Status: **pre-alpha.** Nothing works yet. See the roadmap below.
+> Status: **pre-alpha, and runnable.** Nested pages, the trash and local persistence
+> work today; the block editor is next. See the roadmap below.
 
 ## Why another Notion alternative
 
@@ -39,7 +40,16 @@ Requires Node 24+.
     git clone <repo-url>
     cd knowtion
     npm install
-    npm test
+    npm run verify     # typecheck, lint, licence gate, tests
+    npm start          # build and launch the desktop app
+
+If `npm install` skips lifecycle scripts in your environment, Electron's binary will be
+missing. Fetch it with:
+
+    node node_modules/electron/install.js
+
+Your notes live in the OS application-data directory under `Knowtion/log`, as immutable
+packs. Nothing is written for a workspace you have not edited.
 
 See CONTRIBUTING.md before opening a pull request — it contains a **mandatory
 clean-room rule** about copyleft prior art.

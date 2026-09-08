@@ -1,0 +1,29 @@
+{
+  "name": "@knowtion/desktop",
+  "version": "0.0.0",
+  "private": true,
+  "description": "The Knowtion desktop application",
+  "license": "MIT",
+  "main": "dist/main/main.js",
+  "scripts": {
+    "build": "vite build && tsc -p tsconfig.node.json && node scripts/copy-preload.mjs",
+    "dev": "vite build --watch",
+    "start": "npm run build && electron ."
+  },
+  "dependencies": {
+    "@knowtion/editor": "*",
+    "@knowtion/engine": "*",
+    "@knowtion/format": "*",
+    "@knowtion/sync": "*"
+  },
+  "devDependencies": {
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.7",
+    "@vitejs/plugin-react": "^6.1.1",
+    "electron": "^44.3.0",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "vite": "^8.2.2"
+  },
+  "type": "module"
+}

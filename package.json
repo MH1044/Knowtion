@@ -24,7 +24,9 @@
     "licences": "node scripts/check-licences.mjs",
     "verify": "npm run typecheck && npm run lint && npm run licences && npm run test",
     "licences:report": "node scripts/write-third-party.mjs",
-    "fixtures": "npm run build && node packages/format/scripts/make-fixtures.mjs"
+    "fixtures": "npm run build && node packages/format/scripts/make-fixtures.mjs",
+    "start": "npm run build && npm run start -w @knowtion/desktop",
+    "app": "npm run start -w @knowtion/desktop"
   },
   "devDependencies": {
     "@types/jsdom": "^30.0.0",
