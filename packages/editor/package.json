@@ -1,0 +1,27 @@
+{
+  "name": "@knowtion/editor",
+  "version": "0.0.0",
+  "private": true,
+  "description": "ProseMirror document schema and the Loro binding. The only package that knows about both the editor and the CRDT.",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc --build"
+  },
+  "dependencies": {
+    "@knowtion/engine": "*",
+    "loro-crdt": "1.16.0",
+    "loro-prosemirror": "0.4.4",
+    "prosemirror-model": "^1.25.11",
+    "prosemirror-state": "^1.4.4",
+    "prosemirror-view": "^1.41.3"
+  }
+}
