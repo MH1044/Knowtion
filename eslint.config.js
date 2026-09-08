@@ -88,7 +88,7 @@ export default tseslint.config(
 
   // Build and maintenance scripts run in Node, outside the engine's determinism rules.
   {
-    files: ['scripts/**/*.mjs', '*.config.js', '*.config.ts'],
+    files: ['scripts/**/*.mjs', 'packages/*/scripts/**/*.mjs', '*.config.js', '*.config.ts'],
     languageOptions: {
       globals: globals.node,
     },
