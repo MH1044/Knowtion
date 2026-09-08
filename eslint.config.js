@@ -88,9 +88,30 @@ export default tseslint.config(
 
   // Build and maintenance scripts run in Node, outside the engine's determinism rules.
   {
-    files: ['scripts/**/*.mjs', 'packages/*/scripts/**/*.mjs', '*.config.js', '*.config.ts'],
+    files: [
+      'scripts/**/*.mjs',
+      'packages/*/scripts/**/*.mjs',
+      'apps/*/scripts/**/*.mjs',
+      '*.config.js',
+      '*.config.ts',
+      'apps/*/*.config.ts',
+    ],
     languageOptions: {
       globals: globals.node,
+    },
+  },
+
+  // Electron preload scripts must be CommonJS. A sandboxed preload cannot use ES
+  // modules, and sandbox:true is what keeps a compromised renderer away from Node — so
+  // require() here is a security requirement, not a legacy style.
+  {
+    files: ['**/*.cjs'],
+    languageOptions: {
+      globals: globals.node,
+      sourceType: 'commonjs',
+    },
+    rules: {
+      '@typescript-eslint/no-require-imports': 'off',
     },
   },
 

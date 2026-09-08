@@ -50,3 +50,6 @@ npm-debug.log*
 
 # Electron
 apps/desktop/dist-electron/
+
+# Electron binary, fetched by its own install script
+node_modules/electron/dist/
