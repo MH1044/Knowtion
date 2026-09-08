@@ -1,9 +1,20 @@
 {
   "files": [],
   "references": [
-    { "path": "packages/format" },
-    { "path": "packages/engine" },
-    { "path": "packages/sync" },
-    { "path": "packages/importers" }
+    {
+      "path": "packages/format"
+    },
+    {
+      "path": "packages/engine"
+    },
+    {
+      "path": "packages/sync"
+    },
+    {
+      "path": "packages/importers"
+    },
+    {
+      "path": "packages/editor"
+    }
   ]
 }

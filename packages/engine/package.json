@@ -17,6 +17,7 @@
     "build": "tsc --build"
   },
   "dependencies": {
-    "@knowtion/format": "*"
+    "@knowtion/format": "*",
+    "loro-crdt": "^1.16.0"
   }
 }
