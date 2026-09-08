@@ -3,6 +3,10 @@
 Thanks for your interest. Please read this before writing code — particularly the
 clean-room rule, which is not optional.
 
+This document is written for human contributors. An AI coding agent committing to this
+repo follows AGENTS.md instead, which points back here for everything except the
+branch/merge mechanics.
+
 ## The clean-room rule (mandatory)
 
 Knowtion is MIT licensed. Much of the closest prior art is **not**:
