@@ -41,6 +41,14 @@ export interface PackStoreOptions {
   workspaceId: Uint8Array;
   /** 16 raw bytes. Must be unique per installation. */
   deviceId: Uint8Array;
+  /**
+   * 16 raw bytes identifying which document this store persists.
+   *
+   * One store per document, because ADR-0002 keeps page bodies in separate documents
+   * so that opening a workspace does not decode every page. Defaults to the reserved
+   * all-zeros identifier, which is the page hierarchy.
+   */
+  documentId?: Uint8Array;
 }
 
 export interface RejectedPack {
@@ -67,8 +75,11 @@ export interface PushResult {
   bytes: number;
 }
 
-export function packPath(deviceHex: string, seq: number): StoragePath {
-  return `d/${deviceHex}/${String(seq).padStart(SEQ_DIGITS, '0')}.kpack`;
+/** The page hierarchy. Reserved, and unreachable by UUIDv7 minting. See ADR-0010. */
+export const TREE_DOCUMENT_ID: Uint8Array = new Uint8Array(16);
+
+export function packPath(deviceHex: string, documentHex: string, seq: number): StoragePath {
+  return `d/${deviceHex}/${documentHex}/${String(seq).padStart(SEQ_DIGITS, '0')}.kpack`;
 }
 
 export class PackStore {
@@ -76,6 +87,7 @@ export class PackStore {
   readonly #workspaceId: Uint8Array;
   readonly #deviceId: Uint8Array;
   readonly #deviceHex: string;
+  readonly #documentHex: string;
 
   /** Highest sequence number this device has written. 0 means nothing yet. */
   #lastSeq = 0;
@@ -116,6 +128,11 @@ export class PackStore {
     this.#workspaceId = options.workspaceId;
     this.#deviceId = options.deviceId;
     this.#deviceHex = toHex(options.deviceId);
+    this.#documentHex = toHex(options.documentId ?? TREE_DOCUMENT_ID);
+  }
+
+  get documentHex(): string {
+    return this.#documentHex;
   }
 
   get deviceHex(): string {
@@ -152,7 +169,7 @@ export class PackStore {
       prevPackHash: this.#lastHash,
     });
 
-    const path = packPath(this.#deviceHex, seq);
+    const path = packPath(this.#deviceHex, this.#documentHex, seq);
     const created = await this.#storage.putIfAbsent(path, pack);
     if (!created) {
       // Our own sequence number already exists. Either a previous push succeeded and
@@ -188,7 +205,9 @@ export class PackStore {
     // verified as we go. Loro itself does not care about order.
     const candidates = objects
       .map((o) => ({ object: o, parsed: parsePackPath(o.path) }))
-      .filter((c) => c.parsed !== undefined)
+      // Only this document's packs. Another document's namespace is not ours to read,
+      // and an unrecognised one is a page we have not been told about yet, not damage.
+      .filter((c) => c.parsed !== undefined && c.parsed.documentHex === this.#documentHex)
       .sort((a, b) => a.object.path.localeCompare(b.object.path));
 
     for (const { object, parsed } of candidates) {
@@ -261,19 +280,26 @@ export class PackStore {
    */
   async #writeHead(): Promise<void> {
     const head = JSON.stringify({ latestSeq: this.#lastSeq, hash: toHex(this.#lastHash) });
-    await this.#storage.putOwn(`d/${this.#deviceHex}/head.json`, new TextEncoder().encode(head));
+    await this.#storage.putOwn(
+      `d/${this.#deviceHex}/${this.#documentHex}/head.json`,
+      new TextEncoder().encode(head),
+    );
   }
 }
 
 /** Parse a pack path, or undefined if the name is not one of ours. */
-export function parsePackPath(path: StoragePath): { deviceHex: string; seq: number } | undefined {
+export function parsePackPath(
+  path: StoragePath,
+): { deviceHex: string; documentHex: string; seq: number } | undefined {
   const parts = path.split('/');
-  if (parts.length !== 3 || parts[0] !== 'd') return undefined;
+  if (parts.length !== 4 || parts[0] !== 'd') return undefined;
   const deviceHex = parts[1]!;
+  const documentHex = parts[2]!;
   if (!/^[0-9a-f]{32}$/.test(deviceHex)) return undefined;
-  const match = PACK_NAME.exec(parts[2]!);
+  if (!/^[0-9a-f]{32}$/.test(documentHex)) return undefined;
+  const match = PACK_NAME.exec(parts[3]!);
   if (!match) return undefined;
-  return { deviceHex, seq: Number(match[1]) };
+  return { deviceHex, documentHex, seq: Number(match[1]) };
 }
 
 export { HEADER_SIZE };

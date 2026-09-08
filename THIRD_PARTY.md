@@ -20,7 +20,7 @@ covering prior art we may read but not copy.
 
 <!-- GENERATED: dependency table below is written by scripts/write-third-party.mjs -->
 
-## Shipped dependencies (10)
+## Shipped dependencies (15)
 
 Dependencies that are distributed with the application. Development-only tooling is
 excluded: it is not redistributed. Workspace packages are our own and are covered by
@@ -34,7 +34,12 @@ the repository LICENSE.
 | loro-crdt | 1.16.0 | MIT |
 | loro-prosemirror | 0.4.4 | MIT |
 | orderedmap | 2.1.1 | MIT |
+| prosemirror-commands | 1.7.2 | MIT |
+| prosemirror-inputrules | 1.5.1 | MIT |
+| prosemirror-keymap | 1.2.3 | MIT |
 | prosemirror-model | 1.25.11 | MIT |
+| prosemirror-schema-list | 1.5.1 | MIT |
 | prosemirror-state | 1.4.4 | MIT |
 | prosemirror-transform | 1.12.1 | MIT |
 | prosemirror-view | 1.42.3 | MIT |
+| w3c-keyname | 2.2.8 | MIT |
