@@ -1,22 +1,35 @@
 /**
  * @knowtion/format — the on-disk and on-cloud format.
  *
- * NOTHING IN THIS PACKAGE IS FROZEN YET. The format freeze (see the roadmap) must
- * complete before any byte of real user data is written, because Knowtion has no
- * backend and therefore can never run a migration on a user's behalf.
+ * The pack envelope is specified in FORMAT.md and is permanent: Knowtion has no
+ * backend, so a layout change cannot be migrated on a user's behalf. Golden fixtures
+ * in this package pin every released version, and CI asserts every build still reads
+ * all of them.
  */
 
-/** Magic bytes at the head of every Knowtion pack file. */
-export const PACK_MAGIC = 'KNOW' as const;
+export {
+  ENVELOPE_VERSION,
+  FLAG,
+  HEADER_SIZE,
+  KNOWN_SUITES,
+  MAGIC,
+  OFFSET,
+  SIGNED_PREFIX_END,
+  SIZE,
+  SUITE,
+} from './constants.js';
 
-/**
- * Envelope format version. Incremented only for changes to the pack header layout.
- *
- * Compatibility rule: a reader seeing a MAJOR version above its own must refuse to
- * write and may offer read-only access. It must never silently drop fields it does
- * not understand.
- */
-export const ENVELOPE_VERSION = 0 as const;
+export { crc32c } from './crc32c.js';
 
-/** Placeholder until the format freeze lands. */
-export const FORMAT_FROZEN = false as const;
+export { PackFormatError, isUnsupportedVersion } from './errors.js';
+export type { PackRejectionCode } from './errors.js';
+
+export {
+  ZERO_HASH,
+  decodePack,
+  encodePack,
+  isChainRoot,
+  isShallowSnapshot,
+  signedBytes,
+} from './envelope.js';
+export type { DecodedPack, PackHeader, PackInput } from './envelope.js';
