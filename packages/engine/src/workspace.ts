@@ -132,7 +132,11 @@ export class Workspace {
 
   // ---- writes ------------------------------------------------------------
 
-  createPage(options: { parentId?: NodeId; title?: string; icon?: string } = {}): Page {
+  createPage(
+    // parentId accepts an explicit undefined: "create at the top level" is a real
+    // intent a caller expresses by passing it, not merely by omitting the key.
+    options: { parentId?: NodeId | undefined; title?: string; icon?: string } = {},
+  ): Page {
     const parent = options.parentId === undefined ? undefined : this.#node(options.parentId).id;
     const node = this.#tree.createNode(parent);
     const now = this.#runtime.clock.now();

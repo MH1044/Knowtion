@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { api, type Page, type PageNode } from './api.js';
 import { PageBody } from './PageBody.js';
 import { PageTree } from './PageTree.js';
+import { Search } from './Search.js';
 
 /** Find a page anywhere in the tree, since the sidebar only holds the nested shape. */
 function findPage(nodes: PageNode[], id: string): PageNode | undefined {
@@ -70,6 +71,13 @@ export function App(): React.JSX.Element {
             New page
           </button>
         </header>
+
+        <Search
+          onOpen={(id) => {
+            setSelectedId(id);
+            setShowTrash(false);
+          }}
+        />
 
         {tree.length === 0 && !showTrash && (
           <p className="empty">No pages yet. Create one to get started.</p>

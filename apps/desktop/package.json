@@ -14,7 +14,8 @@
     "@knowtion/editor": "*",
     "@knowtion/engine": "*",
     "@knowtion/format": "*",
-    "@knowtion/sync": "*"
+    "@knowtion/sync": "*",
+    "@knowtion/readmodel": "*"
   },
   "devDependencies": {
     "@types/react": "^19.2.18",

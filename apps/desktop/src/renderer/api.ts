@@ -21,6 +21,14 @@ export interface PageNode extends Page {
   children: PageNode[];
 }
 
+export interface SearchHit {
+  id: string;
+  title: string;
+  /** Body excerpt with matches wrapped in <mark>, or empty when the title matched. */
+  snippet: string;
+  score: number;
+}
+
 type Result<T> = { ok: true; value: T } | { ok: false; error: string };
 
 interface Bridge {
@@ -34,6 +42,7 @@ interface Bridge {
   archivePage(input: { id: string }): Promise<Result<Page>>;
   restorePage(input: { id: string }): Promise<Result<Page>>;
   deletePage(input: { id: string }): Promise<Result<null>>;
+  search(input: { query: string; limit?: number | undefined }): Promise<Result<SearchHit[]>>;
   flush(): Promise<Result<null>>;
   openBody(input: { id: string }): Promise<Result<Uint8Array>>;
   updateBody(input: { id: string; update: Uint8Array }): Promise<Result<null>>;
@@ -62,6 +71,7 @@ export const api = {
   archivePage: (id: string) => unwrap(window.knowtion.archivePage({ id })),
   restorePage: (id: string) => unwrap(window.knowtion.restorePage({ id })),
   deletePage: (id: string) => unwrap(window.knowtion.deletePage({ id })),
+  search: (query: string, limit?: number) => unwrap(window.knowtion.search({ query, limit })),
   flush: () => unwrap(window.knowtion.flush()),
   openBody: (id: string) => unwrap(window.knowtion.openBody({ id })),
   updateBody: (id: string, update: Uint8Array) =>

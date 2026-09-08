@@ -20,6 +20,7 @@ contextBridge.exposeInMainWorld('knowtion', {
   archivePage: call('workspace:archive'),
   restorePage: call('workspace:restore'),
   deletePage: call('workspace:delete'),
+  search: call('workspace:search'),
   flush: call('workspace:flush'),
   openBody: call('body:open'),
   updateBody: call('body:update'),
