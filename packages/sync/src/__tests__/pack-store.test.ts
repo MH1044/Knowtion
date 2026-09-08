@@ -10,6 +10,8 @@ const DEVICE_B = new Uint8Array(16).fill(0xbb);
 
 const hexA = 'aa'.repeat(16);
 const hexB = 'bb'.repeat(16);
+/** The page hierarchy's reserved document identifier. */
+const TREE = '0'.repeat(32);
 
 function device(storage: MemoryStorage, id: Uint8Array, peerId: bigint) {
   const doc = new LoroDoc();
@@ -29,26 +31,26 @@ function device(storage: MemoryStorage, id: Uint8Array, peerId: bigint) {
 
 describe('pack paths', () => {
   it('zero-pads the sequence so lexical order equals numeric order', () => {
-    expect(packPath(hexA, 1)).toBe(`d/${hexA}/000000000001.kpack`);
-    expect(packPath(hexA, 42)).toBe(`d/${hexA}/000000000042.kpack`);
+    expect(packPath(hexA, TREE, 1)).toBe(`d/${hexA}/${TREE}/000000000001.kpack`);
+    expect(packPath(hexA, TREE, 42)).toBe(`d/${hexA}/${TREE}/000000000042.kpack`);
     // The property that makes a sorted listing usable without parsing every name.
-    expect([packPath(hexA, 10), packPath(hexA, 9), packPath(hexA, 100)].sort()).toEqual([
-      packPath(hexA, 9),
-      packPath(hexA, 10),
-      packPath(hexA, 100),
-    ]);
+    expect(
+      [packPath(hexA, TREE, 10), packPath(hexA, TREE, 9), packPath(hexA, TREE, 100)].sort(),
+    ).toEqual([packPath(hexA, TREE, 9), packPath(hexA, TREE, 10), packPath(hexA, TREE, 100)]);
   });
 
   it('ignores anything that is not exactly our naming scheme', () => {
     // Sync clients invent these when they think two devices edited one file. The strict
     // regex is what makes an unrecognised conflict copy inert rather than mis-ingested.
     for (const bad of [
-      `d/${hexA}/000000000001 (1).kpack`,
-      `d/${hexA}/000000000001-DESKTOP-AB12.kpack`,
-      `d/${hexA}/1.kpack`,
-      `d/${hexA}/000000000001.kpack.tmp`,
-      `d/${hexA}/head.json`,
-      `d/not-hex/000000000001.kpack`,
+      `d/${hexA}/${TREE}/000000000001 (1).kpack`,
+      `d/${hexA}/${TREE}/000000000001-DESKTOP-AB12.kpack`,
+      `d/${hexA}/${TREE}/1.kpack`,
+      `d/${hexA}/${TREE}/000000000001.kpack.tmp`,
+      `d/${hexA}/${TREE}/head.json`,
+      `d/not-hex/${TREE}/000000000001.kpack`,
+      `d/${hexA}/not-hex/000000000001.kpack`,
+      `d/${hexA}/000000000001.kpack`,
       `blobs/aa/deadbeef.kblob`,
     ]) {
       expect(parsePackPath(bad), bad).toBeUndefined();
@@ -56,7 +58,11 @@ describe('pack paths', () => {
   });
 
   it('parses a well-formed path', () => {
-    expect(parsePackPath(packPath(hexB, 7))).toEqual({ deviceHex: hexB, seq: 7 });
+    expect(parsePackPath(packPath(hexB, TREE, 7))).toEqual({
+      deviceHex: hexB,
+      documentHex: TREE,
+      seq: 7,
+    });
   });
 });
 
@@ -74,7 +80,7 @@ describe('push and pull', () => {
 
     const pushed = await a.store.push(a.doc);
     expect(pushed?.seq).toBe(1);
-    expect(pushed?.path).toBe(packPath(hexA, 1));
+    expect(pushed?.path).toBe(packPath(hexA, TREE, 1));
 
     const reloaded = device(storage, DEVICE_A, 1n);
     const result = await reloaded.store.pull(reloaded.doc);
@@ -222,7 +228,7 @@ describe('damaged and hostile files', () => {
     const a = device(storage, DEVICE_A, 1n);
     a.write('k', 'v');
     await a.store.push(a.doc);
-    storage.truncate(packPath(hexA, 1), 100);
+    storage.truncate(packPath(hexA, TREE, 1), 100);
 
     const b = device(storage, DEVICE_B, 2n);
     const result = await b.store.pull(b.doc);
@@ -230,7 +236,7 @@ describe('damaged and hostile files', () => {
     expect(result.applied).toBe(0);
     expect(result.rejected).toHaveLength(1);
     expect(result.rejected[0]!.code).toBe('TOO_SHORT');
-    expect(result.rejected[0]!.path).toBe(packPath(hexA, 1));
+    expect(result.rejected[0]!.path).toBe(packPath(hexA, TREE, 1));
   });
 
   it('rejects a corrupted header rather than trusting its fields', async () => {
@@ -238,7 +244,7 @@ describe('damaged and hostile files', () => {
     const a = device(storage, DEVICE_A, 1n);
     a.write('k', 'v');
     await a.store.push(a.doc);
-    storage.damage(packPath(hexA, 1), 40); // inside the sequence number
+    storage.damage(packPath(hexA, TREE, 1), 40); // inside the sequence number
 
     const b = device(storage, DEVICE_B, 2n);
     const result = await b.store.pull(b.doc);
@@ -254,8 +260,8 @@ describe('damaged and hostile files', () => {
     a.write('k', 'v');
     await a.store.push(a.doc);
 
-    await storage.putIfAbsent(`d/${hexA}/000000000001 (1).kpack`, new Uint8Array(300));
-    await storage.putIfAbsent(`d/${hexA}/notes.txt`, new TextEncoder().encode('hello'));
+    await storage.putIfAbsent(`d/${hexA}/${TREE}/000000000001 (1).kpack`, new Uint8Array(300));
+    await storage.putIfAbsent(`d/${hexA}/${TREE}/notes.txt`, new TextEncoder().encode('hello'));
 
     const b = device(storage, DEVICE_B, 2n);
     const result = await b.store.pull(b.doc);

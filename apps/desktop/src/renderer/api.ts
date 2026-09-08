@@ -35,6 +35,8 @@ interface Bridge {
   restorePage(input: { id: string }): Promise<Result<Page>>;
   deletePage(input: { id: string }): Promise<Result<null>>;
   flush(): Promise<Result<null>>;
+  openBody(input: { id: string }): Promise<Result<Uint8Array>>;
+  updateBody(input: { id: string; update: Uint8Array }): Promise<Result<null>>;
 }
 
 declare global {
@@ -61,4 +63,7 @@ export const api = {
   restorePage: (id: string) => unwrap(window.knowtion.restorePage({ id })),
   deletePage: (id: string) => unwrap(window.knowtion.deletePage({ id })),
   flush: () => unwrap(window.knowtion.flush()),
+  openBody: (id: string) => unwrap(window.knowtion.openBody({ id })),
+  updateBody: (id: string, update: Uint8Array) =>
+    unwrap(window.knowtion.updateBody({ id, update })),
 };
