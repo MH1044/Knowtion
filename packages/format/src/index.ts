@@ -21,6 +21,8 @@ export {
 
 export { crc32c } from './crc32c.js';
 
+export { equalBytes, hash, keyedHash, toHex } from './hash.js';
+
 export { PackFormatError, isUnsupportedVersion } from './errors.js';
 export type { PackRejectionCode } from './errors.js';
 
