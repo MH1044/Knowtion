@@ -20,7 +20,10 @@ import {
   type Page,
   type PageNode,
 } from '@knowtion/engine';
+import { ReadModel, type SearchHit } from '@knowtion/readmodel';
 import { NodeStorage, PackStore } from '@knowtion/sync';
+
+import { normaliseText, plainTextFromLoroJson } from './plain-text.js';
 
 /** How long to wait after the last edit before sealing a pack. */
 const FLUSH_DELAY_MS = 400;
@@ -46,6 +49,7 @@ export class WorkspaceHost {
   #workspace!: Workspace;
   #store!: PackStore;
   #storage!: NodeStorage;
+  #index!: ReadModel;
   /**
    * Page bodies currently loaded.
    *
@@ -77,13 +81,29 @@ export class WorkspaceHost {
       deviceId: options.deviceId,
     });
 
+    // Beside the log, never inside it. ADR-0004 requires two separate roots: a cloud
+    // client copying a live SQLite file mid-transaction produces a reliably corrupt
+    // one, and the index bytes are not even deterministic across machines.
+    host.#index = ReadModel.open(join(options.dataDir, 'index.db'));
+
     const result = await host.#store.pull(host.#workspace.doc);
     for (const rejected of result.rejected) {
       // Never silent. FORMAT.md section 3: a skipped pack is indistinguishable from
       // data loss, so it must always reach a log a human can read.
       console.error(`[knowtion] rejected pack ${rejected.path}: ${rejected.message}`);
     }
+
+    host.#reindexPages();
     return host;
+  }
+
+  /** Re-project the hierarchy. Cheap: it is the one document always held in memory. */
+  #reindexPages(): void {
+    this.#index.projectPages(this.#workspace.allPages());
+  }
+
+  search(query: string, limit = 30): SearchHit[] {
+    return this.#index.search(query, { limit });
   }
 
   get workspace(): Workspace {
@@ -108,37 +128,48 @@ export class WorkspaceHost {
 
   createPage(input: { parentId?: NodeId; title?: string }): Page {
     const page = this.#workspace.createPage(input);
+    this.#reindexPages();
     this.#scheduleFlush();
     return page;
   }
 
   renamePage(id: NodeId, title: string): Page {
     const page = this.#workspace.renamePage(id, title);
+    this.#reindexPages();
     this.#scheduleFlush();
     return page;
   }
 
   movePage(id: NodeId, parentId: NodeId | undefined): Page {
     const page = this.#workspace.movePage(id, parentId);
+    this.#reindexPages();
     this.#scheduleFlush();
     return page;
   }
 
   archivePage(id: NodeId): Page {
     const page = this.#workspace.archivePage(id);
+    this.#reindexPages();
     this.#scheduleFlush();
     return page;
   }
 
   restorePage(id: NodeId): Page {
     const page = this.#workspace.restorePage(id);
+    this.#reindexPages();
     this.#scheduleFlush();
     return page;
   }
 
   deletePage(id: NodeId): void {
     this.#workspace.deletePage(id);
+    this.#reindexPages();
     this.#scheduleFlush();
+  }
+
+  /** Flatten a page's document and hand the text to the index. */
+  #indexBody(id: NodeId, doc: LoroDoc): void {
+    this.#index.setPageBody(id, normaliseText(plainTextFromLoroJson(doc.toJSON())));
   }
 
   // ---- persistence -------------------------------------------------------
@@ -184,6 +215,7 @@ export class WorkspaceHost {
   async close(): Promise<void> {
     await this.#flushing;
     await this.flush();
+    this.#index.close();
   }
 
   // ---- page bodies -------------------------------------------------------
@@ -215,6 +247,7 @@ export class WorkspaceHost {
     }
 
     this.#bodies.set(id, { doc, store, dirty: false });
+    this.#indexBody(id, doc);
     return doc.export({ mode: 'snapshot' });
   }
 
@@ -229,6 +262,7 @@ export class WorkspaceHost {
     }
     body.doc.import(update);
     body.dirty = true;
+    this.#indexBody(id, body.doc);
     this.#scheduleFlush();
   }
 }
