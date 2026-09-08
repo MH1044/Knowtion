@@ -1,0 +1,28 @@
+# Normalise to LF in the repository and on checkout, on every platform.
+# Knowtion is developed on Windows, macOS and Linux; CRLF drift would produce
+# spurious diffs and, worse, would corrupt the binary format fixtures below.
+* text=auto eol=lf
+
+# Binary — never touch these. Golden-file format fixtures are byte-exact by
+# definition: any line-ending conversion silently breaks the compatibility tests.
+*.kpack   binary
+*.ksnap   binary
+*.kblob   binary
+*.cbor    binary
+*.png     binary
+*.jpg     binary
+*.jpeg    binary
+*.gif     binary
+*.webp    binary
+*.ico     binary
+*.icns    binary
+*.woff    binary
+*.woff2   binary
+*.wasm    binary
+*.zip     binary
+*.db      binary
+*.sqlite  binary
+
+# Generated — collapse in review and exclude from language statistics.
+package-lock.json  linguist-generated=true -diff
+THIRD_PARTY.md     linguist-generated=true

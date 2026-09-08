@@ -1,0 +1,52 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Build output
+dist/
+build/
+out/
+*.tsbuildinfo
+release/
+
+# Local databases and workspace data — NEVER commit user data
+*.db
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+/workspaces/
+/.knowtion/
+
+# Secrets — see SECURITY.md. The update-signing private key must never be
+# version controlled: it is a mass-RCE key with no rotation path.
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+*.mobileprovision
+secrets/
+
+# Editor / OS
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.shared.json
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Test and tooling output
+coverage/
+.nyc_output/
+playwright-report/
+test-results/
+*.log
+npm-debug.log*
+
+# Electron
+apps/desktop/dist-electron/
