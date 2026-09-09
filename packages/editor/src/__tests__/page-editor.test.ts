@@ -19,10 +19,14 @@ afterEach(() => {
   document.body.innerHTML = '';
 });
 
-function open(peerId: bigint, snapshot?: Uint8Array, onLocalChange?: (u: Uint8Array) => void) {
+async function open(
+  peerId: bigint,
+  snapshot?: Uint8Array,
+  onLocalChange?: (u: Uint8Array) => void,
+) {
   const element = document.createElement('div');
   document.body.appendChild(element);
-  const editor = mountPageEditor({ element, peerId, snapshot, onLocalChange });
+  const editor = await mountPageEditor({ element, peerId, snapshot, onLocalChange });
   editors.push(editor);
   return editor;
 }
@@ -102,7 +106,7 @@ describe('schema', () => {
 describe('mountPageEditor', () => {
   it('reports local edits as updates and not remote ones', async () => {
     const seen: Uint8Array[] = [];
-    const editor = open(1n, undefined, (update) => seen.push(update));
+    const editor = await open(1n, undefined, (update) => seen.push(update));
     await settle();
 
     editor.view.dispatch(editor.view.state.tr.insertText('hello', 1));
@@ -120,22 +124,22 @@ describe('mountPageEditor', () => {
   });
 
   it('restores content from a snapshot', async () => {
-    const author = open(1n);
+    const author = await open(1n);
     await settle();
     author.view.dispatch(author.view.state.tr.insertText('persisted text', 1));
     const snapshot = author.snapshot();
 
-    const reader = open(2n, snapshot);
+    const reader = await open(2n, snapshot);
     await settle();
     expect(reader.view.state.doc.textContent).toBe('persisted text');
   });
 
   it('converges when two editors exchange updates', async () => {
-    const a = open(1n);
+    const a = await open(1n);
     await settle();
     a.view.dispatch(a.view.state.tr.insertText('shared ', 1));
 
-    const b = open(2n, a.snapshot());
+    const b = await open(2n, a.snapshot());
     await settle();
     b.view.dispatch(b.view.state.tr.insertText('edited ', 1));
 

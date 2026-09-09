@@ -6,15 +6,22 @@
  * independently initialised documents merge and one side's content is silently lost.
  * Making that impossible is the whole reason this function exists rather than callers
  * assembling a view themselves.
+ *
+ * loro-crdt and loro-prosemirror bundle loro-wasm, a WebAssembly module large enough
+ * that a static import pulls it eagerly into the app's startup bundle. They are loaded
+ * here via a dynamic import() instead, so bundlers split them into their own
+ * lazily-loaded chunk, fetched the first time a page editor is mounted rather than on
+ * every app launch. Callers already await this function (or can start doing so trivially,
+ * e.g. from an existing async open/mount path) so this adds no new loading state.
  */
 
-import { LoroDoc } from 'loro-crdt';
-import { LoroSyncPlugin, LoroUndoPlugin } from 'loro-prosemirror';
 import { EditorState } from 'prosemirror-state';
 import { EditorView } from 'prosemirror-view';
 
 import { knowtionInputRules, knowtionKeymap } from './keymap.js';
 import { schema } from './schema.js';
+
+import type { LoroDoc } from 'loro-crdt';
 
 export interface PageEditorOptions {
   /** Where to mount. */
@@ -42,7 +49,12 @@ export interface PageEditor {
   destroy(): void;
 }
 
-export function mountPageEditor(options: PageEditorOptions): PageEditor {
+export async function mountPageEditor(options: PageEditorOptions): Promise<PageEditor> {
+  const [{ LoroDoc }, { LoroSyncPlugin, LoroUndoPlugin, undo, redo }] = await Promise.all([
+    import('loro-crdt'),
+    import('loro-prosemirror'),
+  ]);
+
   const doc = new LoroDoc();
   doc.setPeerId(options.peerId);
   if (options.snapshot && options.snapshot.length > 0) doc.import(options.snapshot);
@@ -59,7 +71,7 @@ export function mountPageEditor(options: PageEditorOptions): PageEditor {
         LoroUndoPlugin({ doc: doc as any }),
         /* eslint-enable @typescript-eslint/no-explicit-any */
         knowtionInputRules(),
-        knowtionKeymap(),
+        knowtionKeymap(undo, redo),
       ],
     }),
     dispatchTransaction(transaction) {
