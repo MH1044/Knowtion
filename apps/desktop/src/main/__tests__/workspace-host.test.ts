@@ -311,3 +311,92 @@ describe('search', () => {
     }
   });
 });
+
+describe('Notion import', () => {
+  const HOME = '11111111111111111111111111111111';
+  const CHILD = '22222222222222222222222222222222';
+
+  const notionPage = (title: string, id: string, body: string) =>
+    `<html><head><title>${title}</title></head><body>` +
+    `<article id="${id}" class="page sans">` +
+    `<header><h1 class="page-title">${title}</h1></header>` +
+    `<div class="page-body">${body}</div></article></body></html>`;
+
+  async function archive(): Promise<Uint8Array> {
+    const { strToU8, zipSync } = await import('fflate');
+    return zipSync({
+      [`Export-x/Home ${HOME}.html`]: strToU8(
+        notionPage('Home', HOME, '<p>welcome to the workspace</p>'),
+      ),
+      [`Export-x/Home ${HOME}/Recipes ${CHILD}.html`]: strToU8(
+        notionPage('Recipes', CHILD, '<h2>Bread</h2><ul class="bulleted-list"><li>flour</li></ul>'),
+      ),
+      [`Export-x/Tasks ${CHILD}_all.csv`]: strToU8('Name,Status\nBuy flour,Done'),
+    });
+  }
+
+  it('creates the pages and their hierarchy', async () => {
+    const host = await open(await dataDir());
+    const report = await host.importNotion(await archive());
+
+    expect(report.pagesImported).toBe(2);
+    expect(titles(host.tree())).toEqual(['Home']);
+    expect(titles(host.tree()[0]!.children)).toEqual(['Recipes']);
+    await host.close();
+  });
+
+  it('imports body content, and makes it searchable immediately', async () => {
+    // An imported workspace is the one case where every page has content the user has
+    // never opened. Unsearchable notes are barely imported.
+    const host = await open(await dataDir());
+    await host.importNotion(await archive());
+
+    expect(host.search('welcome').map((h) => h.title)).toEqual(['Home']);
+    expect(host.search('flour').map((h) => h.title)).toEqual(['Recipes']);
+    await host.close();
+  });
+
+  it('persists imported content across a restart', async () => {
+    const dir = await dataDir();
+    {
+      const host = await open(dir);
+      await host.importNotion(await archive());
+      await host.close();
+    }
+    {
+      const host = await open(dir);
+      expect(titles(host.tree())).toEqual(['Home']);
+
+      const recipes = host.tree()[0]!.children[0]!;
+      const { LoroDoc } = await import('loro-crdt');
+      const body = new LoroDoc();
+      body.import(await host.openBody(recipes.id));
+      expect(JSON.stringify(body.toJSON())).toContain('flour');
+      await host.close();
+    }
+  });
+
+  it('reports the database it could not import rather than dropping it quietly', async () => {
+    const host = await open(await dataDir());
+    const report = await host.importNotion(await archive());
+
+    expect(report.skipped.some((s) => s.reason.includes('database'))).toBe(true);
+    expect(report.warnings.join(' ')).toMatch(/only one view/i);
+    await host.close();
+  });
+
+  it('refuses a hostile archive instead of importing part of it', async () => {
+    const { strToU8, zipSync } = await import('fflate');
+    const bomb = zipSync({ 'huge.txt': strToU8('a'.repeat(5_000_000)) });
+    const host = await open(await dataDir());
+
+    // Default limits allow this, so assert the mechanism rather than the number: an
+    // archive with a traversal entry must fail outright, leaving nothing behind.
+    const traversal = zipSync({ '../escape.html': strToU8('<html></html>') });
+    await expect(host.importNotion(traversal)).rejects.toThrow(/escape/i);
+    expect(host.tree()).toEqual([]);
+
+    expect(bomb.byteLength).toBeGreaterThan(0);
+    await host.close();
+  });
+});

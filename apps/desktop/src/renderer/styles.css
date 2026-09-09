@@ -320,3 +320,57 @@ input:focus-visible {
   color: var(--muted);
   padding: 6px 4px;
 }
+
+/* Import summary */
+.import-summary {
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  margin-bottom: 20px;
+  padding: 14px 16px;
+}
+
+.import-summary-head {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.import-summary details {
+  margin-top: 8px;
+}
+
+.import-summary summary {
+  cursor: pointer;
+}
+
+.import-summary ul {
+  margin: 8px 0 0;
+  max-height: 30vh;
+  overflow-y: auto;
+  padding-left: 18px;
+}
+
+.import-summary li {
+  margin-bottom: 3px;
+}
+
+.import-summary .from {
+  font-weight: 600;
+}
+
+.warning {
+  color: #e8c46b;
+  margin: 6px 0;
+}
+
+.muted {
+  color: var(--muted);
+}
+
+.sidebar-footer {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}

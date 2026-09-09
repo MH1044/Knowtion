@@ -17,6 +17,8 @@
     "build": "tsc --build"
   },
   "dependencies": {
-    "@knowtion/engine": "*"
+    "@knowtion/engine": "*",
+    "fflate": "^0.8.3",
+    "parse5": "^8.0.1"
   }
 }

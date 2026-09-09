@@ -21,6 +21,7 @@ contextBridge.exposeInMainWorld('knowtion', {
   restorePage: call('workspace:restore'),
   deletePage: call('workspace:delete'),
   search: call('workspace:search'),
+  importNotion: call('import:notion'),
   flush: call('workspace:flush'),
   openBody: call('body:open'),
   updateBody: call('body:update'),
