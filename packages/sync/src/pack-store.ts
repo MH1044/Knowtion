@@ -160,6 +160,15 @@ export class PackStore {
         ? doc.export({ mode: 'update' })
         : doc.export({ mode: 'update', from: this.#lastPushed });
 
+    // The version this payload actually covers, captured BEFORE any await.
+    //
+    // Reading it after the write instead would include every operation the user made
+    // while that write was in flight, marking them as published when they were never
+    // written — and the next push would skip them because it exports "from" here. That
+    // is silent data loss, and it happens under completely ordinary use: typing while
+    // an autosave is running.
+    const publishedVersion = doc.version();
+
     const seq = this.#lastSeq + 1;
     const pack = encodePack({
       workspaceId: this.#workspaceId,
@@ -183,7 +192,8 @@ export class PackStore {
 
     this.#lastSeq = seq;
     this.#lastHash = hash(pack);
-    this.#lastPushed = doc.version();
+    // Both describe the same moment: the state the payload above was exported from.
+    this.#lastPushed = publishedVersion;
     this.#lastPushedFrontiers = frontiers;
     this.#known.add(path);
     await this.#writeHead();
@@ -303,3 +313,22 @@ export function parsePackPath(
 }
 
 export { HEADER_SIZE };
+
+/**
+ * Every document namespace present in the log, with the pack paths under each.
+ *
+ * The listing is advisory, as always: a namespace a provider has not made visible yet
+ * simply arrives on a later cycle. Missing one is a latency problem, never a
+ * correctness one, because nothing here decides that something was deleted.
+ */
+export async function listDocumentPacks(storage: StoragePort): Promise<Map<string, StoragePath[]>> {
+  const byDocument = new Map<string, StoragePath[]>();
+  for (const object of await storage.list('d/')) {
+    const parsed = parsePackPath(object.path);
+    if (!parsed) continue;
+    const existing = byDocument.get(parsed.documentHex);
+    if (existing) existing.push(object.path);
+    else byDocument.set(parsed.documentHex, [object.path]);
+  }
+  return byDocument;
+}

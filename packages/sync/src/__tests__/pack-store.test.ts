@@ -284,3 +284,63 @@ describe('damaged and hostile files', () => {
     await expect(impostor.store.push(impostor.doc)).rejects.toThrow(/device identity/);
   });
 });
+
+describe('edits made while a write is in flight', () => {
+  /** Storage that lets the test mutate the document mid-write. */
+  class InterleavingStorage extends MemoryStorage {
+    duringWrite: (() => void) | undefined;
+
+    override async putIfAbsent(path: string, bytes: Uint8Array): Promise<boolean> {
+      const hook = this.duringWrite;
+      this.duringWrite = undefined;
+      // Runs after the payload has been exported and before the write completes,
+      // which is exactly when a user typing during an autosave lands.
+      hook?.();
+      return super.putIfAbsent(path, bytes);
+    }
+  }
+
+  it('never marks an operation as published unless it was actually written', async () => {
+    // The bug: the published version was read AFTER the write completed, so anything
+    // added during the write was recorded as sent without ever being written, and the
+    // next push skipped it. Pages vanished from the log while looking fine on screen.
+    const storage = new InterleavingStorage();
+    const a = device(storage, DEVICE_A, 1n);
+
+    a.write('before', '1');
+    storage.duringWrite = () => {
+      a.write('during', '2');
+    };
+    await a.store.push(a.doc);
+
+    // A second push must carry the operation that landed mid-write.
+    await a.store.push(a.doc);
+
+    const reader = device(storage, DEVICE_B, 2n);
+    await reader.store.pull(reader.doc);
+    expect(reader.notes()).toEqual({ before: '1', during: '2' });
+  });
+
+  it('survives many interleaved writes without losing any of them', async () => {
+    const storage = new InterleavingStorage();
+    const a = device(storage, DEVICE_A, 1n);
+    const expected: Record<string, string> = {};
+
+    for (let i = 0; i < 20; i++) {
+      a.write(`key${i}`, String(i));
+      expected[`key${i}`] = String(i);
+      storage.duringWrite = () => {
+        a.write(`mid${i}`, `m${i}`);
+        expected[`mid${i}`] = `m${i}`;
+      };
+      await a.store.push(a.doc);
+    }
+    // A final push for whatever landed during the last write.
+    await a.store.push(a.doc);
+
+    const reader = device(storage, DEVICE_B, 2n);
+    const result = await reader.store.pull(reader.doc);
+    expect(result.rejected).toEqual([]);
+    expect(reader.notes()).toEqual(expected);
+  });
+});
