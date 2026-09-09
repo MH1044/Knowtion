@@ -13,6 +13,8 @@ import { fileURLToPath } from 'node:url';
 
 import { BrowserWindow, app, dialog, ipcMain, session } from 'electron';
 
+import { readSettings, writeSettings } from './settings.js';
+import { checkSyncFolder, copyLog } from './sync-folder.js';
 import { WorkspaceHost } from './workspace-host.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -25,6 +27,46 @@ const isDevelopment = !app.isPackaged;
 app.setName('Knowtion');
 
 let host: WorkspaceHost | undefined;
+let syncTimer: NodeJS.Timeout | undefined;
+let currentLogDir = '';
+let lastSyncError: string | undefined;
+
+/**
+ * How often to look for another device's work.
+ *
+ * Folder mode has no change feed, so this is a poll. It runs ONLY when a sync folder is
+ * configured: with a local-only log there is no other writer, and polling would be
+ * background work with nothing to find. Slower when the window is not focused, because
+ * a user who is not looking is not waiting.
+ */
+const SYNC_INTERVAL_FOCUSED_MS = 15_000;
+const SYNC_INTERVAL_BACKGROUND_MS = 60_000;
+
+function scheduleSync(): void {
+  if (syncTimer) clearTimeout(syncTimer);
+  if (currentLogDir === '' || host === undefined) return;
+
+  const focused = BrowserWindow.getAllWindows().some((w) => w.isFocused());
+  syncTimer = setTimeout(
+    () => {
+      void runSync().finally(scheduleSync);
+    },
+    focused ? SYNC_INTERVAL_FOCUSED_MS : SYNC_INTERVAL_BACKGROUND_MS,
+  );
+}
+
+async function runSync(): Promise<void> {
+  if (!host) return;
+  try {
+    await host.sync();
+    lastSyncError = undefined;
+  } catch (error) {
+    // A sync failure must never take the app down: the local workspace is complete on
+    // its own, and an unreachable folder is a normal state, not a crash.
+    lastSyncError = error instanceof Error ? error.message : String(error);
+    console.error('[knowtion] sync failed:', error);
+  }
+}
 
 /**
  * Stable identity for this installation.
@@ -114,6 +156,75 @@ function registerHandlers(): void {
     }
   });
 
+  ipcMain.handle('sync:info', () => ({
+    ok: true,
+    value: {
+      folder: currentLogDir === '' ? null : currentLogDir,
+      lastError: lastSyncError ?? null,
+    },
+  }));
+
+  ipcMain.handle('sync:now', async () => {
+    if (currentLogDir === '') return { ok: true, value: null };
+    await runSync();
+    return lastSyncError === undefined
+      ? { ok: true, value: null }
+      : { ok: false, error: lastSyncError };
+  });
+
+  /**
+   * Point the log at a folder the user's cloud client already syncs.
+   *
+   * The existing log is copied rather than moved, so a mistake here is recoverable:
+   * the notes remain where they were until the user is satisfied.
+   */
+  ipcMain.handle('sync:choose', async () => {
+    try {
+      const chosen = await dialog.showOpenDialog({
+        title: 'Choose a folder your cloud client syncs',
+        properties: ['openDirectory', 'createDirectory'],
+      });
+      if (chosen.canceled || chosen.filePaths[0] === undefined) {
+        return { ok: true, value: null };
+      }
+
+      const dataDir = app.getPath('userData');
+      const folder = chosen.filePaths[0];
+      const check = await checkSyncFolder(dataDir, folder);
+      if (!check.ok) return { ok: false, error: check.reason };
+      if (check.existingWorkspace) {
+        // Joining another device's workspace means adopting its identity and keys,
+        // which is device pairing — a separate step with its own confirmation. Silently
+        // merging two workspaces would be far worse than refusing.
+        return {
+          ok: false,
+          error:
+            'That folder already contains a Knowtion workspace. Joining an existing ' +
+            'workspace from a second device is not supported yet — choose an empty ' +
+            'folder for now.',
+        };
+      }
+
+      // Write everything pending, then copy the log across before switching.
+      await host!.close();
+      const previousLogDir = currentLogDir === '' ? join(dataDir, 'log') : currentLogDir;
+      const copied = await copyLog(previousLogDir, folder);
+
+      await writeSettings(dataDir, { syncFolder: folder });
+      currentLogDir = folder;
+      host = await WorkspaceHost.open({
+        dataDir,
+        logDir: folder,
+        ...(await loadIdentity(dataDir)),
+      });
+      scheduleSync();
+
+      return { ok: true, value: { folder, copied } };
+    } catch (error) {
+      return { ok: false, error: error instanceof Error ? error.message : String(error) };
+    }
+  });
+
   ipcMain.handle('workspace:flush', async () => {
     await host!.flush();
     return { ok: true, value: null };
@@ -176,9 +287,17 @@ app.whenReady().then(async () => {
 
   const dataDir = app.getPath('userData');
   const identity = await loadIdentity(dataDir);
-  host = await WorkspaceHost.open({ dataDir, ...identity });
+  const settings = await readSettings(dataDir);
+  currentLogDir = settings.syncFolder ?? '';
+
+  host = await WorkspaceHost.open({
+    dataDir,
+    ...(currentLogDir === '' ? {} : { logDir: currentLogDir }),
+    ...identity,
+  });
   registerHandlers();
   await createWindow();
+  scheduleSync();
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) void createWindow();

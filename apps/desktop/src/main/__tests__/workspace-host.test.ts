@@ -18,7 +18,13 @@ const DEVICE_B = new Uint8Array(16).fill(0xbb);
 
 const dirs: string[] = [];
 afterAll(async () => {
-  for (const dir of dirs) await rm(dir, { recursive: true, force: true });
+  for (const dir of dirs) {
+    // Windows holds a lock on a SQLite file briefly after close, so a failed cleanup
+    // is a temporary-directory left behind, not a test failure worth reporting.
+    await rm(dir, { recursive: true, force: true, maxRetries: 3, retryDelay: 50 }).catch(
+      () => undefined,
+    );
+  }
 });
 
 async function dataDir(): Promise<string> {
@@ -398,5 +404,145 @@ describe('Notion import', () => {
 
     expect(bomb.byteLength).toBeGreaterThan(0);
     await host.close();
+  });
+});
+
+describe('sync between two devices sharing a folder', () => {
+  /** Two devices: separate application data, one shared log directory. */
+  async function pair() {
+    const shared = await dataDir();
+    const logDir = join(shared, 'shared-log');
+    const openDevice = async (deviceId: Uint8Array, peerId: bigint) =>
+      WorkspaceHost.open({
+        dataDir: await dataDir(),
+        logDir,
+        workspaceId: WORKSPACE_ID,
+        deviceId,
+        peerId,
+        flushDelayMs: 0,
+      });
+    return { a: await openDevice(DEVICE_A, 1n), b: await openDevice(DEVICE_B, 2n), logDir };
+  }
+
+  it('propagates a new page', async () => {
+    const { a, b } = await pair();
+    a.createPage({ title: 'From A' });
+    await a.sync();
+
+    expect(titles(b.tree())).toEqual([]);
+    await b.sync();
+    expect(titles(b.tree())).toEqual(['From A']);
+
+    await a.close();
+    await b.close();
+  });
+
+  it('makes a remotely edited body searchable WITHOUT opening the page', async () => {
+    // The bug this exists to prevent: indexing a body only when someone opens it means
+    // a page edited on another machine stays unfindable until it is visited — and the
+    // user cannot visit a page they cannot find.
+    const { a, b } = await pair();
+    const page = a.createPage({ title: 'Recipes' });
+    await a.openBody(page.id);
+
+    const { LoroDoc } = await import('loro-crdt');
+    const edit = new LoroDoc();
+    edit.setPeerId(9n);
+    edit.getMap('doc').set('nodeName', 'doc');
+    edit.getMap('doc').set('text', 'sourdough starter instructions');
+    edit.commit();
+    await a.applyBodyUpdate(page.id, edit.export({ mode: 'update' }));
+    await a.sync();
+
+    const status = await b.sync();
+    expect(status.bodiesUpdated).toBeGreaterThan(0);
+    expect(status.rejected).toBe(0);
+
+    // Found without B ever calling openBody.
+    expect(b.search('sourdough').map((h) => h.title)).toEqual(['Recipes']);
+
+    await a.close();
+    await b.close();
+  });
+
+  it('does not re-decode documents that have not changed', async () => {
+    // A quiet cycle must be a directory listing and a set lookup, not a full decode of
+    // every page — that is the cost lazy loading exists to avoid.
+    const { a, b } = await pair();
+    for (let i = 0; i < 5; i++) {
+      const page = a.createPage({ title: `Page ${i}` });
+      await a.openBody(page.id);
+      const { LoroDoc } = await import('loro-crdt');
+      const edit = new LoroDoc();
+      edit.setPeerId(BigInt(100 + i));
+      edit.getMap('doc').set('text', `content ${i}`);
+      edit.commit();
+      await a.applyBodyUpdate(page.id, edit.export({ mode: 'update' }));
+    }
+    await a.sync();
+
+    expect((await b.sync()).bodiesUpdated).toBe(5);
+    // Nothing changed since, so nothing is decoded again.
+    expect((await b.sync()).bodiesUpdated).toBe(0);
+    expect((await b.sync()).bodiesUpdated).toBe(0);
+
+    await a.close();
+    await b.close();
+  });
+
+  it('converges when both devices edit while unable to see each other', async () => {
+    const { a, b } = await pair();
+    const shared = a.createPage({ title: 'Shared' });
+    await a.sync();
+    await b.sync();
+
+    a.createPage({ parentId: shared.id, title: 'Added by A' });
+    b.createPage({ parentId: shared.id, title: 'Added by B' });
+
+    await a.sync();
+    await b.sync();
+    await a.sync();
+
+    for (const device of [a, b]) {
+      const children = device.tree()[0]!.children;
+      expect(titles(children), 'both edits survive').toEqual(['Added by A', 'Added by B']);
+    }
+
+    await a.close();
+    await b.close();
+  });
+
+  it('propagates a deletion as a tombstone, not as an absence', async () => {
+    const { a, b } = await pair();
+    const page = a.createPage({ title: 'Temporary' });
+    await a.sync();
+    await b.sync();
+    expect(titles(b.tree())).toEqual(['Temporary']);
+
+    a.archivePage(page.id);
+    a.deletePage(page.id);
+    await a.sync();
+    await b.sync();
+
+    expect(b.tree()).toEqual([]);
+    expect(b.search('Temporary')).toEqual([]);
+
+    await a.close();
+    await b.close();
+  });
+
+  it('refuses to place the application data directory inside the sync folder', async () => {
+    // Otherwise the user's cloud client copies a live SQLite file mid-write, which
+    // corrupts it — the exact failure ADR-0004's two-roots rule exists to prevent.
+    const parent = await dataDir();
+    await expect(
+      WorkspaceHost.open({
+        dataDir: join(parent, 'inside'),
+        logDir: parent,
+        workspaceId: WORKSPACE_ID,
+        deviceId: DEVICE_A,
+        peerId: 1n,
+      }),
+    ).rejects.toThrow(/corrupt|inside the sync folder/i);
   });
 });
