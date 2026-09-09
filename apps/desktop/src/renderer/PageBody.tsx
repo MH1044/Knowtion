@@ -40,7 +40,7 @@ export function PageBody({ pageId }: { pageId: string }): React.JSX.Element {
         const snapshot = await api.openBody(pageId);
         if (disposed || !holder.current) return;
 
-        editor = mountPageEditor({
+        const mounted = await mountPageEditor({
           element: holder.current,
           peerId: 1n,
           snapshot,
@@ -50,6 +50,14 @@ export function PageBody({ pageId }: { pageId: string }): React.JSX.Element {
             pending = setTimeout(flush, 300);
           },
         });
+        // mountPageEditor awaits its own dynamic import of the Loro binding, so the
+        // component may have been torn down (and its cleanup already run, before
+        // `editor` was set) by the time this resolves — destroy rather than leak it.
+        if (disposed) {
+          mounted.destroy();
+          return;
+        }
+        editor = mounted;
         editor.view.focus();
       } catch (cause) {
         setError(cause instanceof Error ? cause.message : String(cause));
