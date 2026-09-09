@@ -354,6 +354,7 @@ input:focus-visible {
 
 .import-summary li {
   margin-bottom: 3px;
+  overflow-wrap: anywhere;
 }
 
 .import-summary .from {
