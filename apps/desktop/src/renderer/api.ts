@@ -36,6 +36,12 @@ export interface ImportReport {
   warnings: string[];
 }
 
+export interface SyncInfo {
+  /** Null when the log is local-only and nothing else can write to it. */
+  folder: string | null;
+  lastError: string | null;
+}
+
 type Result<T> = { ok: true; value: T } | { ok: false; error: string };
 
 interface Bridge {
@@ -52,6 +58,10 @@ interface Bridge {
   search(input: { query: string; limit?: number | undefined }): Promise<Result<SearchHit[]>>;
   /** Resolves to null when the user cancels the file picker. */
   importNotion(): Promise<Result<ImportReport | null>>;
+  syncInfo(): Promise<Result<SyncInfo>>;
+  syncNow(): Promise<Result<null>>;
+  /** Resolves to null when the user cancels the folder picker. */
+  chooseSyncFolder(): Promise<Result<{ folder: string; copied: number } | null>>;
   flush(): Promise<Result<null>>;
   openBody(input: { id: string }): Promise<Result<Uint8Array>>;
   updateBody(input: { id: string; update: Uint8Array }): Promise<Result<null>>;
@@ -82,6 +92,9 @@ export const api = {
   deletePage: (id: string) => unwrap(window.knowtion.deletePage({ id })),
   search: (query: string, limit?: number) => unwrap(window.knowtion.search({ query, limit })),
   importNotion: () => unwrap(window.knowtion.importNotion()),
+  syncInfo: () => unwrap(window.knowtion.syncInfo()),
+  syncNow: () => unwrap(window.knowtion.syncNow()),
+  chooseSyncFolder: () => unwrap(window.knowtion.chooseSyncFolder()),
   flush: () => unwrap(window.knowtion.flush()),
   openBody: (id: string) => unwrap(window.knowtion.openBody({ id })),
   updateBody: (id: string, update: Uint8Array) =>
