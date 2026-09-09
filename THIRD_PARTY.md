@@ -20,7 +20,7 @@ covering prior art we may read but not copy.
 
 <!-- GENERATED: dependency table below is written by scripts/write-third-party.mjs -->
 
-## Shipped dependencies (15)
+## Shipped dependencies (18)
 
 Dependencies that are distributed with the application. Development-only tooling is
 excluded: it is not redistributed. Workspace packages are our own and are covered by
@@ -29,11 +29,14 @@ the repository LICENSE.
 | Package | Version | Licence |
 |---|---|---|
 | @noble/hashes | 2.4.0 | MIT |
+| entities | 8.1.0 | BSD-2-Clause |
+| fflate | 0.8.3 | MIT |
 | isomorphic.js | 0.2.5 | MIT |
 | lib0 | 0.2.117 | MIT |
 | loro-crdt | 1.16.0 | MIT |
 | loro-prosemirror | 0.4.4 | MIT |
 | orderedmap | 2.1.1 | MIT |
+| parse5 | 8.0.1 | MIT |
 | prosemirror-commands | 1.7.2 | MIT |
 | prosemirror-inputrules | 1.5.1 | MIT |
 | prosemirror-keymap | 1.2.3 | MIT |
