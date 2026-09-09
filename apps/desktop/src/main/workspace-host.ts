@@ -9,7 +9,7 @@
  */
 
 import { mkdir } from 'node:fs/promises';
-import { join } from 'node:path';
+import { join, resolve, sep } from 'node:path';
 
 import { LoroDoc } from 'loro-crdt';
 import {
@@ -23,7 +23,7 @@ import {
 import { loroDocFromJson, plainTextFromJson } from '@knowtion/editor/headless';
 import { importNotionArchive, type ImportReport } from '@knowtion/importers';
 import { ReadModel, type SearchHit } from '@knowtion/readmodel';
-import { NodeStorage, PackStore } from '@knowtion/sync';
+import { NodeStorage, PackStore, listDocumentPacks } from '@knowtion/sync';
 
 import { normaliseText, plainTextFromLoroJson } from './plain-text.js';
 
@@ -31,13 +31,59 @@ import { normaliseText, plainTextFromLoroJson } from './plain-text.js';
 const FLUSH_DELAY_MS = 400;
 
 export interface WorkspaceHostOptions {
-  /** Directory holding the log. In v0.2 the user points this at a synced folder. */
+  /**
+   * Per-device application data: the derived index, and the log when no sync folder
+   * has been chosen. Never shared between devices.
+   */
   dataDir: string;
+  /**
+   * Where the log lives. Defaults to a directory inside dataDir.
+   *
+   * In folder mode the user points this at a directory their cloud client already
+   * syncs. It must never contain the index: ADR-0004 requires two separate roots,
+   * because a cloud client copying a live SQLite file mid-transaction produces a
+   * reliably corrupt one.
+   */
+  logDir?: string;
   workspaceId: Uint8Array;
   deviceId: Uint8Array;
   peerId: bigint;
   /** Injected so tests can flush synchronously instead of waiting. */
   flushDelayMs?: number;
+}
+
+/**
+ * Refuse a configuration where the index would sit inside the synced log.
+ *
+ * A hard refusal rather than a warning, because the failure it prevents is silent
+ * corruption of the user's database by their own cloud client, and a warning at setup
+ * time is read once and dismissed. See ADR-0004.
+ */
+function assertSeparateRoots(dataDir: string, logDir: string): void {
+  const data = resolve(dataDir);
+  const log = resolve(logDir);
+  if (log === data || log.startsWith(data + sep)) {
+    // dataDir/log is the default and is fine: only the database file itself must stay
+    // out of the synced tree, and it lives directly in dataDir.
+    return;
+  }
+  if (data === log || data.startsWith(log + sep)) {
+    throw new Error(
+      `refusing to run: the application data directory (${data}) is inside the sync ` +
+        `folder (${log}). The search index would be copied by your cloud client while ` +
+        'it is being written, which reliably corrupts it. Choose a folder that does ' +
+        'not contain the application data directory.',
+    );
+  }
+}
+
+/** The hierarchy's reserved document namespace, as it appears in a path. */
+const TREE_DOCUMENT_HEX = '0'.repeat(32);
+
+export interface SyncStatus {
+  treePacksApplied: number;
+  bodiesUpdated: number;
+  rejected: number;
 }
 
 /** One open page body: its document and the store that persists it. */
@@ -61,9 +107,27 @@ export class WorkspaceHost {
    * justify it would be guesswork.
    */
   readonly #bodies = new Map<string, OpenBody>();
+  /**
+   * Pack paths already reflected in the search index.
+   *
+   * Without this, every sync cycle would re-decode every page's document to discover
+   * that nothing changed — which is precisely the cost lazy loading exists to avoid.
+   * With it, a quiet cycle is a directory listing and a set lookup.
+   */
+  readonly #indexedPacks = new Set<string>();
   readonly #options: WorkspaceHostOptions;
   #pendingFlush: NodeJS.Timeout | undefined;
-  #flushing: Promise<void> = Promise.resolve();
+  /**
+   * Serialises writes.
+   *
+   * flush() is reachable from three directions at once — the debounce timer, a sync
+   * cycle, and quitting — and two concurrent writers both read the same next sequence
+   * number and then collide on the same pack path. In production that is an autosave
+   * firing while the user quits, and it fails the write rather than losing data, but it
+   * fails a write the user thought had succeeded. Every flush therefore queues behind
+   * the previous one.
+   */
+  #flushChain: Promise<void> = Promise.resolve();
 
   private constructor(options: WorkspaceHostOptions) {
     this.#options = options;
@@ -74,7 +138,11 @@ export class WorkspaceHost {
     const host = new WorkspaceHost(options);
     await mkdir(options.dataDir, { recursive: true });
 
-    const storage = new NodeStorage(join(options.dataDir, 'log'));
+    const logDir = options.logDir ?? join(options.dataDir, 'log');
+    assertSeparateRoots(options.dataDir, logDir);
+    await mkdir(logDir, { recursive: true });
+
+    const storage = new NodeStorage(logDir);
     host.#storage = storage;
     host.#workspace = Workspace.create({ runtime: systemRuntime(), peerId: options.peerId });
     host.#store = new PackStore({
@@ -189,7 +257,11 @@ export class WorkspaceHost {
     if (this.#pendingFlush) clearTimeout(this.#pendingFlush);
     this.#pendingFlush = setTimeout(() => {
       this.#pendingFlush = undefined;
-      this.#flushing = this.#flushing.then(() => this.flush());
+      void this.flush().catch((error: unknown) => {
+        // Nothing is waiting on a debounced write, so a failure here would otherwise
+        // vanish. It must reach a log a human can read.
+        console.error('[knowtion] background write failed:', error);
+      });
     }, this.#options.flushDelayMs ?? FLUSH_DELAY_MS);
   }
 
@@ -199,13 +271,22 @@ export class WorkspaceHost {
       clearTimeout(this.#pendingFlush);
       this.#pendingFlush = undefined;
     }
+    const next = this.#flushChain.then(() => this.#writePending());
+    // The chain absorbs failures so one failed write cannot block every later one.
+    this.#flushChain = next.then(
+      () => undefined,
+      () => undefined,
+    );
+    return next;
+  }
+
+  async #writePending(): Promise<void> {
     try {
       await this.#store.push(this.#workspace.doc);
-      for (const [id, body] of this.#bodies) {
+      for (const body of this.#bodies.values()) {
         if (!body.dirty) continue; // an untouched page must not write a file
         await body.store.push(body.doc);
         body.dirty = false;
-        void id;
       }
     } catch (error) {
       console.error('[knowtion] failed to write a pack:', error);
@@ -215,8 +296,10 @@ export class WorkspaceHost {
 
   /** Flush and settle, for shutdown. */
   async close(): Promise<void> {
-    await this.#flushing;
     await this.flush();
+    // Wait for anything that queued behind us, so nothing is still writing when the
+    // process exits.
+    await this.#flushChain;
     this.#index.close();
   }
 
@@ -322,5 +405,89 @@ export class WorkspaceHost {
 
     await this.flush();
     return report;
+  }
+
+  // ---- sync ---------------------------------------------------------------
+
+  /**
+   * One synchronisation cycle: publish local work, then merge everyone else's.
+   *
+   * Local changes are flushed FIRST. If merging came first, a crash between merge and
+   * flush would leave this device holding remote operations it had not yet written
+   * anywhere — recoverable, but it would silently re-download them next time, and the
+   * ordering costs nothing to get right.
+   */
+  async sync(): Promise<SyncStatus> {
+    await this.flush();
+
+    const tree = await this.#store.pull(this.#workspace.doc);
+    for (const rejected of tree.rejected) {
+      console.error(`[knowtion] rejected pack ${rejected.path}: ${rejected.message}`);
+    }
+    if (tree.applied > 0) this.#reindexPages();
+
+    const bodiesUpdated = await this.#syncBodies();
+
+    return {
+      treePacksApplied: tree.applied,
+      bodiesUpdated,
+      rejected: tree.rejected.length,
+    };
+  }
+
+  /**
+   * Merge and re-index every page body that has new packs.
+   *
+   * This is what keeps search honest across devices. Indexing a body only when someone
+   * opens it means a page edited on another machine stays unfindable until it is
+   * visited — and the user cannot visit a page they cannot find.
+   *
+   * Only documents with unseen packs are decoded, so the cost is bounded by what
+   * actually changed rather than by the size of the workspace. Pairing a new device is
+   * the exception, and is a one-time cost by definition.
+   */
+  async #syncBodies(): Promise<number> {
+    const byDocument = await listDocumentPacks(this.#storage);
+    const pageByDocument = new Map(
+      this.#workspace.allPages().map((page) => [page.uuid.replace(/-/g, ''), page]),
+    );
+
+    let updated = 0;
+    for (const [documentHex, paths] of byDocument) {
+      if (documentHex === TREE_DOCUMENT_HEX) continue;
+      if (paths.every((path) => this.#indexedPacks.has(path))) continue;
+
+      const page = pageByDocument.get(documentHex);
+      if (page === undefined) {
+        // A body whose page has not reached us yet, or whose page was deleted. Leave
+        // the packs unmarked so it is reconsidered once the hierarchy catches up.
+        continue;
+      }
+
+      const open = this.#bodies.get(page.id);
+      if (open) {
+        // Reuse the open store: it carries the per-device chain state, and a fresh one
+        // would have to re-verify the whole chain from its root.
+        const result = await open.store.pull(open.doc);
+        if (result.applied > 0) this.#indexBody(page.id, open.doc);
+      } else {
+        const doc = new LoroDoc();
+        doc.setPeerId(this.#options.peerId);
+        const store = new PackStore({
+          storage: this.#storage,
+          workspaceId: this.#options.workspaceId,
+          deviceId: this.#options.deviceId,
+          documentId: uuidToBytes(page.uuid),
+        });
+        await store.pull(doc);
+        this.#indexBody(page.id, doc);
+        // Deliberately not retained. Holding every document a sync touched would
+        // rebuild, one cycle at a time, exactly the memory profile lazy loading avoids.
+      }
+
+      for (const path of paths) this.#indexedPacks.add(path);
+      updated += 1;
+    }
+    return updated;
   }
 }
