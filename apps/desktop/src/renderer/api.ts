@@ -29,6 +29,13 @@ export interface SearchHit {
   score: number;
 }
 
+export interface ImportReport {
+  pagesImported: number;
+  brokenLinks: { fromTitle: string; href: string; reason: string }[];
+  skipped: { path: string; reason: string }[];
+  warnings: string[];
+}
+
 type Result<T> = { ok: true; value: T } | { ok: false; error: string };
 
 interface Bridge {
@@ -43,6 +50,8 @@ interface Bridge {
   restorePage(input: { id: string }): Promise<Result<Page>>;
   deletePage(input: { id: string }): Promise<Result<null>>;
   search(input: { query: string; limit?: number | undefined }): Promise<Result<SearchHit[]>>;
+  /** Resolves to null when the user cancels the file picker. */
+  importNotion(): Promise<Result<ImportReport | null>>;
   flush(): Promise<Result<null>>;
   openBody(input: { id: string }): Promise<Result<Uint8Array>>;
   updateBody(input: { id: string; update: Uint8Array }): Promise<Result<null>>;
@@ -72,6 +81,7 @@ export const api = {
   restorePage: (id: string) => unwrap(window.knowtion.restorePage({ id })),
   deletePage: (id: string) => unwrap(window.knowtion.deletePage({ id })),
   search: (query: string, limit?: number) => unwrap(window.knowtion.search({ query, limit })),
+  importNotion: () => unwrap(window.knowtion.importNotion()),
   flush: () => unwrap(window.knowtion.flush()),
   openBody: (id: string) => unwrap(window.knowtion.openBody({ id })),
   updateBody: (id: string, update: Uint8Array) =>

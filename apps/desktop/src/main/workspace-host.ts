@@ -20,6 +20,8 @@ import {
   type Page,
   type PageNode,
 } from '@knowtion/engine';
+import { loroDocFromJson, plainTextFromJson } from '@knowtion/editor/headless';
+import { importNotionArchive, type ImportReport } from '@knowtion/importers';
 import { ReadModel, type SearchHit } from '@knowtion/readmodel';
 import { NodeStorage, PackStore } from '@knowtion/sync';
 
@@ -264,5 +266,61 @@ export class WorkspaceHost {
     body.dirty = true;
     this.#indexBody(id, body.doc);
     this.#scheduleFlush();
+  }
+
+  // ---- import ------------------------------------------------------------
+
+  /**
+   * Import a Notion export archive.
+   *
+   * Pages are created parents-first so that every child has somewhere to go; a page
+   * whose parent is missing from the archive lands at the top level rather than being
+   * dropped, because a page in the wrong place is recoverable and a page that never
+   * arrived is not.
+   *
+   * Bodies are written through ProseMirror rather than by assembling the CRDT structure
+   * directly. The binding owns that structure, and hand-building it would mean keeping a
+   * second, silently-diverging copy of a pre-1.0 library's internals.
+   */
+  async importNotion(archive: Uint8Array): Promise<ImportReport> {
+    const { pages, report } = importNotionArchive(archive);
+
+    // Parents before children: shallower archive paths first.
+    const ordered = [...pages].sort(
+      (a, b) => a.path.split('/').length - b.path.split('/').length || a.path.localeCompare(b.path),
+    );
+
+    const nodeByPath = new Map<string, NodeId>();
+
+    for (const imported of ordered) {
+      const parentId =
+        imported.parentPath === undefined ? undefined : nodeByPath.get(imported.parentPath);
+      const page = this.#workspace.createPage({ parentId, title: imported.title });
+      nodeByPath.set(imported.path, page.id);
+
+      const doc = loroDocFromJson(imported.doc, this.#options.peerId);
+      const store = new PackStore({
+        storage: this.#storage,
+        workspaceId: this.#options.workspaceId,
+        deviceId: this.#options.deviceId,
+        documentId: uuidToBytes(page.uuid),
+      });
+      await store.push(doc);
+
+      // Index the text now: an imported workspace is the one case where every page has
+      // content the user has never opened, and unsearchable notes are barely imported.
+      this.#index.setPageBody(page.id, normaliseText(plainTextFromJson(imported.doc)));
+      this.#bodies.set(page.id, { doc, store, dirty: false });
+    }
+
+    this.#reindexPages();
+    // Re-apply the body text: re-projecting the hierarchy above rewrote the page rows.
+    for (const imported of ordered) {
+      const id = nodeByPath.get(imported.path);
+      if (id) this.#index.setPageBody(id, normaliseText(plainTextFromJson(imported.doc)));
+    }
+
+    await this.flush();
+    return report;
   }
 }

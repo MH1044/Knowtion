@@ -11,7 +11,7 @@ import { readFile, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { BrowserWindow, app, ipcMain, session } from 'electron';
+import { BrowserWindow, app, dialog, ipcMain, session } from 'electron';
 
 import { WorkspaceHost } from './workspace-host.js';
 
@@ -95,6 +95,25 @@ function registerHandlers(): void {
   handle('workspace:search', (input: { query: string; limit?: number }) =>
     host!.search(input.query, input.limit),
   );
+  // The file picker runs in the main process: the renderer is sandboxed and has no
+  // filesystem access, which is the point of the sandbox.
+  ipcMain.handle('import:notion', async () => {
+    try {
+      const chosen = await dialog.showOpenDialog({
+        title: 'Import a Notion export',
+        properties: ['openFile'],
+        filters: [{ name: 'Notion export', extensions: ['zip'] }],
+      });
+      if (chosen.canceled || chosen.filePaths[0] === undefined) {
+        return { ok: true, value: null };
+      }
+      const bytes = new Uint8Array(await readFile(chosen.filePaths[0]));
+      return { ok: true, value: await host!.importNotion(bytes) };
+    } catch (error) {
+      return { ok: false, error: error instanceof Error ? error.message : String(error) };
+    }
+  });
+
   ipcMain.handle('workspace:flush', async () => {
     await host!.flush();
     return { ok: true, value: null };

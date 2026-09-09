@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 
-import { api, type Page, type PageNode } from './api.js';
+import { api, type ImportReport, type Page, type PageNode } from './api.js';
 import { PageBody } from './PageBody.js';
 import { PageTree } from './PageTree.js';
 import { Search } from './Search.js';
@@ -21,6 +21,8 @@ export function App(): React.JSX.Element {
   const [selectedId, setSelectedId] = useState<string>();
   const [showTrash, setShowTrash] = useState(false);
   const [error, setError] = useState<string>();
+  const [importReport, setImportReport] = useState<ImportReport>();
+  const [importing, setImporting] = useState(false);
 
   const refresh = useCallback(async () => {
     try {
@@ -103,11 +105,33 @@ export function App(): React.JSX.Element {
           <button type="button" onClick={() => setShowTrash((v) => !v)}>
             Trash ({trash.length})
           </button>
+          <button
+            type="button"
+            disabled={importing}
+            onClick={() =>
+              void (async () => {
+                setImporting(true);
+                await run(async () => {
+                  const report = await api.importNotion();
+                  // null means the user closed the picker, which is not an outcome
+                  // worth reporting back to them.
+                  if (report) setImportReport(report);
+                });
+                setImporting(false);
+              })()
+            }
+          >
+            {importing ? 'Importing…' : 'Import from Notion'}
+          </button>
         </footer>
       </aside>
 
       <main className="content">
         {error !== undefined && <div className="error">{error}</div>}
+
+        {importReport !== undefined && (
+          <ImportSummary report={importReport} onDismiss={() => setImportReport(undefined)} />
+        )}
 
         {showTrash ? (
           <TrashView trash={trash} run={run} />
@@ -122,6 +146,69 @@ export function App(): React.JSX.Element {
           <p className="placeholder">Select a page, or create one.</p>
         )}
       </main>
+    </div>
+  );
+}
+
+/**
+ * What an import actually did.
+ *
+ * Shown rather than a bare success message. Notion exports lose things — deeply nested
+ * paths are truncated so their links cannot be recovered, and database views arrive
+ * without their filters — and the user is far better served by being told which,
+ * immediately, than by discovering it themselves over the following month.
+ */
+function ImportSummary({
+  report,
+  onDismiss,
+}: {
+  report: ImportReport;
+  onDismiss: () => void;
+}): React.JSX.Element {
+  return (
+    <div className="import-summary">
+      <div className="import-summary-head">
+        <strong>Imported {report.pagesImported} pages</strong>
+        <button type="button" onClick={onDismiss}>
+          Dismiss
+        </button>
+      </div>
+
+      {report.warnings.map((warning) => (
+        <p key={warning} className="warning">
+          {warning}
+        </p>
+      ))}
+
+      {report.brokenLinks.length > 0 && (
+        <details open>
+          <summary>{report.brokenLinks.length} links could not be resolved</summary>
+          <ul>
+            {report.brokenLinks.slice(0, 50).map((link) => (
+              <li key={`${link.fromTitle}:${link.href}`}>
+                <span className="from">{link.fromTitle}</span> → {link.href}{' '}
+                <span className="muted">({link.reason})</span>
+              </li>
+            ))}
+          </ul>
+          {report.brokenLinks.length > 50 && (
+            <p className="muted">and {report.brokenLinks.length - 50} more</p>
+          )}
+        </details>
+      )}
+
+      {report.skipped.length > 0 && (
+        <details>
+          <summary>{report.skipped.length} files not imported yet</summary>
+          <ul>
+            {report.skipped.slice(0, 50).map((item) => (
+              <li key={item.path}>
+                {item.path} <span className="muted">({item.reason})</span>
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
     </div>
   );
 }
