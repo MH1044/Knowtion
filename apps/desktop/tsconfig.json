@@ -27,6 +27,9 @@
     },
     {
       "path": "../../packages/readmodel"
+    },
+    {
+      "path": "../../packages/importers"
     }
   ]
 }
