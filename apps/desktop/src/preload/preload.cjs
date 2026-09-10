@@ -24,6 +24,7 @@ contextBridge.exposeInMainWorld('knowtion', {
   importNotion: call('import:notion'),
   syncInfo: call('sync:info'),
   devices: call('sync:devices'),
+  forgetDevice: call('sync:forget'),
   syncNow: call('sync:now'),
   chooseSyncFolder: call('sync:choose'),
   flush: call('workspace:flush'),

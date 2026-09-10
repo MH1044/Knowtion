@@ -572,3 +572,96 @@ describe('sync between two devices sharing a folder', () => {
     ).rejects.toThrow(/corrupt|inside the sync folder/i);
   });
 });
+
+describe('compaction', () => {
+  async function pairSharing() {
+    const shared = await dataDir();
+    const logDir = join(shared, 'shared-log');
+    const openDevice = async (deviceId: Uint8Array, peerId: bigint) =>
+      WorkspaceHost.open({
+        dataDir: await dataDir(),
+        logDir,
+        workspaceId: WORKSPACE_ID,
+        deviceId,
+        peerId,
+        deviceKeys: keysFor(deviceId),
+        flushDelayMs: 0,
+        settleMs: 0,
+      });
+    return { a: await openDevice(DEVICE_A, 1n), b: await openDevice(DEVICE_B, 2n), logDir };
+  }
+
+  it('publishes a snapshot once every device has caught up', async () => {
+    const { a, b, logDir } = await pairSharing();
+
+    a.createPage({ title: 'One' });
+    await a.sync();
+    await b.sync(); // b acknowledges what it has merged
+    await a.sync(); // a now sees b's acknowledgement and can snapshot
+
+    const { readdir } = await import('node:fs/promises');
+    const files = (await readdir(logDir, { recursive: true })).map(String);
+    expect(files.some((f) => f.includes('snap'))).toBe(true);
+
+    await a.close();
+    await b.close();
+  });
+
+  it('deletes nothing, because the grace period has not passed', async () => {
+    // Publishing a snapshot and pruning history are deliberately separate. Ninety days
+    // separate them, so a mistake in the floor has time to be noticed.
+    const { a, b, logDir } = await pairSharing();
+    a.createPage({ title: 'Keep me' });
+    await a.sync();
+    await b.sync();
+    await a.sync();
+
+    const { readdir } = await import('node:fs/promises');
+    const packs = (await readdir(logDir, { recursive: true }))
+      .map(String)
+      .filter((f) => f.endsWith('.kpack'));
+    expect(packs.length).toBeGreaterThan(0);
+
+    await a.close();
+    await b.close();
+  });
+
+  it('refuses to snapshot while a registered device has never acknowledged', async () => {
+    // b enrols but never syncs, so nothing is safe to trim and no snapshot is written.
+    const { a, b, logDir } = await pairSharing();
+    a.createPage({ title: 'One' });
+    await a.sync();
+    await a.sync();
+
+    const { readdir } = await import('node:fs/promises');
+    const files = (await readdir(logDir, { recursive: true })).map(String);
+    expect(files.some((f) => f.includes('snap'))).toBe(false);
+
+    await a.close();
+    await b.close();
+  });
+
+  it('forgets a device, and it disappears from the device list', async () => {
+    const { a, b } = await pairSharing();
+    a.createPage({ title: 'One' });
+    await a.sync();
+    await b.sync();
+
+    expect((await a.devices()).devices).toHaveLength(2);
+
+    const bHex = Buffer.from(DEVICE_B).toString('hex');
+    await a.forgetDevice(bHex);
+
+    expect((await a.devices()).devices.map((d) => d.isThisDevice)).toEqual([true]);
+    await a.close();
+    await b.close();
+  });
+
+  it('will not let a device forget itself', async () => {
+    const { a, b } = await pairSharing();
+    const aHex = Buffer.from(DEVICE_A).toString('hex');
+    await expect(a.forgetDevice(aHex)).rejects.toThrow(/cannot forget itself/);
+    await a.close();
+    await b.close();
+  });
+});

@@ -468,3 +468,14 @@ input:focus-visible {
   font-size: 0.8em;
   letter-spacing: 0.03em;
 }
+
+.device-list .forget {
+  border: none;
+  color: var(--muted);
+  font-size: 0.8em;
+  padding: 0;
+}
+
+.device-list .forget:hover {
+  color: var(--danger);
+}
