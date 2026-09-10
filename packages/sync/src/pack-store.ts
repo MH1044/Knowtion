@@ -273,16 +273,8 @@ export class PackStore {
           });
 
     const path = packPath(this.#deviceHex, this.#documentHex, seq);
-    const created = await this.#storage.putIfAbsent(path, pack);
-    if (!created) {
-      // Our own sequence number already exists. Either a previous push succeeded and
-      // we lost the acknowledgement, or two instances share a device identity. Either
-      // way, writing a different pack at the same path would corrupt the chain.
-      throw new Error(
-        `refusing to overwrite an existing pack at ${path}; ` +
-          'another process may be using this device identity',
-      );
-    }
+    let created = await this.#storage.putIfAbsent(path, pack);
+    if (!created) created = await this.#resolveOccupiedSeq(path, seq, pack);
 
     this.#lastSeq = seq;
     this.#lastHash = hash(pack);
@@ -299,6 +291,71 @@ export class PackStore {
     await this.#writeHead();
 
     return { path, seq, bytes: pack.length };
+  }
+
+  /**
+   * Decide what to do when our own next sequence number is already taken.
+   *
+   * Three quite different situations used to share one fatal error, and only one of
+   * them is actually fatal.
+   *
+   * Exactly one case is repairable: a STRUCTURALLY DAMAGED file. A partial pack at seq
+   * N fails to decode, so it is never applied, so lastSeq stays at N-1 and every future
+   * push aims at the same occupied path — permanently, for the life of the workspace.
+   * Nobody can have merged it, because it never verified anywhere, so replacing it
+   * loses nothing. Skipping to N+1 instead is not an option: the chain requires
+   * prevPackHash(N+1) == hash(N), so a gap would make every later pack BROKEN_CHAIN on
+   * every reader forever.
+   *
+   * Anything that DECODES still refuses, exactly as before. That is deliberately
+   * conservative: a readable pack at our next sequence might be our own work under a
+   * stale listing, or it might be a second instance sharing this device identity — and
+   * nothing at that path distinguishes them. The second is the dangerous one, because
+   * two processes advancing one device's counter fork the chain and lose the loser's
+   * edits, so the ambiguous case keeps the loud refusal.
+   *
+   * @returns true if the pack is now written; otherwise it throws.
+   */
+  async #resolveOccupiedSeq(path: StoragePath, seq: number, pack: Uint8Array): Promise<boolean> {
+    let existing: Uint8Array | undefined;
+    try {
+      existing = await this.#storage.get(path);
+    } catch {
+      // Cannot tell what is there, so assume the worst and keep today's behaviour.
+      existing = undefined;
+    }
+
+    if (existing !== undefined && this.#isOwnTornPack(existing, path)) {
+      // Unreadable by anyone, so nobody can have merged it: replacing it loses nothing
+      // and lets the chain continue.
+      await this.#storage.delete(path);
+      if (await this.#storage.putIfAbsent(path, pack)) return true;
+    }
+
+    throw new Error(
+      `refusing to overwrite an existing pack at ${path}; ` +
+        'another process may be using this device identity',
+    );
+  }
+
+  /**
+   * True when the bytes at our own next sequence are damaged rather than a real pack.
+   *
+   * Only the three structural codes count. A bad signature or unknown suite means a
+   * file we should not be touching, not one of ours cut short by a kill.
+   */
+  #isOwnTornPack(existing: Uint8Array, path: StoragePath): boolean {
+    try {
+      decodePack(existing, path);
+      return false;
+    } catch (error) {
+      return (
+        error instanceof PackFormatError &&
+        (error.code === 'TOO_SHORT' ||
+          error.code === 'LENGTH_MISMATCH' ||
+          error.code === 'BAD_HEADER_CRC')
+      );
+    }
   }
 
   /**
