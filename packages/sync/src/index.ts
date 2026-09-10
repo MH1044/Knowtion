@@ -8,8 +8,12 @@
  */
 
 export type { StorageObject, StoragePath, StoragePort } from './storage-port.js';
+export { checkDataLoss } from './data-loss-guard.js';
+export type { DataLossGuardOptions, DataLossVerdict } from './data-loss-guard.js';
 export { DeviceRegistry } from './device-registry.js';
 export type { Acknowledgement, RegistryRead } from './device-registry.js';
+export { FaultyStorage, QuotaExceededError } from './faulty-storage.js';
+export type { FaultProfile, FaultyStorageOptions } from './faulty-storage.js';
 export { MemoryStorage } from './memory-storage.js';
 export type { MemoryStorageOptions } from './memory-storage.js';
 export { NodeStorage } from './node-storage.js';
