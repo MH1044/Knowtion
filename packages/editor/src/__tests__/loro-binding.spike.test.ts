@@ -53,12 +53,12 @@ function open(peerId: bigint, opts: { snapshot?: Uint8Array; undo?: boolean } = 
 
   const el = document.createElement('div');
   document.body.appendChild(el);
-  /* eslint-disable @typescript-eslint/no-explicit-any -- pre-1.0 generic doc type */
+  /* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment -- pre-1.0 generic doc type */
   const plugins = [
     LoroSyncPlugin({ doc: doc as any }),
-    ...(opts.undo ? [LoroUndoPlugin({ doc: doc as any })] : []),
+    ...(opts.undo ? [LoroUndoPlugin({ doc: doc })] : []),
   ];
-  /* eslint-enable @typescript-eslint/no-explicit-any */
+  /* eslint-enable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment */
   const view = new EditorView(el, { state: EditorState.create({ schema, plugins }) });
   mounted.push(view);
 

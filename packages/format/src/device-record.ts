@@ -71,23 +71,23 @@ export function decodeDeviceRecord(bytes: Uint8Array): DeviceRecord {
   }
   const fields = inner as Record<string, unknown>;
 
-  const version = fields['v'];
+  const version = fields.v;
   if (typeof version !== 'number' || version > DEVICE_RECORD_VERSION) {
     // A newer record is not an error to report as corruption — it means this build is
     // older than the one that wrote it, and FORMAT.md section 7 says go read-only
     // rather than guess.
     throw new SidecarError(
-      `device record is version ${String(version)}; this build understands ${DEVICE_RECORD_VERSION}`,
+      `device record is version ${String(version)}; this build understands ${String(DEVICE_RECORD_VERSION)}`,
     );
   }
 
   const record: DeviceRecord = {
-    deviceId: expectBytes(fields['deviceId'], 16, 'deviceId'),
-    workspaceId: expectBytes(fields['workspaceId'], 16, 'workspaceId'),
-    signingPublicKey: expectBytes(fields['signingPublicKey'], 32, 'signingPublicKey'),
-    wrappingPublicKey: expectBytes(fields['wrappingPublicKey'], 32, 'wrappingPublicKey'),
-    label: typeof fields['label'] === 'string' ? fields['label'] : '',
-    enrolledAt: typeof fields['enrolledAt'] === 'number' ? fields['enrolledAt'] : 0,
+    deviceId: expectBytes(fields.deviceId, 16, 'deviceId'),
+    workspaceId: expectBytes(fields.workspaceId, 16, 'workspaceId'),
+    signingPublicKey: expectBytes(fields.signingPublicKey, 32, 'signingPublicKey'),
+    wrappingPublicKey: expectBytes(fields.wrappingPublicKey, 32, 'wrappingPublicKey'),
+    label: typeof fields.label === 'string' ? fields.label : '',
+    enrolledAt: typeof fields.enrolledAt === 'number' ? fields.enrolledAt : 0,
   };
 
   if (!verify(sig, body, record.signingPublicKey)) {
@@ -100,7 +100,7 @@ export function decodeDeviceRecord(bytes: Uint8Array): DeviceRecord {
 
 function expectBytes(value: unknown, length: number, field: string): Uint8Array {
   if (!(value instanceof Uint8Array) || value.length !== length) {
-    throw new SidecarError(`device record field ${field} must be ${length} bytes`);
+    throw new SidecarError(`device record field ${field} must be ${String(length)} bytes`);
   }
   return value;
 }

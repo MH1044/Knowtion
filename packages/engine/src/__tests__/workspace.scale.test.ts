@@ -15,17 +15,26 @@ import { Workspace } from '../workspace.js';
 
 const PAGES = 10_000;
 
+/** Indexing an array can't statically prove the index is in bounds. */
+function at<T>(array: readonly T[], index: number): T {
+  const value = array[index];
+  if (value === undefined) throw new Error(`expected index ${String(index)} to exist`);
+  return value;
+}
+
 /** A realistic shape: a few top-level sections, each with a deep-ish subtree. */
 function buildLargeWorkspace(): Workspace {
   const w = Workspace.create({ runtime: deterministicRuntime(1), peerId: 1n });
-  const sections = Array.from({ length: 10 }, (_, i) => w.createPage({ title: `Section ${i}` }));
+  const sections = Array.from({ length: 10 }, (_, i) =>
+    w.createPage({ title: `Section ${String(i)}` }),
+  );
   let created = sections.length;
   let frontier = sections.map((s) => s.id);
   while (created < PAGES) {
     const next: typeof frontier = [];
     for (const parentId of frontier) {
       for (let i = 0; i < 5 && created < PAGES; i++) {
-        next.push(w.createPage({ parentId, title: `Page ${created}` }).id);
+        next.push(w.createPage({ parentId, title: `Page ${String(created)}` }).id);
         created++;
       }
     }
@@ -34,7 +43,7 @@ function buildLargeWorkspace(): Workspace {
   return w;
 }
 
-describe(`workspace at ${PAGES} pages`, () => {
+describe(`workspace at ${String(PAGES)} pages`, () => {
   const w = buildLargeWorkspace();
 
   it('holds the expected number of pages', () => {
@@ -62,7 +71,7 @@ describe(`workspace at ${PAGES} pages`, () => {
   it('looks up a single page in constant time, not by scanning', () => {
     const ids = w.allPages().map((p) => p.id);
     const started = performance.now();
-    for (let i = 0; i < 1000; i++) w.getPage(ids[(i * 7) % ids.length]!);
+    for (let i = 0; i < 1000; i++) w.getPage(at(ids, (i * 7) % ids.length));
     const elapsed = performance.now() - started;
     expect(elapsed, `1000 lookups took ${elapsed.toFixed(0)}ms`).toBeLessThan(1_000);
   });
@@ -79,14 +88,16 @@ describe(`workspace at ${PAGES} pages`, () => {
     expect(reopened.allPages()).toHaveLength(PAGES);
     expect(elapsed, `reopening took ${elapsed.toFixed(0)}ms`).toBeLessThan(5_000);
     // Recorded rather than asserted tightly: this number drives the compaction policy.
-    console.log(`  snapshot: ${(snapshot.length / 1024).toFixed(0)} KiB for ${PAGES} pages`);
+    console.log(
+      `  snapshot: ${(snapshot.length / 1024).toFixed(0)} KiB for ${String(PAGES)} pages`,
+    );
   });
 
   it('moves a page without touching the rest of the workspace', () => {
     const roots = w.listChildren(undefined);
-    const target = w.listChildren(roots[0]!.id)[0]!;
+    const target = at(w.listChildren(at(roots, 0).id), 0);
     const started = performance.now();
-    w.movePage(target.id, roots[1]!.id);
+    w.movePage(target.id, at(roots, 1).id);
     const elapsed = performance.now() - started;
     expect(elapsed, `move took ${elapsed.toFixed(0)}ms`).toBeLessThan(500);
   });

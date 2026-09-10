@@ -4,6 +4,13 @@ import { Workspace, deterministicRuntime, type NodeId } from '@knowtion/engine';
 
 import { MATCH_END, MATCH_START, ReadModel } from '../read-model.js';
 
+/** Indexing an array or a search result can't statically prove the index is in bounds. */
+function at<T>(array: readonly T[], index: number): T {
+  const value = array[index];
+  if (value === undefined) throw new Error(`expected index ${String(index)} to exist`);
+  return value;
+}
+
 function withPages(entries: { title: string; body?: string }[]) {
   const workspace = Workspace.create({ runtime: deterministicRuntime(1), peerId: 1n });
   const model = ReadModel.open(':memory:');
@@ -11,7 +18,7 @@ function withPages(entries: { title: string; body?: string }[]) {
   for (const entry of entries) ids.push(workspace.createPage({ title: entry.title }).id);
   model.projectPages(workspace.allPages());
   entries.forEach((entry, i) => {
-    if (entry.body !== undefined) model.setPageBody(ids[i]!, entry.body);
+    if (entry.body !== undefined) model.setPageBody(at(ids, i), entry.body);
   });
   return { workspace, model, ids };
 }
@@ -29,8 +36,8 @@ describe('projection', () => {
 
   it('drops pages that no longer exist', () => {
     const { workspace, model, ids } = withPages([{ title: 'Keep' }, { title: 'Remove' }]);
-    workspace.archivePage(ids[1]!);
-    workspace.deletePage(ids[1]!);
+    workspace.archivePage(at(ids, 1));
+    workspace.deletePage(at(ids, 1));
     model.projectPages(workspace.allPages());
     expect(model.pages().map((p) => p.title)).toEqual(['Keep']);
   });
@@ -38,11 +45,11 @@ describe('projection', () => {
   it('keeps page bodies across a re-projection of the hierarchy', () => {
     // Renaming a page must not silently empty the search index for it.
     const { workspace, model, ids } = withPages([{ title: 'Notes', body: 'important content' }]);
-    workspace.renamePage(ids[0]!, 'Renamed');
+    workspace.renamePage(at(ids, 0), 'Renamed');
     model.projectPages(workspace.allPages());
 
-    expect(model.pages()[0]!.title).toBe('Renamed');
-    expect(model.pages()[0]!.body).toBe('important content');
+    expect(at(model.pages(), 0).title).toBe('Renamed');
+    expect(at(model.pages(), 0).body).toBe('important content');
     expect(model.search('important')).toHaveLength(1);
   });
 });
@@ -57,10 +64,10 @@ describe('search', () => {
     const { model } = withPages([{ title: 'Untitled', body: 'remember to buy oat milk' }]);
     const hits = model.search('oat');
     expect(hits).toHaveLength(1);
-    expect(hits[0]!.snippet).toContain(MATCH_START);
-    expect(hits[0]!.snippet).toContain(MATCH_END);
+    expect(at(hits, 0).snippet).toContain(MATCH_START);
+    expect(at(hits, 0).snippet).toContain(MATCH_END);
     // Never HTML: a page containing a script tag must not produce live markup.
-    expect(hits[0]!.snippet).not.toContain('<mark>');
+    expect(at(hits, 0).snippet).not.toContain('<mark>');
   });
 
   it('ranks a title match above a body match', () => {
@@ -69,7 +76,7 @@ describe('search', () => {
       { title: 'Unrelated', body: 'a passing mention of budget in the text' },
       { title: 'Budget', body: 'nothing relevant here' },
     ]);
-    expect(model.search('budget')[0]!.title).toBe('Budget');
+    expect(at(model.search('budget'), 0).title).toBe('Budget');
   });
 
   it('matches a prefix as the user types', () => {
@@ -87,7 +94,7 @@ describe('search', () => {
 
   it('excludes trashed pages unless asked for them', () => {
     const { workspace, model, ids } = withPages([{ title: 'Deleted draft' }]);
-    workspace.archivePage(ids[0]!);
+    workspace.archivePage(at(ids, 0));
     model.projectPages(workspace.allPages());
 
     expect(model.search('draft')).toEqual([]);
@@ -108,7 +115,7 @@ describe('search', () => {
     const { model } = withPages([
       { title: 'Untitled', body: 'before <script>alert(1)</script> needle after' },
     ]);
-    const hit = model.search('needle')[0]!;
+    const hit = at(model.search('needle'), 0);
     // The script text is preserved as text, and the only markers are control characters.
     expect(hit.snippet).toContain('needle');
     const withoutMarkers = hit.snippet.split(MATCH_START).join('').split(MATCH_END).join('');
@@ -133,7 +140,7 @@ describe('search', () => {
 
   it('respects the result limit', () => {
     const { model } = withPages(
-      Array.from({ length: 40 }, (_, i) => ({ title: `Page ${i} common` })),
+      Array.from({ length: 40 }, (_, i) => ({ title: `Page ${String(i)} common` })),
     );
     expect(model.search('common', { limit: 5 })).toHaveLength(5);
   });

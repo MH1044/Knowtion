@@ -104,7 +104,12 @@ export function App(): React.JSX.Element {
 
         <footer className="sidebar-footer">
           <SyncPanel onChanged={() => void refresh()} />
-          <button type="button" onClick={() => setShowTrash((v) => !v)}>
+          <button
+            type="button"
+            onClick={() => {
+              setShowTrash((v) => !v);
+            }}
+          >
             Trash ({trash.length})
           </button>
           <button
@@ -132,7 +137,12 @@ export function App(): React.JSX.Element {
         {error !== undefined && <div className="error">{error}</div>}
 
         {importReport !== undefined && (
-          <ImportSummary report={importReport} onDismiss={() => setImportReport(undefined)} />
+          <ImportSummary
+            report={importReport}
+            onDismiss={() => {
+              setImportReport(undefined);
+            }}
+          />
         )}
 
         {showTrash ? (
@@ -142,7 +152,9 @@ export function App(): React.JSX.Element {
             key={selected.id}
             page={selected}
             run={run}
-            onArchived={() => setSelectedId(undefined)}
+            onArchived={() => {
+              setSelectedId(undefined);
+            }}
           />
         ) : (
           <p className="placeholder">Select a page, or create one.</p>
@@ -235,7 +247,9 @@ function PageView({
         value={title}
         placeholder="Untitled"
         aria-label="Page title"
-        onChange={(event) => setTitle(event.target.value)}
+        onChange={(event) => {
+          setTitle(event.target.value);
+        }}
         onBlur={() => {
           if (title !== page.title) void run(() => api.renamePage(page.id, title));
         }}

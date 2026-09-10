@@ -76,7 +76,9 @@ export function Search({ onOpen }: { onOpen: (id: string) => void }): React.JSX.
         value={query}
         placeholder="Search"
         aria-label="Search pages"
-        onChange={(event) => setQuery(event.target.value)}
+        onChange={(event) => {
+          setQuery(event.target.value);
+        }}
         onKeyDown={(event) => {
           if (event.key === 'Escape') setQuery('');
         }}

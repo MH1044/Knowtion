@@ -39,6 +39,12 @@ function session(storage: NodeStorage, deviceId: Uint8Array, seed: number, peerI
 
 const titles = (pages: { title: string }[]) => pages.map((p) => p.title).sort();
 
+/** Unwraps a lookup the test knows must have succeeded. */
+function must<T>(value: T | null | undefined, what: string): T {
+  if (value === null || value === undefined) throw new Error(`expected ${what} to exist`);
+  return value;
+}
+
 describe('a workspace survives a restart', () => {
   it('reloads the full hierarchy from packs alone', async () => {
     const storage = await folder();
@@ -62,7 +68,10 @@ describe('a workspace survives a restart', () => {
       expect(result.rejected).toEqual([]);
       expect(workspace.allPages()).toHaveLength(4);
       expect(titles(workspace.tree())).toEqual(['Home', 'Projects']);
-      const home = workspace.tree().find((p) => p.title === 'Home')!;
+      const home = must(
+        workspace.tree().find((p) => p.title === 'Home'),
+        'the Home page in the tree',
+      );
       expect(titles(home.children)).toEqual(['Groceries']);
     }
   });
@@ -77,9 +86,9 @@ describe('a workspace survives a restart', () => {
     for (let run = 1; run <= 5; run++) {
       const { workspace, store } = session(storage, DEVICE_A, run, 1n);
       const result = await store.pull(workspace.doc);
-      expect(result.rejected, `run ${run}`).toEqual([]);
-      expect(workspace.allPages(), `run ${run}`).toHaveLength(run - 1);
-      workspace.createPage({ title: `Page ${run}` });
+      expect(result.rejected, `run ${String(run)}`).toEqual([]);
+      expect(workspace.allPages(), `run ${String(run)}`).toHaveLength(run - 1);
+      workspace.createPage({ title: `Page ${String(run)}` });
       await store.push(workspace.doc);
     }
 

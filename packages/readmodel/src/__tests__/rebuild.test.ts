@@ -14,6 +14,13 @@ import { Workspace, deterministicRuntime, type NodeId } from '@knowtion/engine';
 import { INDEX_VERSION, SCHEMA_VERSION } from '../schema.js';
 import { ReadModel } from '../read-model.js';
 
+/** Indexing a scratch array of ids can't statically prove the index is in bounds. */
+function at<T>(array: readonly T[], index: number): T {
+  const value = array[index];
+  if (value === undefined) throw new Error(`expected index ${String(index)} to exist`);
+  return value;
+}
+
 /** A deterministic PRNG so any failure replays from its seed. */
 function rng(seed: number) {
   let s = seed >>> 0 || 1;
@@ -38,28 +45,28 @@ describe('rebuild equivalence', () => {
       if (choice < 0.4 || ids.length === 0) {
         const parent =
           ids.length > 0 && rand() < 0.5 ? ids[Math.floor(rand() * ids.length)] : undefined;
-        const page = workspace.createPage({ parentId: parent, title: `Page ${step}` });
+        const page = workspace.createPage({ parentId: parent, title: `Page ${String(step)}` });
         ids.push(page.id);
       } else if (choice < 0.6) {
-        const id = ids[Math.floor(rand() * ids.length)]!;
-        workspace.renamePage(id, `Renamed ${step}`);
+        const id = at(ids, Math.floor(rand() * ids.length));
+        workspace.renamePage(id, `Renamed ${String(step)}`);
       } else if (choice < 0.75) {
-        const id = ids[Math.floor(rand() * ids.length)]!;
-        const target = ids[Math.floor(rand() * ids.length)]!;
+        const id = at(ids, Math.floor(rand() * ids.length));
+        const target = at(ids, Math.floor(rand() * ids.length));
         try {
           workspace.movePage(id, target === id ? undefined : target);
         } catch {
           // A cycle-forming move is correctly rejected; not interesting here.
         }
       } else if (choice < 0.95) {
-        const id = ids[Math.floor(rand() * ids.length)]!;
-        const text = `body text for step ${step} with searchable words`;
+        const id = at(ids, Math.floor(rand() * ids.length));
+        const text = `body text for step ${String(step)} with searchable words`;
         bodies.set(id, text);
         incremental.projectPages(workspace.allPages());
         incremental.setPageBody(id, text);
         continue;
       } else {
-        const id = ids[Math.floor(rand() * ids.length)]!;
+        const id = at(ids, Math.floor(rand() * ids.length));
         workspace.archivePage(id);
       }
       incremental.projectPages(workspace.allPages());
@@ -99,13 +106,13 @@ describe('rebuild equivalence', () => {
 describe('search at scale', () => {
   const PAGES = 10_000;
 
-  it(`stays fast with ${PAGES} pages indexed`, () => {
+  it(`stays fast with ${String(PAGES)} pages indexed`, () => {
     const workspace = Workspace.create({ runtime: deterministicRuntime(2), peerId: 1n });
     const model = ReadModel.open(':memory:');
 
     const ids: NodeId[] = [];
     for (let i = 0; i < PAGES; i++) {
-      ids.push(workspace.createPage({ title: `Meeting notes ${i}` }).id);
+      ids.push(workspace.createPage({ title: `Meeting notes ${String(i)}` }).id);
     }
 
     const projectStarted = performance.now();
@@ -114,7 +121,10 @@ describe('search at scale', () => {
 
     // A body on every tenth page, so the index holds real prose rather than titles only.
     for (let i = 0; i < PAGES; i += 10) {
-      model.setPageBody(ids[i]!, `Discussion of quarterly planning and the budget for item ${i}.`);
+      model.setPageBody(
+        at(ids, i),
+        `Discussion of quarterly planning and the budget for item ${String(i)}.`,
+      );
     }
 
     const timings: number[] = [];
@@ -126,7 +136,7 @@ describe('search at scale', () => {
     const worst = Math.max(...timings);
 
     console.log(
-      `  projected ${PAGES} pages in ${projectMs.toFixed(0)}ms; slowest query ${worst.toFixed(1)}ms`,
+      `  projected ${String(PAGES)} pages in ${projectMs.toFixed(0)}ms; slowest query ${worst.toFixed(1)}ms`,
     );
     // The release gate is under 100ms; the ceiling here is loose enough not to be
     // flaky on a busy machine while still failing a genuinely quadratic regression.

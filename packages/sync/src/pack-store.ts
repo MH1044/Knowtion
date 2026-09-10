@@ -35,6 +35,13 @@ const PACK_NAME = /^(\d{12})\.kpack$/;
 
 const SEQ_DIGITS = 12;
 
+/** Indexing an array can't statically prove the element is there. */
+function at<T>(array: readonly T[], index: number): T {
+  const value = array[index];
+  if (value === undefined) throw new Error(`expected index ${String(index)} to exist`);
+  return value;
+}
+
 export interface PackStoreOptions {
   storage: StoragePort;
   /** 16 raw bytes. */
@@ -127,7 +134,7 @@ export class PackStore {
    * "we have new local work" from "we merged someone else's work", and conflating them
    * is how local edits get skipped.
    */
-  #publishedCounters: Map<PeerID, number> = new Map();
+  #publishedCounters = new Map<PeerID, number>();
   /** Packs already merged, keyed by path, so a rescan does not re-read them. */
   readonly #known = new Set<StoragePath>();
   /**
@@ -225,7 +232,7 @@ export class PackStore {
     // different name — a sync client renaming it — its successor fails the chain check
     // and every later pack is rejected for good. Found by the simulator.
     this.#chainTips.set(this.#deviceHex, this.#lastHash);
-    this.#appliedPacks.add(`${this.#deviceHex}:${seq}`);
+    this.#appliedPacks.add(`${this.#deviceHex}:${String(seq)}`);
     // Both describe the same moment: the state the payload above was exported from.
     this.#lastPushed = publishedVersion;
     this.#publishedCounters = versionCounters(publishedVersion);
@@ -257,7 +264,7 @@ export class PackStore {
         continue;
       }
 
-      const identity = `${candidate.deviceHex}:${candidate.seq}`;
+      const identity = `${candidate.deviceHex}:${String(candidate.seq)}`;
       if (this.#appliedPacks.has(identity)) {
         // The same pack under a different name. Remember the new path so it is not
         // decoded again, and move on.
@@ -401,11 +408,11 @@ export function parsePackPath(
 ): { deviceHex: string; documentHex: string; seq: number } | undefined {
   const parts = path.split('/');
   if (parts.length !== 4 || parts[0] !== 'd') return undefined;
-  const deviceHex = parts[1]!;
-  const documentHex = parts[2]!;
+  const deviceHex = at(parts, 1);
+  const documentHex = at(parts, 2);
   if (!/^[0-9a-f]{32}$/.test(deviceHex)) return undefined;
   if (!/^[0-9a-f]{32}$/.test(documentHex)) return undefined;
-  const match = PACK_NAME.exec(parts[3]!);
+  const match = PACK_NAME.exec(at(parts, 3));
   if (!match) return undefined;
   return { deviceHex, documentHex, seq: Number(match[1]) };
 }
@@ -435,7 +442,7 @@ export async function listDocumentPacks(storage: StoragePort): Promise<Map<strin
 function versionCounters(version: VersionVector): Map<PeerID, number> {
   const out = new Map<PeerID, number>();
   for (const [peer, counter] of version.toJSON()) {
-    out.set(String(peer) as PeerID, Number(counter));
+    out.set(peer, counter);
   }
   return out;
 }

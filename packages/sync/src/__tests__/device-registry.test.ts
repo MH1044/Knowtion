@@ -6,6 +6,13 @@ import { MemoryStorage } from '../memory-storage.js';
 
 const WORKSPACE = new Uint8Array(16).fill(0x11);
 
+/** Indexing an array can't statically prove the element is there. */
+function at<T>(array: readonly T[], index: number): T {
+  const value = array[index];
+  if (value === undefined) throw new Error(`expected index ${String(index)} to exist`);
+  return value;
+}
+
 function device(fill: number, label: string) {
   const keys = generateDeviceKeys();
   const deviceId = new Uint8Array(16).fill(fill);
@@ -30,7 +37,7 @@ describe('enrolment', () => {
     const read = await registry.list();
     expect(read.rejected).toEqual([]);
     expect(read.devices).toHaveLength(1);
-    expect(read.devices[0]!.label).toBe('Laptop');
+    expect(at(read.devices, 0).label).toBe('Laptop');
   });
 
   it('will not republish a record that already exists', async () => {
@@ -42,7 +49,9 @@ describe('enrolment', () => {
 
     const impostor = { ...a.record, signingPublicKey: generateDeviceKeys().signingPublicKey };
     expect(await registry.enrol(impostor, a.keys.signingSecretKey)).toBe(false);
-    expect((await registry.list()).devices[0]!.signingPublicKey).toEqual(a.record.signingPublicKey);
+    expect(at((await registry.list()).devices, 0).signingPublicKey).toEqual(
+      a.record.signingPublicKey,
+    );
   });
 
   it('lists several devices', async () => {
@@ -75,7 +84,7 @@ describe('trusting what is in the folder', () => {
     const read = await registry.list();
     expect(read.devices).toEqual([]);
     expect(read.rejected).toHaveLength(1);
-    expect(read.rejected[0]!.path).toBe(`devices/${a.hex}.dev`);
+    expect(at(read.rejected, 0).path).toBe(`devices/${a.hex}.dev`);
   });
 
   it('rejects a record renamed to impersonate another device', async () => {
@@ -91,7 +100,7 @@ describe('trusting what is in the folder', () => {
 
     const read = await registry.list();
     expect(read.devices).toEqual([]);
-    expect(read.rejected[0]!.reason).toMatch(/different device than its filename/);
+    expect(at(read.rejected, 0).reason).toMatch(/different device than its filename/);
   });
 
   it('ignores files that are not device records without calling them damaged', async () => {
@@ -164,7 +173,7 @@ describe('acknowledgements', () => {
       mergedVersion: 'abc',
       updatedAt: 7,
     });
-    const raw = new TextDecoder().decode((await storage.get(`d/${'aa'.repeat(16)}/ack.json`))!);
+    const raw = new TextDecoder().decode(await storage.get(`d/${'aa'.repeat(16)}/ack.json`));
     expect(JSON.parse(raw)).toEqual({ mergedVersion: 'abc', updatedAt: 7 });
   });
 });

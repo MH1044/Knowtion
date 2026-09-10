@@ -54,8 +54,8 @@ describe('harsher conditions', () => {
     expect(result.converged).toBe(true);
     expect(result.circuitBreakerTrips).toBe(0);
     console.log(
-      `  harsh: ${result.finalPageCount} pages across ${result.deviceCount} devices; ` +
-        `faults=${JSON.stringify(result.faults)}; writeFailures=${result.writeFailures}`,
+      `  harsh: ${String(result.finalPageCount)} pages across ${String(result.deviceCount)} devices; ` +
+        `faults=${JSON.stringify(result.faults)}; writeFailures=${String(result.writeFailures)}`,
     );
   }, 120_000);
 

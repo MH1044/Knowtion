@@ -20,7 +20,7 @@ export async function readSettings(dataDir: string): Promise<Settings> {
   try {
     const parsed: unknown = JSON.parse(await readFile(join(dataDir, FILE), 'utf8'));
     if (parsed === null || typeof parsed !== 'object') return {};
-    const syncFolder = (parsed as Record<string, unknown>)['syncFolder'];
+    const syncFolder = (parsed as Record<string, unknown>).syncFolder;
     return typeof syncFolder === 'string' ? { syncFolder } : {};
   } catch {
     // Absent or unreadable settings are not an error: the defaults are always valid,

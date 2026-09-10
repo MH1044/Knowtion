@@ -12,6 +12,20 @@ const zip = (files: Record<string, string | Uint8Array>): Uint8Array =>
 
 const text = (bytes: Uint8Array) => new TextDecoder().decode(bytes);
 
+/** Unwraps a lookup the test knows must have found something. */
+function must<T>(value: T | undefined, what: string): T {
+  if (value === undefined) throw new Error(`expected ${what} to be defined`);
+  return value;
+}
+
+/**
+ * `expect.objectContaining` is typed `any` by vitest's matcher types, which would
+ * otherwise leak into every `toThrowError` call below. Naming its return type here
+ * gives an honest, narrow type at the call site instead of threading `any` through.
+ */
+// eslint-disable-next-line @typescript-eslint/no-unsafe-return -- vitest types expect.objectContaining as `any`; the `Error` return type above is the honest, narrow type callers actually get
+const matchesError = (shape: Partial<ArchiveError>): Error => expect.objectContaining(shape);
+
 describe('safeEntryPath', () => {
   it('normalises ordinary paths', () => {
     expect(safeEntryPath('Export/Page.html')).toBe('Export/Page.html');
@@ -23,7 +37,7 @@ describe('safeEntryPath', () => {
     // would let a backslashed traversal past a check that only looked for slashes.
     expect(safeEntryPath('Export\\Sub\\Page.html')).toBe('Export/Sub/Page.html');
     expect(() => safeEntryPath('..\\..\\secrets')).toThrowError(
-      expect.objectContaining({ code: 'UNSAFE_PATH' }),
+      matchesError({ code: 'UNSAFE_PATH' }),
     );
   });
 
@@ -41,7 +55,7 @@ describe('safeEntryPath', () => {
 
   it('refuses a null byte, which can truncate a path in a consumer', () => {
     expect(() => safeEntryPath('ok.html\u0000.png')).toThrowError(
-      expect.objectContaining({ code: 'UNSAFE_PATH' }),
+      matchesError({ code: 'UNSAFE_PATH' }),
     );
   });
 
@@ -54,7 +68,14 @@ describe('readArchive', () => {
   it('reads a flat archive', () => {
     const entries = readArchive(zip({ 'Page.html': '<h1>Hi</h1>', 'notes.csv': 'a,b' }));
     expect(entries.map((e) => e.path).sort()).toEqual(['Page.html', 'notes.csv']);
-    expect(text(entries.find((e) => e.path === 'Page.html')!.bytes)).toBe('<h1>Hi</h1>');
+    expect(
+      text(
+        must(
+          entries.find((e) => e.path === 'Page.html'),
+          'Page.html entry',
+        ).bytes,
+      ),
+    ).toBe('<h1>Hi</h1>');
   });
 
   it('recurses into nested archives, which is how Notion splits large exports', () => {
@@ -79,9 +100,9 @@ describe('readArchive', () => {
 
   it('refuses archives nested deeper than the limit', () => {
     let current = zip({ 'x.html': 'deep' });
-    for (let i = 0; i < 6; i++) current = zip({ [`level-${i}.zip`]: current });
+    for (let i = 0; i < 6; i++) current = zip({ [`level-${String(i)}.zip`]: current });
     expect(() => readArchive(current, { maxDepth: 3 })).toThrowError(
-      expect.objectContaining({ code: 'TOO_DEEP' }),
+      matchesError({ code: 'TOO_DEEP' }),
     );
   });
 
@@ -90,7 +111,7 @@ describe('readArchive', () => {
     // compressible content is exactly the shape of one.
     const big = 'a'.repeat(2_000_000);
     expect(() => readArchive(zip({ 'big.txt': big }), { maxTotalBytes: 1000 })).toThrowError(
-      expect.objectContaining({ code: 'TOO_LARGE' }),
+      matchesError({ code: 'TOO_LARGE' }),
     );
   });
 
@@ -99,27 +120,27 @@ describe('readArchive', () => {
     const chunk = zip({ 'c.txt': 'b'.repeat(200_000) });
     const nested = zip({ 'one.zip': chunk, 'two.zip': chunk, 'three.zip': chunk });
     expect(() => readArchive(nested, { maxTotalBytes: 300_000 })).toThrowError(
-      expect.objectContaining({ code: 'TOO_LARGE' }),
+      matchesError({ code: 'TOO_LARGE' }),
     );
   });
 
   it('refuses an archive with too many entries', () => {
     const many: Record<string, string> = {};
-    for (let i = 0; i < 60; i++) many[`f${i}.txt`] = 'x';
+    for (let i = 0; i < 60; i++) many[`f${String(i)}.txt`] = 'x';
     expect(() => readArchive(zip(many), { maxEntries: 20 })).toThrowError(
-      expect.objectContaining({ code: 'TOO_MANY_ENTRIES' }),
+      matchesError({ code: 'TOO_MANY_ENTRIES' }),
     );
   });
 
   it('refuses an entry whose path escapes, even inside a valid archive', () => {
     expect(() => readArchive(zip({ '../escape.txt': 'nope' }))).toThrowError(
-      expect.objectContaining({ code: 'UNSAFE_PATH' }),
+      matchesError({ code: 'UNSAFE_PATH' }),
     );
   });
 
   it('reports unreadable data rather than throwing something opaque', () => {
     expect(() => readArchive(new Uint8Array([1, 2, 3, 4, 5]))).toThrowError(
-      expect.objectContaining({ code: 'UNREADABLE' }),
+      matchesError({ code: 'UNREADABLE' }),
     );
   });
 

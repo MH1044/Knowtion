@@ -35,7 +35,9 @@ export function SyncPanel({ onChanged }: { onChanged: () => void }): React.JSX.E
   useEffect(() => {
     void refresh();
     const timer = setInterval(() => void refresh(), 10_000);
-    return () => clearInterval(timer);
+    return () => {
+      clearInterval(timer);
+    };
   }, [refresh]);
 
   const choose = async (): Promise<void> => {
@@ -100,7 +102,9 @@ export function SyncPanel({ onChanged }: { onChanged: () => void }): React.JSX.E
           <button
             type="button"
             className="devices-toggle"
-            onClick={() => setShowDevices((v) => !v)}
+            onClick={() => {
+              setShowDevices((v) => !v);
+            }}
           >
             {showDevices ? '▾' : '▸'} {devices.devices.length} device
             {devices.devices.length === 1 ? '' : 's'}
@@ -132,7 +136,7 @@ export function SyncPanel({ onChanged }: { onChanged: () => void }): React.JSX.E
                             setMessage(
                               progress.done
                                 ? `Forgot ${device.label}`
-                                : `Removing ${device.label}: ${progress.remaining} files left, ` +
+                                : `Removing ${device.label}: ${String(progress.remaining)} files left, ` +
                                     'continuing in the background',
                             );
                           } catch (cause) {
