@@ -9,6 +9,25 @@ const ws = (seed = 1, peerId = 1n) =>
 /** Titles of a tree level, for readable assertions. */
 const titles = (pages: { title: string }[]) => pages.map((p) => p.title);
 
+/** Indexing an array can't statically prove the index is in bounds. */
+function at<T>(array: readonly T[], index: number): T {
+  const value = array[index];
+  if (value === undefined) throw new Error(`expected index ${String(index)} to exist`);
+  return value;
+}
+
+/** Unwraps a lookup the test knows must have succeeded. */
+function must<T>(value: T | null | undefined, what: string): T {
+  if (value === null || value === undefined) throw new Error(`expected ${what} to exist`);
+  return value;
+}
+
+/** vitest types `expect.objectContaining` as `any`; this gives the matcher an honest,
+ * narrow type at the call site instead of letting `any` flow into `.toThrowError()`. */
+function rejectedWith(code: WorkspaceError['code']): Error {
+  return expect.objectContaining({ code }) as Error;
+}
+
 describe('creating pages', () => {
   it('creates a top-level page with sensible defaults', () => {
     const w = ws();
@@ -24,14 +43,14 @@ describe('creating pages', () => {
     const w = ws();
     let parent = w.createPage({ title: 'level 0' });
     for (let depth = 1; depth <= 25; depth++) {
-      parent = w.createPage({ parentId: parent.id, title: `level ${depth}` });
+      parent = w.createPage({ parentId: parent.id, title: `level ${String(depth)}` });
     }
     expect(w.allPages()).toHaveLength(26);
 
     let level = w.tree();
     for (let depth = 0; depth <= 25; depth++) {
-      expect(level[0]!.title).toBe(`level ${depth}`);
-      level = level[0]!.children;
+      expect(at(level, 0).title).toBe(`level ${String(depth)}`);
+      level = at(level, 0).children;
     }
   });
 
@@ -53,7 +72,7 @@ describe('reading the hierarchy', () => {
   it('reports an unknown id rather than returning undefined', () => {
     const w = ws();
     // Silent undefined is how a missing page becomes a blank screen with no explanation.
-    expect(() => w.getPage('999@999')).toThrowError(expect.objectContaining({ code: 'NOT_FOUND' }));
+    expect(() => w.getPage('999@999')).toThrowError(rejectedWith('NOT_FOUND'));
     expect(w.has('999@999')).toBe(false);
   });
 });
@@ -84,9 +103,7 @@ describe('moving pages', () => {
   it('refuses to move a page beneath itself', () => {
     const w = ws();
     const page = w.createPage({ title: 'Self' });
-    expect(() => w.movePage(page.id, page.id)).toThrowError(
-      expect.objectContaining({ code: 'WOULD_CYCLE' }),
-    );
+    expect(() => w.movePage(page.id, page.id)).toThrowError(rejectedWith('WOULD_CYCLE'));
   });
 
   it('refuses to move a page beneath its own descendant', () => {
@@ -101,7 +118,7 @@ describe('moving pages', () => {
       expect(() => w.movePage(root.id, target)).toThrowError(WorkspaceError);
     }
     // The tree is untouched by the rejected moves.
-    expect(w.tree()[0]!.children[0]!.children[0]!.title).toBe('Leaf');
+    expect(at(at(at(w.tree(), 0).children, 0).children, 0).title).toBe('Leaf');
   });
 
   it('carries the whole subtree with the moved page', () => {
@@ -112,9 +129,12 @@ describe('moving pages', () => {
     w.createPage({ parentId: child.id, title: 'Grandchild' });
 
     w.movePage(child.id, b.id);
-    const moved = w.tree().find((p) => p.title === 'B')!;
-    expect(moved.children[0]!.title).toBe('Child');
-    expect(moved.children[0]!.children[0]!.title).toBe('Grandchild');
+    const moved = must(
+      w.tree().find((p) => p.title === 'B'),
+      'the moved page',
+    );
+    expect(at(moved.children, 0).title).toBe('Child');
+    expect(at(at(moved.children, 0).children, 0).title).toBe('Grandchild');
   });
 });
 
@@ -143,14 +163,16 @@ describe('trash', () => {
     // The child is still there and still restorable with its parent.
     expect(w.allPages()).toHaveLength(2);
     w.restorePage(parent.id);
-    expect(w.tree()[0]!.children[0]!.title).toBe('Child');
+    expect(at(at(w.tree(), 0).children, 0).title).toBe('Child');
   });
 
   it('refuses to permanently delete a page that is not in the trash', () => {
     // Permanent deletion must be a deliberate second step, never a single misclick.
     const w = ws();
     const page = w.createPage({ title: 'Important' });
-    expect(() => w.deletePage(page.id)).toThrowError(expect.objectContaining({ code: 'ARCHIVED' }));
+    expect(() => {
+      w.deletePage(page.id);
+    }).toThrowError(rejectedWith('ARCHIVED'));
     expect(w.has(page.id)).toBe(true);
   });
 

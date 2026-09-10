@@ -19,36 +19,45 @@ import type { Command, Plugin } from 'prosemirror-state';
 
 import { schema } from './schema.js';
 
+/** `marks`/`baseKeymap` are indexed by string key, so lookups are optional statically. */
+function must<T>(value: T | undefined, what: string): T {
+  if (value === undefined) throw new Error(`expected ${what} to be defined`);
+  return value;
+}
+
 /** Markdown prefixes people type by reflex, whether or not the app advertises them. */
 export function knowtionInputRules(): Plugin {
   return inputRules({
     rules: [
-      textblockTypeInputRule(/^#\s$/, schema.nodes['heading']!, { level: 1 }),
-      textblockTypeInputRule(/^##\s$/, schema.nodes['heading']!, { level: 2 }),
-      textblockTypeInputRule(/^###\s$/, schema.nodes['heading']!, { level: 3 }),
-      textblockTypeInputRule(/^```$/, schema.nodes['code_block']!),
-      wrappingInputRule(/^\s*([-*+])\s$/, schema.nodes['bullet_list']!),
-      wrappingInputRule(/^(\d+)\.\s$/, schema.nodes['ordered_list']!),
-      wrappingInputRule(/^\s*>\s$/, schema.nodes['blockquote']!),
+      textblockTypeInputRule(/^#\s$/, schema.nodes.heading, { level: 1 }),
+      textblockTypeInputRule(/^##\s$/, schema.nodes.heading, { level: 2 }),
+      textblockTypeInputRule(/^###\s$/, schema.nodes.heading, { level: 3 }),
+      textblockTypeInputRule(/^```$/, schema.nodes.code_block),
+      wrappingInputRule(/^\s*([-*+])\s$/, schema.nodes.bullet_list),
+      wrappingInputRule(/^(\d+)\.\s$/, schema.nodes.ordered_list),
+      wrappingInputRule(/^\s*>\s$/, schema.nodes.blockquote),
     ],
   });
 }
 
 export function knowtionKeymap(undo: Command, redo: Command): Plugin {
-  const listItem = schema.nodes['list_item']!;
+  const listItem = schema.nodes.list_item;
 
   const bindings: Record<string, Command> = {
     ...baseKeymap,
-    'Mod-b': toggleMark(schema.marks['strong']!),
-    'Mod-i': toggleMark(schema.marks['em']!),
-    'Mod-Shift-x': toggleMark(schema.marks['strike']!),
-    'Mod-e': toggleMark(schema.marks['code']!),
-    'Mod-Alt-0': setBlockType(schema.nodes['paragraph']!),
-    'Mod-Alt-1': setBlockType(schema.nodes['heading']!, { level: 1 }),
-    'Mod-Alt-2': setBlockType(schema.nodes['heading']!, { level: 2 }),
-    'Mod-Alt-3': setBlockType(schema.nodes['heading']!, { level: 3 }),
+    'Mod-b': toggleMark(must(schema.marks.strong, 'mark "strong"')),
+    'Mod-i': toggleMark(must(schema.marks.em, 'mark "em"')),
+    'Mod-Shift-x': toggleMark(must(schema.marks.strike, 'mark "strike"')),
+    'Mod-e': toggleMark(must(schema.marks.code, 'mark "code"')),
+    'Mod-Alt-0': setBlockType(schema.nodes.paragraph),
+    'Mod-Alt-1': setBlockType(schema.nodes.heading, { level: 1 }),
+    'Mod-Alt-2': setBlockType(schema.nodes.heading, { level: 2 }),
+    'Mod-Alt-3': setBlockType(schema.nodes.heading, { level: 3 }),
     // Inside a list, Enter splits the item; elsewhere it falls through to the default.
-    Enter: chainCommands(splitListItem(listItem), baseKeymap['Enter']!),
+    Enter: chainCommands(
+      splitListItem(listItem),
+      must(baseKeymap.Enter, 'baseKeymap binding "Enter"'),
+    ),
     Tab: sinkListItem(listItem),
     'Shift-Tab': liftListItem(listItem),
     'Mod-z': undo,

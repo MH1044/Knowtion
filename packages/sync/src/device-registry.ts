@@ -22,6 +22,12 @@ import { decodeDeviceRecord, encodeDeviceRecord, toHex, type DeviceRecord } from
 
 import type { StoragePath, StoragePort } from './storage-port.js';
 
+/** Unwraps a regex capture group the caller already knows is there from the match. */
+function must<T>(value: T | undefined, what: string): T {
+  if (value === undefined) throw new Error(`expected ${what} to exist`);
+  return value;
+}
+
 export interface Acknowledgement {
   /** Everything this device has merged, as an encoded Loro version vector, hex. */
   mergedVersion: string;
@@ -140,7 +146,7 @@ export class DeviceRegistry {
         if (parsed === null || typeof parsed !== 'object') continue;
         const { mergedVersion, updatedAt } = parsed as Record<string, unknown>;
         if (typeof mergedVersion !== 'string') continue;
-        acks.set(match[1]!, {
+        acks.set(must(match[1], 'the device id capture group'), {
           mergedVersion,
           updatedAt: typeof updatedAt === 'number' ? updatedAt : 0,
         });

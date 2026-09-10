@@ -20,6 +20,13 @@
 
 import type { StorageObject, StoragePath, StoragePort } from './storage-port.js';
 
+/** Indexing an array can't statically prove the element is there. */
+function at<T>(array: readonly T[], index: number): T {
+  const value = array[index];
+  if (value === undefined) throw new Error(`expected index ${String(index)} to exist`);
+  return value;
+}
+
 export interface FaultProfile {
   /**
    * How long a newly written object stays absent from listings.
@@ -177,7 +184,7 @@ export class FaultyStorage implements StoragePort {
     if (paths.length === 0) return;
 
     if (this.#chance(this.#faults.renameChance)) {
-      const path = paths[Math.floor(this.#random() * paths.length)]!;
+      const path = at(paths, Math.floor(this.#random() * paths.length));
       const stored = this.#objects.get(path);
       if (stored !== undefined) {
         this.#objects.delete(path);
@@ -187,7 +194,7 @@ export class FaultyStorage implements StoragePort {
     }
 
     if (this.#chance(this.#faults.duplicateChance)) {
-      const path = paths[Math.floor(this.#random() * paths.length)]!;
+      const path = at(paths, Math.floor(this.#random() * paths.length));
       const stored = this.#objects.get(path);
       if (stored !== undefined) {
         this.#objects.set(path.replace(/\.kpack$/, ' (1).kpack'), { ...stored });

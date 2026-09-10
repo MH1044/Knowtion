@@ -22,6 +22,12 @@ export interface NotionImport {
 /** Trailing 32-hex identifier Notion appends to every exported name. */
 const ID_SUFFIX = /[ _-]([0-9a-f]{32})(?=\.[a-z0-9]+$|$)/i;
 
+/** Unwraps a regex capture the pattern guarantees is present when the match succeeds. */
+function must<T>(value: T | undefined, what: string): T {
+  if (value === undefined) throw new Error(`expected ${what} to be defined`);
+  return value;
+}
+
 /** The identifier in a filename, and the title with it stripped for display. */
 export function splitNotionName(fileName: string): { title: string; id: string | undefined } {
   const withoutExtension = fileName.replace(/\.[a-z0-9]+$/i, '');
@@ -29,7 +35,7 @@ export function splitNotionName(fileName: string): { title: string; id: string |
   if (!match) return { title: withoutExtension.trim(), id: undefined };
   return {
     title: withoutExtension.slice(0, match.index).trim(),
-    id: match[1]!.toLowerCase(),
+    id: must(match[1], 'capture group 1 of ID_SUFFIX').toLowerCase(),
   };
 }
 

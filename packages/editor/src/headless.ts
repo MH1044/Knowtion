@@ -33,7 +33,7 @@ export function loroDocFromJson(json: unknown, peerId: bigint): LoroDoc {
   const node = schema.nodeFromJSON(json);
   const state = EditorState.create({
     schema,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- pre-1.0 generic doc type
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment -- pre-1.0 generic doc type
     plugins: [LoroSyncPlugin({ doc: doc as any })],
   });
 

@@ -13,13 +13,13 @@
 import { parse } from 'parse5';
 import type { DocNode } from './types.js';
 
-type P5Node = {
+interface P5Node {
   nodeName: string;
   tagName?: string;
   value?: string;
   attrs?: { name: string; value: string }[];
   childNodes?: P5Node[];
-};
+}
 
 const attr = (node: P5Node, name: string): string | undefined =>
   node.attrs?.find((a) => a.name === name)?.value;

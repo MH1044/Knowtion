@@ -18,12 +18,19 @@ function clock(start = 1_700_000_000_000) {
   return { now: () => value, advance: (ms: number) => (value += ms) };
 }
 
+/** Indexing an array can't statically prove the element is there. */
+function at<T>(array: ArrayLike<T>, index: number): T {
+  const value = array[index];
+  if (value === undefined) throw new Error(`expected index ${String(index)} to exist`);
+  return value;
+}
+
 async function deviceWithHistory(storage: MemoryStorage, id: Uint8Array, packs: number) {
   const doc = new LoroDoc();
-  doc.setPeerId(BigInt(id[0]!));
+  doc.setPeerId(BigInt(at(id, 0)));
   const store = new PackStore({ storage, workspaceId: WORKSPACE, deviceId: id });
   for (let i = 0; i < packs; i++) {
-    doc.getMap('notes').set(`${toHex(id).slice(0, 4)}-${i}`, i);
+    doc.getMap('notes').set(`${toHex(id).slice(0, 4)}-${String(i)}`, i);
     doc.commit();
     await store.push(doc);
   }
@@ -204,7 +211,7 @@ describe('a forgotten device that comes back', () => {
   it('keeps its own notes throughout, since eviction only touches the folder', async () => {
     const storage = new MemoryStorage();
     const returning = await deviceWithHistory(storage, A, 3);
-    const before = returning.doc.getMap('notes').toJSON();
+    const before = returning.doc.getMap('notes').toJSON() as Record<string, unknown>;
 
     await new DeviceEviction({
       storage,

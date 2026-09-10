@@ -47,20 +47,28 @@ function PageTreeItem({
     <li role="treeitem" aria-expanded={hasChildren ? expanded : undefined}>
       <div
         className={`row${node.id === selectedId ? ' selected' : ''}`}
-        style={{ paddingLeft: `${depth * 14 + 8}px` }}
+        style={{ paddingLeft: `${String(depth * 14 + 8)}px` }}
       >
         <button
           type="button"
           className="twisty"
           aria-label={expanded ? 'Collapse' : 'Expand'}
-          onClick={() => setExpanded((v) => !v)}
+          onClick={() => {
+            setExpanded((v) => !v);
+          }}
           // Kept in the layout even with no children so titles do not shift
           // horizontally as a page gains its first child.
           style={{ visibility: hasChildren ? 'visible' : 'hidden' }}
         >
           {expanded ? '▾' : '▸'}
         </button>
-        <button type="button" className="title" onClick={() => onSelect(node.id)}>
+        <button
+          type="button"
+          className="title"
+          onClick={() => {
+            onSelect(node.id);
+          }}
+        >
           {node.title || 'Untitled'}
         </button>
         <button
@@ -68,7 +76,9 @@ function PageTreeItem({
           className="add"
           title="Add a page inside"
           aria-label={`Add a page inside ${node.title}`}
-          onClick={() => onCreateChild(node.id)}
+          onClick={() => {
+            onCreateChild(node.id);
+          }}
         >
           +
         </button>
