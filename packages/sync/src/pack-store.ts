@@ -23,6 +23,7 @@ import {
   SUITE,
   decodePack,
   encodePack,
+  isShallowSnapshot,
   equalBytes,
   hash,
   openPack,
@@ -39,6 +40,9 @@ import type { StoragePath, StoragePort } from './storage-port.js';
 
 /** FORMAT.md section 8: exactly twelve digits, so lexical order equals numeric order. */
 const PACK_NAME = /^(\d{12})\.kpack$/;
+
+/** FORMAT.md section 8: a snapshot, one directory deeper than a pack. */
+const SNAPSHOT_NAME = /^(\d{12})\.ksnap$/;
 
 const SEQ_DIGITS = 12;
 
@@ -191,6 +195,14 @@ export class PackStore {
    * which is to say immediately in real use and never in a one-shot test.
    */
   readonly #chainTips = new Map<string, Uint8Array>();
+  /**
+   * Highest sequence per device that a snapshot has already delivered.
+   *
+   * A snapshot is a chain root by construction (it carries no prevPackHash), so it
+   * cannot hand the pack above it the predecessor hash the chain check wants. This
+   * records where a device's chain legitimately restarts.
+   */
+  readonly #snapshotAnchors = new Map<string, number>();
   /**
    * Packs already merged, identified by device and sequence rather than by path.
    *
@@ -359,6 +371,121 @@ export class PackStore {
   }
 
   /**
+   * Import one snapshot, and record where its device's chain restarts.
+   *
+   * A snapshot that will not import is reported rather than thrown on. It is history
+   * this device may well already hold in packs, so one bad snapshot must not stop the
+   * cycle — but it must never be silent, because if the packs HAVE been collected it is
+   * the only copy.
+   */
+  async #applySnapshot(
+    doc: LoroDoc,
+    snapshot: { path: StoragePath; deviceHex: string; seq: number; bytes: Uint8Array },
+    result: PullResult,
+  ): Promise<void> {
+    let decoded;
+    try {
+      decoded = decodePack(snapshot.bytes, snapshot.path);
+    } catch (error) {
+      if (error instanceof PackFormatError) {
+        result.rejected.push({ path: snapshot.path, code: error.code, message: error.message });
+        return;
+      }
+      throw error;
+    }
+
+    if (!isShallowSnapshot(decoded.header)) {
+      result.rejected.push({
+        path: snapshot.path,
+        code: 'BAD_MAGIC',
+        message: `${snapshot.path} is named as a snapshot but does not have the snapshot flag`,
+      });
+      return;
+    }
+
+    const problem = await this.#signatureProblem({
+      path: snapshot.path,
+      deviceHex: snapshot.deviceHex,
+      seq: snapshot.seq,
+      bytes: snapshot.bytes,
+      decoded,
+      adopted: false,
+    });
+    if (problem !== undefined) {
+      result.rejected.push(problem);
+      return;
+    }
+
+    let payload: Uint8Array;
+    try {
+      payload = this.#openPayload({
+        path: snapshot.path,
+        deviceHex: snapshot.deviceHex,
+        seq: snapshot.seq,
+        bytes: snapshot.bytes,
+        decoded,
+        adopted: false,
+      });
+      doc.import(payload);
+    } catch (error) {
+      result.rejected.push({
+        path: snapshot.path,
+        code: error instanceof PackFormatError ? error.code : 'BROKEN_CHAIN',
+        message: `snapshot ${snapshot.path} could not be applied: ${String(error)}`,
+      });
+      return;
+    }
+
+    const previous = this.#snapshotAnchors.get(snapshot.deviceHex) ?? 0;
+    if (snapshot.seq > previous) this.#snapshotAnchors.set(snapshot.deviceHex, snapshot.seq);
+    this.#known.add(snapshot.path);
+    result.applied++;
+  }
+
+  /**
+   * Read every snapshot for this document that this device has not applied yet.
+   *
+   * Snapshots exist because compaction deletes the packs they supersede. Until this
+   * existed they were written and never read, so a device arriving after a collection
+   * saw the gap and nothing that filled it — the returning-device path ADR-0005 calls a
+   * tested first-class path was only half built.
+   */
+  async #gatherSnapshots(
+    objects: { path: StoragePath }[],
+    result: PullResult,
+  ): Promise<{ path: StoragePath; deviceHex: string; seq: number; bytes: Uint8Array }[]> {
+    const out: { path: StoragePath; deviceHex: string; seq: number; bytes: Uint8Array }[] = [];
+
+    for (const object of objects) {
+      if (!object.path.endsWith('.ksnap')) continue;
+      const named = parseSnapshotPath(object.path);
+      if (named?.documentHex !== this.#documentHex) continue;
+      if (this.#known.has(object.path)) continue;
+
+      let bytes: Uint8Array | undefined;
+      try {
+        bytes = await this.#storage.get(object.path);
+      } catch (error) {
+        if (!isTransientReadError(error)) throw error;
+        result.rejected.push({
+          path: object.path,
+          code: 'UNREADABLE',
+          message: `snapshot ${object.path} could not be read this cycle; it will be retried`,
+        });
+        continue;
+      }
+      if (bytes === undefined) continue;
+
+      out.push({ path: object.path, deviceHex: named.deviceHex, seq: named.seq, bytes });
+    }
+
+    // Oldest first, so a device with several snapshots re-anchors in order.
+    return out.sort((a, b) =>
+      a.deviceHex === b.deviceHex ? a.seq - b.seq : a.deviceHex.localeCompare(b.deviceHex),
+    );
+  }
+
+  /**
    * Merge every pack not yet seen, from every device including our own.
    *
    * Reading our own packs back matters on restart: the local document starts empty and
@@ -367,6 +494,13 @@ export class PackStore {
   async pull(doc: LoroDoc): Promise<PullResult> {
     const result: PullResult = { applied: 0, adopted: 0, skipped: 0, rejected: [] };
     const objects = await this.#storage.list('d/');
+
+    // Snapshots first. A shallow snapshot carries history the packs beside it may no
+    // longer contain, and Loro cannot import updates concurrent to a snapshot's start
+    // version — so applying one after the packs it supersedes is the wrong order.
+    for (const snapshot of await this.#gatherSnapshots(objects, result)) {
+      await this.#applySnapshot(doc, snapshot, result);
+    }
 
     const candidates = await this.#gatherCandidates(objects, result);
     // Sorted by device then sequence so each chain can be verified as it is walked.
@@ -400,7 +534,24 @@ export class PackStore {
 
       const expectedPrev = this.#chainTips.get(candidate.deviceHex) ?? new Uint8Array(32);
       const isRoot = candidate.decoded.header.prevPackHash.every((b) => b === 0);
-      if (!isRoot && !equalBytes(candidate.decoded.header.prevPackHash, expectedPrev)) {
+      // A snapshot re-anchors its device's chain. Everything at or below its sequence is
+      // already inside it, and the pack just above it cannot chain to a predecessor that
+      // compaction deleted — a snapshot carries no prevPackHash of its own to supply.
+      // So the check resumes from there rather than rejecting the whole tail forever.
+      const anchor = this.#snapshotAnchors.get(candidate.deviceHex);
+      if (anchor !== undefined && candidate.seq <= anchor) {
+        this.#known.add(candidate.path);
+        this.#appliedPacks.add(identity);
+        this.#chainTips.set(candidate.deviceHex, hash(candidate.bytes));
+        result.skipped++;
+        continue;
+      }
+      const reAnchoring = anchor !== undefined && candidate.seq === anchor + 1;
+      if (
+        !isRoot &&
+        !reAnchoring &&
+        !equalBytes(candidate.decoded.header.prevPackHash, expectedPrev)
+      ) {
         // A gap in a device's chain means an earlier pack is missing or has not synced
         // yet. Do not apply past it: continuing would hide the missing pack forever.
         result.rejected.push({
@@ -622,6 +773,30 @@ export class PackStore {
       new TextEncoder().encode(head),
     );
   }
+}
+
+/**
+ * Parse a snapshot path, or undefined if it is not one.
+ *
+ * Deliberately separate from parsePackPath rather than a widening of it. That function
+ * is load-bearing in three places with different meanings, and the dangerous one is
+ * Compactor.collect(), which uses it to decide what to DELETE — widening it to match
+ * `.ksnap` would make compaction delete the very snapshots that supersede the packs it
+ * is trimming. eviction.ts uses it to decide whether this device has been evicted, which
+ * would also change meaning silently.
+ */
+export function parseSnapshotPath(
+  path: StoragePath,
+): { deviceHex: string; documentHex: string; seq: number } | undefined {
+  const parts = path.split('/');
+  if (parts.length !== 5 || parts[0] !== 'd' || parts[3] !== 'snap') return undefined;
+  const deviceHex = at(parts, 1);
+  const documentHex = at(parts, 2);
+  if (!/^[0-9a-f]{32}$/.test(deviceHex)) return undefined;
+  if (!/^[0-9a-f]{32}$/.test(documentHex)) return undefined;
+  const match = SNAPSHOT_NAME.exec(at(parts, 4));
+  if (!match) return undefined;
+  return { deviceHex, documentHex, seq: Number(match[1]) };
 }
 
 /** Parse a pack path, or undefined if the name is not one of ours. */

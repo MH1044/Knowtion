@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 import {
   SUITE,
   decodePack,
+  encodePack,
   generateDeviceKeys,
   generateWorkspaceKey,
   keyringOf,
@@ -13,7 +14,13 @@ import {
 } from '@knowtion/format';
 
 import { MemoryStorage } from '../memory-storage.js';
-import { PackStore, packPath, parsePackPath, type PackCrypto } from '../pack-store.js';
+import {
+  PackStore,
+  packPath,
+  parsePackPath,
+  parseSnapshotPath,
+  type PackCrypto,
+} from '../pack-store.js';
 import type { StoragePort } from '../storage-port.js';
 
 const WORKSPACE = new Uint8Array(16).fill(0x11);
@@ -908,5 +915,107 @@ describe('a torn pack left behind by a crash', () => {
     const a = device(storage, DEVICE_A, 1n);
     a.write('mine', 'value');
     await expect(a.store.push(a.doc)).rejects.toThrow(/another process/);
+  });
+});
+
+describe('reading a snapshot back', () => {
+  it('parses only the five-segment snapshot form', () => {
+    expect(parseSnapshotPath(`d/${hexA}/${TREE}/snap/000000000007.ksnap`)).toEqual({
+      deviceHex: hexA,
+      documentHex: TREE,
+      seq: 7,
+    });
+    for (const bad of [
+      packPath(hexA, TREE, 7),
+      `d/${hexA}/${TREE}/000000000007.ksnap`,
+      `d/${hexA}/${TREE}/snap/7.ksnap`,
+      `d/${hexA}/${TREE}/other/000000000007.ksnap`,
+      `d/not-hex/${TREE}/snap/000000000007.ksnap`,
+    ]) {
+      expect(parseSnapshotPath(bad), bad).toBeUndefined();
+    }
+  });
+
+  it('leaves parsePackPath alone, so compaction still cannot delete a snapshot', () => {
+    // Widening parsePackPath instead of adding this one would have made Compactor.collect
+    // delete the very snapshots that supersede the packs it is trimming.
+    expect(parsePackPath(`d/${hexA}/${TREE}/snap/000000000007.ksnap`)).toBeUndefined();
+  });
+
+  it('rebuilds a workspace whose superseded packs have been deleted', async () => {
+    // The returning-device path. Compaction genuinely deletes packs a snapshot covers,
+    // and until the reader existed a device arriving afterwards saw the gap and nothing
+    // that filled it.
+    const storage = new MemoryStorage();
+    const a = device(storage, DEVICE_A, 1n);
+    for (const n of [1, 2, 3]) {
+      a.write(`k${String(n)}`, String(n));
+      await a.store.push(a.doc);
+    }
+
+    // Publish a snapshot of everything so far, exactly as the compactor does.
+    const snapshot = encodePack({
+      workspaceId: WORKSPACE,
+      deviceId: DEVICE_A,
+      seq: 3n,
+      payload: a.doc.export({ mode: 'snapshot' }),
+      isShallowSnapshot: true,
+    });
+    await storage.putIfAbsent(`d/${hexA}/${TREE}/snap/000000000003.ksnap`, snapshot);
+
+    // Then collect: the packs the snapshot supersedes are gone.
+    for (const n of [1, 2, 3]) await storage.delete(packPath(hexA, TREE, n));
+
+    const arriving = device(storage, DEVICE_B, 2n);
+    const result = await arriving.store.pull(arriving.doc);
+    expect(result.rejected).toEqual([]);
+    expect(arriving.notes()).toEqual({ k1: '1', k2: '2', k3: '3' });
+  });
+
+  it('accepts the pack written after a snapshot, whose predecessor was deleted', async () => {
+    // A snapshot carries no prevPackHash of its own, so it cannot hand pack N+1 the
+    // predecessor hash the chain check wants. Without re-anchoring, every pack after a
+    // collection would be BROKEN_CHAIN forever.
+    const storage = new MemoryStorage();
+    const a = device(storage, DEVICE_A, 1n);
+    for (const n of [1, 2]) {
+      a.write(`k${String(n)}`, String(n));
+      await a.store.push(a.doc);
+    }
+    const snapshot = encodePack({
+      workspaceId: WORKSPACE,
+      deviceId: DEVICE_A,
+      seq: 2n,
+      payload: a.doc.export({ mode: 'snapshot' }),
+      isShallowSnapshot: true,
+    });
+    await storage.putIfAbsent(`d/${hexA}/${TREE}/snap/000000000002.ksnap`, snapshot);
+
+    // Device A keeps working after the snapshot.
+    a.write('after', 'snapshot');
+    await a.store.push(a.doc);
+    for (const n of [1, 2]) await storage.delete(packPath(hexA, TREE, n));
+
+    const arriving = device(storage, DEVICE_B, 2n);
+    const result = await arriving.store.pull(arriving.doc);
+    expect(result.rejected).toEqual([]);
+    expect(arriving.notes()).toEqual({ k1: '1', k2: '2', after: 'snapshot' });
+  });
+
+  it('reports a damaged snapshot rather than skipping it', async () => {
+    // If the packs have been collected it is the only copy, so silence here is the
+    // silence FORMAT.md section 3 forbids.
+    const storage = new MemoryStorage();
+    const a = device(storage, DEVICE_A, 1n);
+    a.write('k', 'v');
+    await a.store.push(a.doc);
+    const path = `d/${hexA}/${TREE}/snap/000000000001.ksnap`;
+    await storage.putIfAbsent(path, new Uint8Array(64).fill(0xff));
+
+    const arriving = device(storage, DEVICE_B, 2n);
+    const result = await arriving.store.pull(arriving.doc);
+    expect(result.rejected.map((r) => r.path)).toContain(path);
+    // The pack beside it still merges: one bad snapshot is not a failed cycle.
+    expect(arriving.notes()).toEqual({ k: 'v' });
   });
 });

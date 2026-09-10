@@ -183,12 +183,8 @@ worthless.
 v0.1 and the sync and encryption halves of v0.2 are built and shipped. Windows is the
 only supported platform at v1.
 
-Two gaps are known and deliberate rather than forgotten:
+One gap is known and deliberate rather than forgotten:
 
-- **Snapshots are written but never read.** `PackStore.pull` only recognises `.kpack`,
-  so a device joining after compaction has trimmed history cannot reconstruct it. The
-  ninety-day grace period makes this hard to reach today, but the returning-device path
-  ADR-0005 requires is only half built.
 - **Only the hierarchy is compacted, not page bodies.** Bodies grow only when edited, so
   the pressure is low — and doing it properly needs per-document acknowledgements and a
   delete budget shared across documents, since a per-page budget would multiply the
