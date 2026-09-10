@@ -58,9 +58,9 @@ export default tseslint.config(
       '**/node_modules/**',
       '**/*.d.ts',
       'packages/format/fixtures/**',
-      // Scratch worktrees created by tooling. Not project source, and linting them
-      // reports the same file twice under two paths.
-      '.claude/**',
+      // Scratch worktrees created by tooling: the same source under a second path, so
+      // linting them double-reports every finding. Other .claude content is tracked.
+      '.claude/worktrees/**',
     ],
   },
   eslint.configs.recommended,

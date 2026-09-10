@@ -156,7 +156,7 @@ errors (like a CSP blocking a WASM fetch) rather than only steady-state ones.
 ## 5. Closing checklist
 
 Before treating any change as verified, **all** of the following must pass — the
-console-error check (step 4) and the visual screenshot check (step 3) are *in addition*
+console-error check (step 4) and the visual screenshot check (step 3) are _in addition_
 to these, not a substitute for them, since none of typecheck/lint/tests would catch a
 blank renderer window:
 

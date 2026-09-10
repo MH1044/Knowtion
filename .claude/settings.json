@@ -1,8 +1,5 @@
 {
   "permissions": {
-    "allow": [
-      "Bash(npm run typecheck)",
-      "Bash(npm run lint)"
-    ]
+    "allow": ["Bash(npm run typecheck)", "Bash(npm run lint)"]
   }
 }

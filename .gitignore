@@ -54,5 +54,6 @@ apps/desktop/dist-electron/
 # Electron binary, fetched by its own install script
 node_modules/electron/dist/
 
-# Tooling scratch worktrees
-.claude/
+# Scratch worktrees created by tooling. Everything else under .claude — settings,
+# project skills — is deliberately shared and must stay tracked.
+.claude/worktrees/
