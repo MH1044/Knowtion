@@ -53,7 +53,15 @@ const noAmbientNonDeterminism = [
 
 export default tseslint.config(
   {
-    ignores: ['**/dist/**', '**/node_modules/**', '**/*.d.ts', 'packages/format/fixtures/**'],
+    ignores: [
+      '**/dist/**',
+      '**/node_modules/**',
+      '**/*.d.ts',
+      'packages/format/fixtures/**',
+      // Scratch worktrees created by tooling. Not project source, and linting them
+      // reports the same file twice under two paths.
+      '.claude/**',
+    ],
   },
   eslint.configs.recommended,
   ...tseslint.configs.recommended,
