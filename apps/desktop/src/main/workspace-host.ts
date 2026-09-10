@@ -25,10 +25,14 @@ import { importNotionArchive, type ImportReport } from '@knowtion/importers';
 import { ReadModel, type SearchHit } from '@knowtion/readmodel';
 import { deviceFingerprint, toHex, type DeviceKeys, type DeviceRecord } from '@knowtion/format';
 import {
+  Compactor,
+  DeviceEviction,
   DeviceRegistry,
   NodeStorage,
   PackStore,
   checkDataLoss,
+  computeTrimFloor,
+  detectEvicted,
   listDocumentPacks,
 } from '@knowtion/sync';
 
@@ -103,6 +107,8 @@ export interface SyncStatus {
   treePacksApplied: number;
   bodiesUpdated: number;
   rejected: number;
+  /** Set when this device's history has been removed from the folder by another. */
+  evicted?: boolean;
   /**
    * Set when syncing has been stopped because merging would have destroyed nearly
    * everything. Syncing stays stopped until the application is restarted.
@@ -142,6 +148,9 @@ export class WorkspaceHost {
   readonly #indexedPacks = new Set<string>();
   /** Set once the circuit breaker has fired. Syncing does not resume on its own. */
   #haltedReason: string | undefined;
+  #compactor!: Compactor;
+  /** Set when another device has forgotten us and our packs are gone from the folder. */
+  #evicted = false;
   readonly #options: WorkspaceHostOptions;
   #pendingFlush: NodeJS.Timeout | undefined;
   /**
@@ -190,6 +199,14 @@ export class WorkspaceHost {
     // one, and the index bytes are not even deterministic across machines.
     host.#index = ReadModel.open(join(options.dataDir, 'index.db'));
     host.#registry = new DeviceRegistry(storage);
+    host.#compactor = new Compactor({
+      storage,
+      workspaceId: options.workspaceId,
+      deviceId: options.deviceId,
+      deviceHex: toHex(options.deviceId),
+      documentHex: '0'.repeat(32),
+      now: () => Date.now(),
+    });
 
     // Publish this device before reading anyone else's work, so a device that has
     // merged operations is always one other devices can see and account for. It matters
@@ -500,11 +517,18 @@ export class WorkspaceHost {
 
     const bodiesUpdated = await this.#syncBodies();
     await this.#writeAck();
+    await this.#compact();
+
+    // Our own packs are immutable and only we delete them, so their absence means
+    // another device has forgotten us. Reported rather than acted on: rejoining takes a
+    // new identity, which is a decision to put in front of a person.
+    this.#evicted = await detectEvicted(this.#storage, this.#options.deviceId, this.#store.lastSeq);
 
     return {
       treePacksApplied: tree.applied,
       bodiesUpdated,
       rejected: tree.rejected.length,
+      ...(this.#evicted ? { evicted: true } : {}),
     };
   }
 
@@ -609,5 +633,54 @@ export class WorkspaceHost {
       mergedVersion: toHex(this.#workspace.doc.version().encode()),
       updatedAt: Date.now(),
     });
+  }
+
+  // ---- compaction ---------------------------------------------------------
+
+  /**
+   * Publish a snapshot when every device has caught up, and prune a little of our own
+   * superseded history.
+   *
+   * Both halves usually do nothing, which is correct: in a healthy workspace with one
+   * device switched off for a week there is no safe floor, and history stays. Only the
+   * page hierarchy is compacted for now — it is the document that grows continuously,
+   * whereas a page body only grows when someone edits that page.
+   */
+  async #compact(): Promise<void> {
+    try {
+      const registry = await this.#registry.list();
+      const floor = computeTrimFloor({
+        registeredDevices: registry.devices.map((device) => toHex(device.deviceId)),
+        acks: await this.#registry.readAcks(),
+      });
+
+      if (floor !== undefined) {
+        await this.#compactor.writeSnapshot(this.#workspace.doc, floor, this.#store.lastSeq);
+      }
+      await this.#compactor.collect();
+    } catch (error) {
+      // Compaction is housekeeping. A workspace that fails to tidy up still works, and
+      // stopping a sync because of it would trade a real capability for a cosmetic one.
+      console.error('[knowtion] compaction skipped:', error);
+    }
+  }
+
+  /**
+   * Remove a device that is not coming back.
+   *
+   * A person's decision, because nothing here can tell "switched off for a fortnight"
+   * from "sold". Until it happens, one lost device holds the whole workspace's history
+   * open forever. Deletion is drip-fed, so this is called repeatedly until it reports
+   * that it is done.
+   */
+  async forgetDevice(
+    deviceHex: string,
+  ): Promise<{ deleted: number; remaining: number; done: boolean }> {
+    const eviction = new DeviceEviction({
+      storage: this.#storage,
+      actingDeviceHex: toHex(this.#options.deviceId),
+      now: () => Date.now(),
+    });
+    return eviction.forget(deviceHex);
   }
 }

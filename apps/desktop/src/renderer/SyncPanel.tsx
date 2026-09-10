@@ -116,6 +116,36 @@ export function SyncPanel({ onChanged }: { onChanged: () => void }): React.JSX.E
                   {/* Shown so a person can compare it against the other machine before
                       trusting it. A label is chosen by whoever wrote the record. */}
                   <code className="fingerprint">{device.fingerprint}</code>
+                  {!device.isThisDevice && (
+                    <button
+                      type="button"
+                      className="forget"
+                      disabled={busy}
+                      title="Stop waiting for this device"
+                      onClick={() =>
+                        void (async () => {
+                          setBusy(true);
+                          try {
+                            const progress = await api.forgetDevice(device.deviceHex);
+                            // Deletion is drip-fed to avoid tripping a cloud provider's
+                            // ransomware detection, so this finishes over days.
+                            setMessage(
+                              progress.done
+                                ? `Forgot ${device.label}`
+                                : `Removing ${device.label}: ${progress.remaining} files left, ` +
+                                    'continuing in the background',
+                            );
+                          } catch (cause) {
+                            setError(cause instanceof Error ? cause.message : String(cause));
+                          }
+                          setBusy(false);
+                          await refresh();
+                        })()
+                      }
+                    >
+                      Forget
+                    </button>
+                  )}
                 </li>
               ))}
             </ul>
