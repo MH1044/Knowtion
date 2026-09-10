@@ -20,6 +20,8 @@ import {
   SUITE,
 } from './constants.js';
 import { PackFormatError } from './errors.js';
+import { hash } from './hash.js';
+import { sign, verify } from './keys.js';
 
 export interface PackHeader {
   envelopeVersion: number;
@@ -53,6 +55,15 @@ export interface PackInput {
   prevPackHash?: Uint8Array;
   packSalt?: Uint8Array;
   deviceSignature?: Uint8Array;
+  /**
+   * Sign this pack with the device's Ed25519 key.
+   *
+   * Preferred over passing deviceSignature directly, and the two are mutually
+   * exclusive. The encoder is the only code that knows the byte layout, so letting it
+   * sign removes the one bug a caller could not detect: signing the wrong bytes
+   * produces a pack that verifies nowhere and looks fine locally.
+   */
+  signingSecretKey?: Uint8Array;
 }
 
 export interface DecodedPack {
@@ -105,7 +116,27 @@ export function encodePack(input: PackInput): Uint8Array {
     prevPackHash = ZERO_HASH,
     packSalt = new Uint8Array(SIZE.packSalt),
     deviceSignature = new Uint8Array(SIZE.deviceSignature),
+    signingSecretKey,
   } = input;
+
+  if (signingSecretKey !== undefined && input.deviceSignature !== undefined) {
+    throw new TypeError('pass either signingSecretKey or deviceSignature, not both');
+  }
+  if (
+    suiteId !== SUITE.NONE &&
+    signingSecretKey === undefined &&
+    input.deviceSignature === undefined
+  ) {
+    // Reading rule 7 requires a signature whenever the suite is not NONE, so a pack
+    // written without one is unreadable everywhere including here. Failing at the
+    // writer is the only place this is cheap to notice.
+    throw new TypeError(`suite 0x${suiteId.toString(16).padStart(2, '0')} packs must be signed`);
+  }
+  if (suiteId === SUITE.NONE && (keyEpoch !== 0 || !packSalt.every((b) => b === 0))) {
+    // FORMAT.md section 4: under NONE the crypto fields are all zero. A half-populated
+    // header would read as plaintext on every other device while looking encrypted here.
+    throw new TypeError('suite NONE packs must leave keyEpoch and packSalt zero');
+  }
 
   requireLength('workspaceId', workspaceId, SIZE.workspaceId);
   requireLength('deviceId', deviceId, SIZE.deviceId);
@@ -144,6 +175,12 @@ export function encodePack(input: PackInput): Uint8Array {
   bytes.set(deviceSignature, OFFSET.deviceSignature);
   bytes.set(payload, HEADER_SIZE);
 
+  // Signed here, with the payload in place and the signature slot still zero — which
+  // is why signedBytes skips that slot. The CRC below deliberately covers the result.
+  if (signingSecretKey !== undefined) {
+    bytes.set(sign(packSignatureMessage(bytes), signingSecretKey), OFFSET.deviceSignature);
+  }
+
   // Computed last, over everything before it, including the signature slot.
   view.setUint32(OFFSET.headerCrc32c, crc32c(bytes.subarray(0, OFFSET.headerCrc32c)), true);
 
@@ -160,6 +197,32 @@ export function signedBytes(pack: Uint8Array): Uint8Array {
   out.set(pack.subarray(0, OFFSET.deviceSignature), 0);
   out.set(pack.subarray(HEADER_SIZE), OFFSET.deviceSignature);
   return out;
+}
+
+/**
+ * What the Ed25519 signature is actually computed over: BLAKE3-256 of the signed
+ * bytes, per FORMAT.md section 5.
+ */
+function packSignatureMessage(pack: Uint8Array): Uint8Array {
+  return hash(signedBytes(pack));
+}
+
+/**
+ * Reading rule 7: the pack was written by the device it claims.
+ *
+ * Separate from decodePack because the public key comes from the device registry,
+ * which this layer has no access to — the same reason rule 8 lives in the sync engine.
+ * Returns false rather than throwing, since an unverifiable pack in a folder anyone
+ * could write to is an ordinary condition that the caller must report and skip, not an
+ * exceptional one.
+ */
+export function verifyPackSignature(pack: Uint8Array, signingPublicKey: Uint8Array): boolean {
+  if (pack.length < HEADER_SIZE) return false;
+  const signature = pack.subarray(
+    OFFSET.deviceSignature,
+    OFFSET.deviceSignature + SIZE.deviceSignature,
+  );
+  return verify(signature, packSignatureMessage(pack), signingPublicKey);
 }
 
 /**

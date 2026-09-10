@@ -20,12 +20,18 @@ import { LoroDoc, VersionVector, type PeerID } from 'loro-crdt';
 import {
   HEADER_SIZE,
   PackFormatError,
+  SUITE,
   decodePack,
   encodePack,
   equalBytes,
   hash,
+  openPack,
+  sealPack,
   toHex,
+  verifyPackSignature,
+  type Keyring,
   type PackRejectionCode,
+  type WorkspaceKey,
 } from '@knowtion/format';
 
 import type { StoragePath, StoragePort } from './storage-port.js';
@@ -56,6 +62,37 @@ export interface PackStoreOptions {
    * all-zeros identifier, which is the page hierarchy.
    */
   documentId?: Uint8Array;
+  /**
+   * Encryption. Absent while a workspace is still plaintext.
+   *
+   * Its absence does not make encrypted packs readable-as-plaintext: a pack under a
+   * suite this store cannot open is REJECTED and reported, never handed to Loro. Doing
+   * otherwise would feed ciphertext to the CRDT, which is how a downgrade would look
+   * exactly like ordinary corruption.
+   */
+  crypto?: PackCrypto;
+}
+
+export interface PackCrypto {
+  /**
+   * Every key epoch this device holds, not only the newest.
+   *
+   * Rotation protects future writes only, so history written under an older epoch has
+   * to stay readable or revoking a device would destroy it.
+   */
+  keyring: Keyring;
+  /** Seal new packs under this key. Absent means keep writing plaintext. */
+  sealWith?: WorkspaceKey;
+  /** This device's Ed25519 secret, for signing what it writes. */
+  signingSecretKey: Uint8Array;
+  /**
+   * Reading rule 7: the registered signing key for a device, or undefined if this
+   * device has no registry record we trust.
+   *
+   * A function rather than the registry itself, so the store stays testable without
+   * one and the workspace-wide registry is not duplicated per document.
+   */
+  signingKeyFor: (deviceHex: string) => Promise<Uint8Array | undefined>;
 }
 
 export interface RejectedPack {
@@ -159,7 +196,10 @@ export class PackStore {
    */
   readonly #appliedPacks = new Set<string>();
 
+  readonly #crypto: PackCrypto | undefined;
+
   constructor(options: PackStoreOptions) {
+    this.#crypto = options.crypto;
     this.#storage = options.storage;
     this.#workspaceId = options.workspaceId;
     this.#deviceId = options.deviceId;
@@ -205,13 +245,25 @@ export class PackStore {
     const publishedVersion = doc.version();
 
     const seq = this.#lastSeq + 1;
-    const pack = encodePack({
-      workspaceId: this.#workspaceId,
-      deviceId: this.#deviceId,
-      seq: BigInt(seq),
-      payload,
-      prevPackHash: this.#lastHash,
-    });
+    const sealWith = this.#crypto?.sealWith;
+    const pack =
+      sealWith === undefined
+        ? encodePack({
+            workspaceId: this.#workspaceId,
+            deviceId: this.#deviceId,
+            seq: BigInt(seq),
+            payload,
+            prevPackHash: this.#lastHash,
+          })
+        : sealPack({
+            workspaceId: this.#workspaceId,
+            deviceId: this.#deviceId,
+            seq: BigInt(seq),
+            payload,
+            prevPackHash: this.#lastHash,
+            workspaceKey: sealWith,
+            signingSecretKey: this.#crypto!.signingSecretKey,
+          });
 
     const path = packPath(this.#deviceHex, this.#documentHex, seq);
     const created = await this.#storage.putIfAbsent(path, pack);
@@ -273,6 +325,15 @@ export class PackStore {
         continue;
       }
 
+      // Reading rule 7, applied before rule 8 because FORMAT.md section 3 fixes the
+      // order. A pack whose signature we cannot check must never reach the chain logic:
+      // accepting it would let anyone who can write to the folder move a device's chain.
+      const signatureProblem = await this.#signatureProblem(candidate);
+      if (signatureProblem !== undefined) {
+        result.rejected.push(signatureProblem);
+        continue;
+      }
+
       const expectedPrev = this.#chainTips.get(candidate.deviceHex) ?? new Uint8Array(32);
       const isRoot = candidate.decoded.header.prevPackHash.every((b) => b === 0);
       if (!isRoot && !equalBytes(candidate.decoded.header.prevPackHash, expectedPrev)) {
@@ -288,7 +349,22 @@ export class PackStore {
         continue;
       }
 
-      doc.import(candidate.decoded.payload);
+      let plaintext: Uint8Array;
+      try {
+        plaintext = this.#openPayload(candidate);
+      } catch (error) {
+        if (error instanceof PackFormatError) {
+          result.rejected.push({
+            path: candidate.path,
+            code: error.code,
+            message: error.message,
+          });
+          continue;
+        }
+        throw error;
+      }
+
+      doc.import(plaintext);
       this.#chainTips.set(candidate.deviceHex, hash(candidate.bytes));
       this.#known.add(candidate.path);
       this.#appliedPacks.add(identity);
@@ -384,6 +460,69 @@ export class PackStore {
       out.push({ path: object.path, deviceHex, seq, bytes, decoded, adopted: named === undefined });
     }
     return out;
+  }
+
+  /**
+   * Reading rule 7: was this pack written by the device it names?
+   *
+   * Only meaningful once a suite is in use — under NONE there is no signature to check,
+   * which is exactly why plaintext workspaces are not merely less private but also
+   * unauthenticated. Returns the rejection to report, or undefined when the pack passes.
+   *
+   * An unknown device is a rejection rather than a skip. On a folder anyone can write
+   * to, "I have no record of this device" is the shape an impersonation attempt takes,
+   * and FORMAT.md section 3 forbids skipping silently because that is indistinguishable
+   * from data loss.
+   */
+  async #signatureProblem(candidate: PackCandidate): Promise<RejectedPack | undefined> {
+    if (candidate.decoded.header.suiteId === SUITE.NONE) return undefined;
+
+    const crypto = this.#crypto;
+    if (crypto === undefined) {
+      return {
+        path: candidate.path,
+        code: 'UNKNOWN_KEY_EPOCH',
+        message:
+          `pack ${candidate.path} is encrypted, but this workspace holds no keys; ` +
+          'it cannot be verified or read here',
+      };
+    }
+
+    const publicKey = await crypto.signingKeyFor(candidate.deviceHex);
+    if (publicKey === undefined) {
+      return {
+        path: candidate.path,
+        code: 'BAD_SIGNATURE',
+        message:
+          `pack ${candidate.path} is signed by device ${candidate.deviceHex}, which has ` +
+          'no registry record here; it may not have synced yet, or may not belong',
+      };
+    }
+    if (!verifyPackSignature(candidate.bytes, publicKey)) {
+      return {
+        path: candidate.path,
+        code: 'BAD_SIGNATURE',
+        message:
+          `pack ${candidate.path} does not verify against the registered key for device ` +
+          `${candidate.deviceHex}; it was altered after it was written, or forged`,
+      };
+    }
+    return undefined;
+  }
+
+  /**
+   * The plaintext a pack carries, whichever suite wrote it.
+   *
+   * Packs of both suites coexist in one log by design: every pack declares its own
+   * suite, so switching a workspace on does not make its history unreadable. What the
+   * switch does cost is privacy, not readability — plaintext already written stays
+   * plaintext forever, which is why ADR-0007 wants the cipher on before anything real
+   * is synced.
+   */
+  #openPayload(candidate: PackCandidate): Uint8Array {
+    if (candidate.decoded.header.suiteId === SUITE.NONE) return candidate.decoded.payload;
+    // #signatureProblem has already established that crypto is present.
+    return openPack(candidate.decoded, this.#crypto!.keyring, candidate.path);
   }
 
   /**

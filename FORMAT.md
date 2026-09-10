@@ -137,6 +137,85 @@ associated data binding envelope_version, suite_id, workspace_id, device_id, seq
 key_epoch, chunk index and a final-chunk marker. The AAD composition is fixed once the
 first encrypted pack exists and MUST NOT change.
 
+### 6.1 Chunk framing (suite 0x01)
+
+The payload is a sequence of chunks, each laid out as:
+
+    nonce (24 bytes) || ciphertext || Poly1305 tag (16 bytes)
+
+Every chunk but the last MUST carry exactly 262144 bytes of plaintext. The last carries
+whatever remains, which MAY be zero. There is no chunk count and no length prefix:
+because only the last chunk may be short, boundaries are recoverable from payload_len
+alone, and a reader MUST recover them that way.
+
+An empty plaintext MUST still produce exactly one chunk. Otherwise an empty payload and
+a payload truncated to nothing would be identical bytes.
+
+Nonces MUST be freshly random per chunk, and are stored rather than derived from a
+counter. A 192-bit nonce is what makes random generation safe with no coordinator to
+count invocations; see ADR-0007.
+
+### 6.2 Associated data (suite 0x01)
+
+52 bytes, every field fixed width, in this order. **Frozen from the moment the first
+encrypted pack exists.**
+
+| Offset | Size | Field                                               |
+| -----: | ---: | --------------------------------------------------- |
+|      0 |    2 | envelope_version, u16                               |
+|      2 |    1 | suite_id                                            |
+|      3 |   16 | workspace_id                                        |
+|     19 |   16 | device_id                                           |
+|     35 |    8 | seq, u64                                            |
+|     43 |    4 | key_epoch, u32                                      |
+|     47 |    4 | chunk_index, u32                                    |
+|     51 |    1 | is_final: 1 on the last chunk, 0 on every other one |
+
+Because every field is fixed width, two different field sets cannot produce the same
+bytes, so no separator and no canonicalisation rule is needed.
+
+flags and padding_len are deliberately **absent**. Both are already covered by the
+device signature over header bytes 0..111 (section 5), and adding them later would make
+every pack written before the change permanently unreadable.
+
+Binding is_final is what makes truncation detectable. Dropping trailing chunks leaves a
+chunk that was sealed with is_final clear being opened with it set, so its tag fails and
+the pack is rejected rather than silently yielding a shorter document.
+
+### 6.3 Content key derivation (suite 0x01)
+
+    pack_key = HKDF-SHA256(
+        ikm  = the workspace key for key_epoch,
+        salt = pack_salt,
+        info = "knowtion/pack-key/v1" || workspace_id || device_id || seq || key_epoch,
+        L    = 32 )
+
+pack_salt MUST be freshly random for every pack; it is what makes each pack's content
+key distinct under one long-lived workspace key. seq and key_epoch appear in `info` as
+u64 and u32 little-endian, as in the header.
+
+HKDF is specified over HMAC, so SHA-256 appears here even though section 2 makes
+BLAKE3-256 the format's hash. Section 2 governs hashes that appear in the format — the
+pack chain and content addresses — not the internals of a key-derivation function.
+
+The identifying fields are bound both here and in the associated data. The duplication
+is deliberate: the two bindings are independent, so a mistake in one does not quietly
+remove the other.
+
+### 6.4 Padding
+
+padding_len counts trailing bytes of the **payload**, and the rule is the same for both
+suites: a reader MUST remove that many bytes from the end of the payload before
+interpreting it. Under suite 0x01 that means before AEAD processing, since the padding
+sits outside the chunk stream.
+
+Padding is covered by the device signature, so it cannot be altered by anyone who does
+not hold the writing device's key. It is not covered by the AEAD.
+
+No writer emits padding today and padding_len is 0 in every pack written so far. Readers
+MUST handle it regardless: users update manually, so a reader that could not cope would
+have to ship long before any writer that pads.
+
 ---
 
 ## 7. Versioning and compatibility
@@ -260,3 +339,87 @@ into an append-only log is a common way a sync log becomes permanently bloated.
 **Sidecar records** use CBOR. Decoders MUST reject **proto**, constructor and prototype
 as keys, and MUST preserve unknown fields byte-for-byte rather than dropping them on
 rewrite.
+
+---
+
+## 11. Key hierarchy and key wraps
+
+Applies when suite_id is 0x01. See ADR-0007.
+
+### 11.1 Epochs
+
+key_epoch names a generation of the workspace key. **key_epoch 0 is reserved for suite
+NONE**, so real epochs start at 1 and a non-zero key_epoch means the pack is encrypted
+without a reader having to consult suite_id as well. Rotation increments the epoch by
+one and happens on device revocation.
+
+Rotation protects **future** writes only. A revoked device keeps everything it has
+already read, and no amount of rotation changes that. Every epoch's key MUST therefore
+remain unwrappable for as long as any pack written under it survives, or that history
+becomes unreadable — so a device holds every epoch it has been granted, not only the
+newest.
+
+### 11.2 The workspace key
+
+32 random bytes per epoch. It MUST NOT be derived from a passphrase. A random key that
+is separately wrapped is what makes granting a new recipient possible without
+re-encrypting any pack, which an append-only log could never do anyway.
+
+It is wrapped three ways. Two are objects in the workspace:
+
+    keys/<keyEpoch>/<deviceId>.wrap    sealed to that device's X25519 key
+    keys/<keyEpoch>/recovery.wrap      sealed under the recovery phrase
+
+A device wrap MUST be written by the **approving** device and never by its subject, per
+section 9 — a device cannot grant itself access. The third wrap is the operating
+system's keystore; it is local to one device and MUST NOT appear anywhere in the
+workspace.
+
+### 11.3 Wrap records
+
+CBOR sidecars, under section 10's rules. Both kinds carry `v` (currently 1), `kind`
+("device" or "recovery"), `epoch`, `workspaceId`, `nonce` (24 bytes) and `sealed` (the
+48-byte XChaCha20-Poly1305 output over the 32-byte key).
+
+Associated data for both is 22 fixed-width bytes:
+
+    kind (1) || wrap version (1) || epoch (u32) || workspace_id (16)
+
+A **device wrap** adds `recipient` and `ephemeral`, both 32-byte X25519 public keys. Its
+key-encryption key is:
+
+    HKDF-SHA256(
+        ikm  = X25519(ephemeral secret, recipient public),
+        salt = none,
+        info = "knowtion/device-key-wrap/v1" || ephemeral || recipient,
+        L    = 32 )
+
+Binding both public keys into `info` is what stops one shared secret meaning anything
+under a different pair. A reader MUST derive the recipient key from its own secret
+rather than trusting the record's `recipient` field.
+
+A **recovery wrap** adds `salt` (16 bytes) and the Argon2id cost `m`, `t` and `p`. Its
+key-encryption key is Argon2id over the recovery phrase's decoded entropy, dkLen 32.
+
+Each recovery wrap MUST carry its own cost parameters. A wrap whose cost is recorded
+only in some other object becomes undecryptable the moment that object is lost or
+truncated, and this is precisely the file whose job is to work when other things have
+gone wrong. Readers MUST bound the cost they will accept: a hostile wrap in a shared
+folder asking for terabytes of memory is a denial of service that costs one line to
+write.
+
+### 11.4 The recovery phrase
+
+24 BIP-39 words from the **English** wordlist, so 256 bits of entropy. English is fixed
+permanently: a phrase cannot be validated against any wordlist but the one that produced
+it, and nobody recalls years later which language their interface was in on setup day.
+
+Key derivation MUST run from the phrase's decoded entropy rather than from its words, so
+that spacing and case cannot reach the KDF and a typo fails the BIP-39 checksum
+immediately instead of after a full Argon2id derivation that then yields the wrong key.
+
+A reader MUST normalise input to lowercase NFKD with runs of whitespace collapsed to a
+single space before validating it. BIP-39 validation splits on a single U+0020 and does
+not fold case, so a correct phrase carrying a trailing newline — the likeliest result of
+copying it out of a text file or a password manager — would otherwise be rejected at the
+one moment it is the only copy in existence.

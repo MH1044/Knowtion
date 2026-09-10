@@ -12,11 +12,37 @@
  * Regenerating an EXISTING version's fixtures is almost always a mistake. If a fixture
  * no longer matches, the format changed; fix the format or cut a new version.
  */
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { ENVELOPE_VERSION, SUITE, encodePack } from '../dist/index.js';
+import {
+  ENVELOPE_VERSION,
+  SUITE,
+  encodePack,
+  generateDeviceKeys,
+  generateWorkspaceKey,
+  sealPack,
+  toHex,
+} from '../dist/index.js';
+
+/**
+ * Never overwrite a fixture that already exists.
+ *
+ * The header comment has said regenerating is a mistake since v0.1; this makes it so.
+ * It also lets a non-reproducible fixture exist at all — the encrypted one below uses a
+ * random salt and a random nonce per chunk, exactly as a real pack does, so running
+ * this script twice would otherwise silently replace frozen bytes with different ones
+ * and take the golden test's whole purpose with it.
+ */
+function freeze(path, bytes) {
+  if (existsSync(path)) {
+    console.log(`kept    ${path} (already frozen)`);
+    return;
+  }
+  writeFileSync(path, bytes);
+  console.log(`wrote   ${path}`);
+}
 
 const here = dirname(fileURLToPath(import.meta.url));
 const outDir = resolve(here, '..', 'fixtures', `v${ENVELOPE_VERSION}`);
@@ -76,7 +102,56 @@ const cases = {
 };
 
 for (const [name, input] of Object.entries(cases)) {
-  const path = join(outDir, `${name}.kpack`);
-  writeFileSync(path, encodePack(input));
-  console.log(`wrote ${path}`);
+  freeze(join(outDir, `${name}.kpack`), encodePack(input));
+}
+
+/**
+ * A genuinely encrypted, genuinely signed pack, written the way the app writes one.
+ *
+ * The others prove the LAYOUT survives. This one proves the CRYPTO survives: the AAD
+ * composition, the chunk framing, the HKDF derivation and the signature scheme all have
+ * to still agree years from now, and every one of them is fixed the moment a real user
+ * has an encrypted pack in their cloud folder.
+ *
+ * Its keys are written beside it, because a fixture nobody can decrypt tests nothing.
+ * They are throwaway keys for a throwaway workspace and protect nothing.
+ */
+const encryptedPath = join(outDir, 'encrypted.kpack');
+const keysPath = join(outDir, 'encrypted.test-keys.json');
+if (existsSync(encryptedPath)) {
+  console.log(`kept    ${encryptedPath} (already frozen)`);
+} else {
+  const device = generateDeviceKeys();
+  const workspaceKey = generateWorkspaceKey();
+  const plaintext = 'knowtion golden fixture payload, encrypted';
+  freeze(
+    encryptedPath,
+    sealPack({
+      workspaceId: ws,
+      deviceId: dev,
+      seq: 7n,
+      payload: new TextEncoder().encode(plaintext),
+      prevPackHash: hash,
+      workspaceKey,
+      signingSecretKey: device.signingSecretKey,
+    }),
+  );
+  writeFileSync(
+    keysPath,
+    `${JSON.stringify(
+      {
+        WARNING:
+          'Throwaway test keys for a golden fixture. They protect nothing and must ' +
+          'never be used for anything else.',
+        epoch: workspaceKey.epoch,
+        workspaceKey: toHex(workspaceKey.key),
+        signingPublicKey: toHex(device.signingPublicKey),
+        plaintext,
+      },
+      null,
+      2,
+    )}
+`,
+  );
+  console.log(`wrote   ${keysPath}`);
 }

@@ -190,17 +190,31 @@ describe('reading rules — every rejection is specific and ordered', () => {
 describe('round-trip properties', () => {
   const arbBytes = (n: number) => fc.uint8Array({ minLength: n, maxLength: n });
 
-  const arbInput = fc.record({
-    workspaceId: arbBytes(16),
-    deviceId: arbBytes(16),
-    seq: fc.bigInt({ min: 1n, max: 0xffff_ffff_ffff_ffffn }),
-    payload: fc.uint8Array({ maxLength: 2048 }),
-    isShallowSnapshot: fc.boolean(),
-    keyEpoch: fc.integer({ min: 0, max: 0xffff_ffff }),
-    prevPackHash: arbBytes(32),
-    packSalt: arbBytes(16),
-    deviceSignature: arbBytes(64),
-  });
+  /**
+   * Generates a header whose suite and crypto fields agree, because FORMAT.md section 4
+   * only permits those two shapes: NONE with the crypto fields zero, or an encrypting
+   * suite carrying an epoch, a salt and a signature. Covering both is what keeps the
+   * round-trip property meaningful now that suite 0x01 exists — a generator that only
+   * ever produced NONE would stop testing half the header.
+   */
+  const arbInput = fc
+    .record({
+      workspaceId: arbBytes(16),
+      deviceId: arbBytes(16),
+      seq: fc.bigInt({ min: 1n, max: 0xffff_ffff_ffff_ffffn }),
+      payload: fc.uint8Array({ maxLength: 2048 }),
+      isShallowSnapshot: fc.boolean(),
+      prevPackHash: arbBytes(32),
+      deviceSignature: arbBytes(64),
+      encrypted: fc.boolean(),
+      keyEpoch: fc.integer({ min: 1, max: 0xffff_ffff }),
+      packSalt: arbBytes(16),
+    })
+    .map(({ encrypted, keyEpoch, packSalt, ...rest }) =>
+      encrypted
+        ? { ...rest, suiteId: SUITE.XCHACHA20POLY1305_ARGON2ID, keyEpoch, packSalt }
+        : { ...rest, suiteId: SUITE.NONE, keyEpoch: 0, packSalt: new Uint8Array(16) },
+    );
 
   it('decode(encode(x)) preserves every field exactly', () => {
     fc.assert(
