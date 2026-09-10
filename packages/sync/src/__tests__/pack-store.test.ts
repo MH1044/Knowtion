@@ -14,6 +14,7 @@ import {
 
 import { MemoryStorage } from '../memory-storage.js';
 import { PackStore, packPath, parsePackPath, type PackCrypto } from '../pack-store.js';
+import type { StoragePort } from '../storage-port.js';
 
 const WORKSPACE = new Uint8Array(16).fill(0x11);
 const DEVICE_A = new Uint8Array(16).fill(0xaa);
@@ -721,5 +722,108 @@ describe('encrypted workspaces reject what they cannot trust', () => {
       signingKeyFor,
     }).pull(doc);
     expect(result.rejected.map((r) => r.code)).toEqual(['UNKNOWN_KEY_EPOCH']);
+  });
+});
+
+describe('a pack that cannot be read', () => {
+  /** MemoryStorage, but one named path always fails the way a locked file does. */
+  class OneUnreadable implements StoragePort {
+    constructor(
+      private readonly inner: MemoryStorage,
+      private readonly unreadable: string,
+      private readonly code = 'EBUSY',
+    ) {}
+    putIfAbsent = (p: string, b: Uint8Array) => this.inner.putIfAbsent(p, b);
+    putOwn = (p: string, b: Uint8Array) => this.inner.putOwn(p, b);
+    list = (p: string) => this.inner.list(p);
+    delete = (p: string) => this.inner.delete(p);
+    get(path: string): Promise<Uint8Array | undefined> {
+      if (path === this.unreadable) {
+        return Promise.reject(Object.assign(new Error('locked'), { code: this.code }));
+      }
+      return this.inner.get(path);
+    }
+  }
+
+  /** Two devices each publish one pack into a shared folder. */
+  async function twoPublishedPacks() {
+    const inner = new MemoryStorage();
+    const a = device(inner, DEVICE_A, 1n);
+    const b = device(inner, DEVICE_B, 2n);
+    a.write('from', 'a');
+    const fromA = await a.store.push(a.doc);
+    b.write('also', 'b');
+    const fromB = await b.store.push(b.doc);
+    if (fromA === undefined || fromB === undefined) throw new Error('expected both pushes');
+    return { inner, fromA: fromA.path, fromB: fromB.path };
+  }
+
+  it('does not stop the other devices\u2019 packs merging in the same cycle', async () => {
+    // The invariant this whole change exists for. Before it, one throwing read
+    // abandoned every remaining candidate, so a single locked file on a laptop with
+    // OneDrive could stall the entire workspace.
+    const { inner, fromA, fromB } = await twoPublishedPacks();
+    const storage = new OneUnreadable(inner, fromA);
+
+    const reader = new PackStore({ storage, workspaceId: WORKSPACE, deviceId: DEVICE_A });
+    const doc = new LoroDoc();
+    doc.setPeerId(9n);
+    const result = await reader.pull(doc);
+
+    expect(result.applied).toBe(1);
+    expect(doc.getMap('notes').toJSON()).toEqual({ also: 'b' });
+    expect(result.rejected.map((r) => r.code)).toEqual(['UNREADABLE']);
+    expect(at(result.rejected, 0).path).toBe(fromA);
+    expect(fromB).toBeDefined();
+  });
+
+  it('reports it rather than skipping it silently', async () => {
+    // FORMAT.md section 3: a silent skip is indistinguishable from data loss, so the
+    // path and the reason must both reach a human.
+    const { inner, fromA } = await twoPublishedPacks();
+    const reader = new PackStore({
+      storage: new OneUnreadable(inner, fromA),
+      workspaceId: WORKSPACE,
+      deviceId: DEVICE_A,
+    });
+    const doc = new LoroDoc();
+    doc.setPeerId(9n);
+    const rejected = (await reader.pull(doc)).rejected;
+    expect(at(rejected, 0).message).toContain(fromA);
+    expect(at(rejected, 0).message).toContain('EBUSY');
+  });
+
+  it('picks the pack up on a later cycle once it is readable again', async () => {
+    // Transient means transient. A file locked during one scan must not be written off.
+    const { inner, fromA } = await twoPublishedPacks();
+    const storage = new OneUnreadable(inner, fromA);
+    const reader = new PackStore({ storage, workspaceId: WORKSPACE, deviceId: DEVICE_A });
+    const doc = new LoroDoc();
+    doc.setPeerId(9n);
+
+    await reader.pull(doc);
+    expect(doc.getMap('notes').toJSON()).toEqual({ also: 'b' });
+
+    // Now readable: the same store, next cycle, no restart.
+    const healed = new PackStore({ storage: inner, workspaceId: WORKSPACE, deviceId: DEVICE_A });
+    const doc2 = new LoroDoc();
+    doc2.setPeerId(9n);
+    const after = await healed.pull(doc2);
+    expect(after.rejected).toEqual([]);
+    expect(doc2.getMap('notes').toJSON()).toEqual({ from: 'a', also: 'b' });
+  });
+
+  it('still throws on a failure that is not transient', async () => {
+    // A permanent error must not be quietly retried forever. EROFS is not something a
+    // later cycle fixes, so it surfaces.
+    const { inner, fromA } = await twoPublishedPacks();
+    const reader = new PackStore({
+      storage: new OneUnreadable(inner, fromA, 'EROFS'),
+      workspaceId: WORKSPACE,
+      deviceId: DEVICE_A,
+    });
+    const doc = new LoroDoc();
+    doc.setPeerId(9n);
+    await expect(reader.pull(doc)).rejects.toThrow();
   });
 });

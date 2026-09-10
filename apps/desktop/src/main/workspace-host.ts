@@ -259,11 +259,22 @@ export class WorkspaceHost {
       options.deviceKeys.signingSecretKey,
     );
 
-    const result = await host.#store.pull(host.#workspace.doc);
-    for (const rejected of result.rejected) {
-      // Never silent. FORMAT.md section 3: a skipped pack is indistinguishable from
-      // data loss, so it must always reach a log a human can read.
-      console.error(`[knowtion] rejected pack ${rejected.path}: ${rejected.message}`);
+    // Opening must survive a log it cannot fully read. A pull that throws here — one
+    // unreadable pack, a folder that went away mid-scan — used to fail workspace open
+    // outright, which turns a transient storage problem into an app that will not
+    // start. Whatever did load is still a usable workspace, and the next sync retries.
+    try {
+      const result = await host.#store.pull(host.#workspace.doc);
+      for (const rejected of result.rejected) {
+        // Never silent. FORMAT.md section 3: a skipped pack is indistinguishable from
+        // data loss, so it must always reach a log a human can read.
+        console.error(`[knowtion] rejected pack ${rejected.path}: ${rejected.message}`);
+      }
+    } catch (error) {
+      console.error(
+        `[knowtion] could not fully read the log while opening: ${String(error)}. ` +
+          'Opening with what was readable; the next sync will retry the rest.',
+      );
     }
 
     host.#reindexPages();
