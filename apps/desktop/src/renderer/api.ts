@@ -58,6 +58,8 @@ export interface DeviceList {
   thisFingerprint: string;
   /** False when the platform has no secret store and device keys are unprotected. */
   secretsOsBacked: boolean;
+  /** False for a workspace still written in plaintext, where there is no key to revoke. */
+  encrypted: boolean;
   devices: DeviceSummary[];
   rejected: { path: string; reason: string }[];
 }
@@ -96,6 +98,10 @@ interface Bridge {
   beginKeySetup(): Promise<Result<PhraseChallenge>>;
   confirmKeySetup(input: { answers: string[] }): Promise<Result<null>>;
   grantKey(input: { deviceHex: string }): Promise<Result<{ granted: boolean }>>;
+  revokeDevice(input: {
+    deviceHex: string;
+    phrase: string;
+  }): Promise<Result<{ deleted: number; remaining: number; done: boolean }>>;
   syncInfo(): Promise<Result<SyncInfo>>;
   devices(): Promise<Result<DeviceList>>;
   forgetDevice(input: {
@@ -140,6 +146,8 @@ export const api = {
   beginKeySetup: () => unwrap(window.knowtion.beginKeySetup()),
   confirmKeySetup: (answers: string[]) => unwrap(window.knowtion.confirmKeySetup({ answers })),
   grantKey: (deviceHex: string) => unwrap(window.knowtion.grantKey({ deviceHex })),
+  revokeDevice: (deviceHex: string, phrase: string) =>
+    unwrap(window.knowtion.revokeDevice({ deviceHex, phrase })),
   syncInfo: () => unwrap(window.knowtion.syncInfo()),
   devices: () => unwrap(window.knowtion.devices()),
   forgetDevice: (deviceHex: string) => unwrap(window.knowtion.forgetDevice({ deviceHex })),

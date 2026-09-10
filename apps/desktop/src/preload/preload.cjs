@@ -26,6 +26,7 @@ contextBridge.exposeInMainWorld('knowtion', {
   beginKeySetup: call('keys:begin'),
   confirmKeySetup: call('keys:confirm'),
   grantKey: call('keys:grant'),
+  revokeDevice: call('keys:revoke'),
   syncInfo: call('sync:info'),
   devices: call('sync:devices'),
   forgetDevice: call('sync:forget'),

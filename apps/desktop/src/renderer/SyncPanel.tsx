@@ -15,9 +15,25 @@ function shortPath(path: string): string {
  * something unfinished. Knowtion never asks for access to a cloud account (ADR-0006);
  * choosing a folder is an option, not a setup step someone has failed to complete.
  */
+/**
+ * Deletion is drip-fed so a cloud provider's ransomware detection does not fire, which
+ * means removal finishes over days rather than at the click.
+ */
+function describeEviction(
+  label: string,
+  progress: { deleted: number; remaining: number; done: boolean },
+): string {
+  return progress.done
+    ? `Removed ${label}`
+    : `Removing ${label}: ${String(progress.remaining)} files left, continuing in the background`;
+}
+
 export function SyncPanel({ onChanged }: { onChanged: () => void }): React.JSX.Element {
   const [info, setInfo] = useState<SyncInfo>();
   const [devices, setDevices] = useState<DeviceList>();
+  /** Which device is mid-revocation, if any. */
+  const [revoking, setRevoking] = useState<string>();
+  const [phrase, setPhrase] = useState('');
   const [showDevices, setShowDevices] = useState(false);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string>();
@@ -154,30 +170,93 @@ export function SyncPanel({ onChanged }: { onChanged: () => void }): React.JSX.E
                       type="button"
                       className="forget"
                       disabled={busy}
-                      title="Stop waiting for this device"
-                      onClick={() =>
+                      title={
+                        devices.encrypted
+                          ? 'Rotate the key away from this device and remove its history'
+                          : 'Stop waiting for this device'
+                      }
+                      onClick={() => {
+                        if (devices.encrypted) {
+                          setRevoking(device.deviceHex);
+                          setPhrase('');
+                          setMessage(undefined);
+                          return;
+                        }
                         void (async () => {
                           setBusy(true);
                           try {
-                            const progress = await api.forgetDevice(device.deviceHex);
-                            // Deletion is drip-fed to avoid tripping a cloud provider's
-                            // ransomware detection, so this finishes over days.
                             setMessage(
-                              progress.done
-                                ? `Forgot ${device.label}`
-                                : `Removing ${device.label}: ${String(progress.remaining)} files left, ` +
-                                    'continuing in the background',
+                              describeEviction(
+                                device.label,
+                                await api.forgetDevice(device.deviceHex),
+                              ),
                             );
                           } catch (cause) {
                             setError(cause instanceof Error ? cause.message : String(cause));
                           }
                           setBusy(false);
                           await refresh();
-                        })()
-                      }
+                        })();
+                      }}
                     >
-                      Forget
+                      {devices.encrypted ? 'Revoke' : 'Forget'}
                     </button>
+                  )}
+
+                  {revoking === device.deviceHex && (
+                    <form
+                      className="revoke"
+                      onSubmit={(event) => {
+                        event.preventDefault();
+                        void (async () => {
+                          setBusy(true);
+                          try {
+                            const progress = await api.revokeDevice(device.deviceHex, phrase);
+                            setRevoking(undefined);
+                            setPhrase('');
+                            setMessage(describeEviction(device.label, progress));
+                            setDevices(await api.devices());
+                          } catch (cause) {
+                            setError(cause instanceof Error ? cause.message : String(cause));
+                          }
+                          setBusy(false);
+                          await refresh();
+                        })();
+                      }}
+                    >
+                      <p>
+                        This mints a new key that {device.label} will not get, so it cannot read
+                        anything written from now on. It has already read what it read — revoking
+                        cannot reach back into that.
+                      </p>
+                      <label>
+                        <span>Type your recovery phrase to confirm</span>
+                        <textarea
+                          value={phrase}
+                          rows={3}
+                          autoComplete="off"
+                          spellCheck={false}
+                          placeholder="the 24 words you wrote down"
+                          onChange={(event) => {
+                            setPhrase(event.target.value);
+                          }}
+                        />
+                      </label>
+                      <div className="revoke-actions">
+                        <button
+                          type="button"
+                          disabled={busy}
+                          onClick={() => {
+                            setRevoking(undefined);
+                          }}
+                        >
+                          Cancel
+                        </button>
+                        <button type="submit" disabled={busy || phrase.trim() === ''}>
+                          {busy ? 'Revoking…' : `Revoke ${device.label}`}
+                        </button>
+                      </div>
+                    </form>
                   )}
                 </li>
               ))}
