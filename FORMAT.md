@@ -248,7 +248,9 @@ CI asserts every build still reads all of them.
       d/<deviceId>/<documentId>/<seq>.kpack
       d/<deviceId>/<documentId>/snap/<seq>.ksnap
       d/<deviceId>/<documentId>/head.json
+      d/<deviceId>/<documentId>/compaction.json
       d/<deviceId>/ack.json
+      d/<deviceId>/eviction.json
       blobs/<first two hex chars>/<full hex>.kblob
 
 Rules, all forced by OneDrive and SharePoint naming restrictions:
@@ -320,9 +322,49 @@ There MUST NOT be a shared mutable object of any kind: no global manifest, no he
 pointer, no lock. Google Drive has no conditional write and permits duplicate filenames
 in a folder, so any shared mutable path loses writes silently. See ADR-0005.
 
-head.json and ack.json are mutable but single-writer, so last-write-wins on them is
-harmless. Both are pure optimisations: a reader MUST fall back to listing the device's
-directory if either is absent, stale or unparseable.
+head.json, ack.json, compaction.json and eviction.json are mutable but single-writer, so
+last-write-wins on them is harmless. head.json and ack.json are pure optimisations: a
+reader MUST fall back to listing the device's directory if either is absent, stale or
+unparseable. The other two are described in section 9.1.
+
+Note where each one sits. compaction.json is per **(device, document)**, beside the packs
+it describes; eviction.json is per **device**, one level higher, because the deletion
+budget it holds is shared across every device being forgotten.
+
+### 9.1 Housekeeping records
+
+Two JSON sidecars track work a device is doing to its own prefix. Neither is part of the
+operation log, and neither may be read as truth about another device.
+
+**`d/<deviceId>/<documentId>/compaction.json`** — what this device has snapshotted for
+this document, and what it has recently deleted.
+
+    { "snapshots": [ { "seq": number,
+                       "createdAt": number,
+                       "supersedesThrough": number } ],
+      "recentDeletes": [ number ] }
+
+`createdAt` is when the snapshot was published; the grace period is measured from it.
+`supersedesThrough` is the highest sequence of this device's own packs the snapshot makes
+redundant. `recentDeletes` is a rolling hour of deletion timestamps, and is the deletion
+rate limit's only ledger.
+
+An unreadable or absent compaction.json MUST be treated as empty, which means no snapshot
+is mature and **nothing is deleted**. It fails closed, deliberately: losing this file
+costs some tidying, and misreading it costs history.
+
+**`d/<deviceId>/eviction.json`** — the same rolling-hour ledger for forgetting other
+devices, held once per device rather than per document, because one budget covers every
+device being removed.
+
+    { "recentDeletes": [ number ] }
+
+An unreadable or absent eviction.json fails **open**, granting a full budget. That is the
+opposite of the file above and is safe for a different reason: eviction only ever deletes
+objects belonging to a device a person has explicitly chosen to forget.
+
+Both are written with a whole-file rewrite, so a reader MUST tolerate one that is
+truncated or half-written and fall back to the default above rather than failing.
 
 ---
 
