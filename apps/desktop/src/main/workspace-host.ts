@@ -24,7 +24,13 @@ import { loroDocFromJson, plainTextFromJson } from '@knowtion/editor/headless';
 import { importNotionArchive, type ImportReport } from '@knowtion/importers';
 import { ReadModel, type SearchHit } from '@knowtion/readmodel';
 import { deviceFingerprint, toHex, type DeviceKeys, type DeviceRecord } from '@knowtion/format';
-import { DeviceRegistry, NodeStorage, PackStore, listDocumentPacks } from '@knowtion/sync';
+import {
+  DeviceRegistry,
+  NodeStorage,
+  PackStore,
+  checkDataLoss,
+  listDocumentPacks,
+} from '@knowtion/sync';
 
 import { normaliseText, plainTextFromLoroJson } from './plain-text.js';
 
@@ -97,6 +103,11 @@ export interface SyncStatus {
   treePacksApplied: number;
   bodiesUpdated: number;
   rejected: number;
+  /**
+   * Set when syncing has been stopped because merging would have destroyed nearly
+   * everything. Syncing stays stopped until the application is restarted.
+   */
+  halted?: string;
 }
 
 /** One open page body: its document and the store that persists it. */
@@ -129,6 +140,8 @@ export class WorkspaceHost {
    * With it, a quiet cycle is a directory listing and a set lookup.
    */
   readonly #indexedPacks = new Set<string>();
+  /** Set once the circuit breaker has fired. Syncing does not resume on its own. */
+  #haltedReason: string | undefined;
   readonly #options: WorkspaceHostOptions;
   #pendingFlush: NodeJS.Timeout | undefined;
   /**
@@ -456,9 +469,30 @@ export class WorkspaceHost {
    * ordering costs nothing to get right.
    */
   async sync(): Promise<SyncStatus> {
+    if (this.#haltedReason !== undefined) {
+      return { treePacksApplied: 0, bodiesUpdated: 0, rejected: 0, halted: this.#haltedReason };
+    }
     await this.flush();
 
+    const pagesBeforeMerge = this.#workspace.allPages().length;
     const tree = await this.#store.pull(this.#workspace.doc);
+
+    // Joplin's circuit breaker. Knowtion's layout is meant to make this impossible —
+    // deletion is an explicit tombstone and a listing is never truth — but the
+    // reasoning that makes it unnecessary is the same reasoning that would be wrong if
+    // there were a bug. This is the last thing between a defect in the merge path and
+    // somebody's notes, so it stops rather than continues.
+    const verdict = checkDataLoss(pagesBeforeMerge, this.#workspace.allPages().length);
+    if (!verdict.safe) {
+      this.#haltedReason = verdict.reason ?? 'merging would have removed almost everything';
+      console.error(`[knowtion] sync halted: ${this.#haltedReason}`);
+      return {
+        treePacksApplied: tree.applied,
+        bodiesUpdated: 0,
+        rejected: tree.rejected.length,
+        halted: this.#haltedReason,
+      };
+    }
     for (const rejected of tree.rejected) {
       console.error(`[knowtion] rejected pack ${rejected.path}: ${rejected.message}`);
     }

@@ -16,7 +16,7 @@
  * never "those packs were deleted". Deletion is an explicit tombstone inside the log.
  */
 
-import { LoroDoc, type VersionVector } from 'loro-crdt';
+import { LoroDoc, VersionVector, type PeerID } from 'loro-crdt';
 import {
   HEADER_SIZE,
   PackFormatError,
@@ -90,6 +90,17 @@ export function packPath(deviceHex: string, documentHex: string, seq: number): S
   return `d/${deviceHex}/${documentHex}/${String(seq).padStart(SEQ_DIGITS, '0')}.kpack`;
 }
 
+/** A pack worth considering, already decoded and verified. */
+interface PackCandidate {
+  path: StoragePath;
+  deviceHex: string;
+  seq: number;
+  bytes: Uint8Array;
+  decoded: ReturnType<typeof decodePack>;
+  /** True when recovered from a conflict copy rather than its canonical name. */
+  adopted: boolean;
+}
+
 export class PackStore {
   readonly #storage: StoragePort;
   readonly #workspaceId: Uint8Array;
@@ -110,14 +121,13 @@ export class PackStore {
   /** Version vector at the last push, so each pack carries only new operations. */
   #lastPushed: VersionVector | undefined;
   /**
-   * Frontiers at the last push, used to detect that nothing has changed.
+   * The same vector as a plain map, for deciding whether anything is worth pushing.
    *
-   * Byte length is not a usable emptiness test: an update export of an untouched
-   * document is still a non-empty envelope, so checking it would make every idle cycle
-   * write a pack containing no operations. In folder mode that is a file the user's
-   * cloud client uploads for no reason, forever.
+   * Compared exactly rather than by frontier equality. A frontier check cannot tell
+   * "we have new local work" from "we merged someone else's work", and conflating them
+   * is how local edits get skipped.
    */
-  #lastPushedFrontiers = '';
+  #publishedCounters: Map<PeerID, number> = new Map();
   /** Packs already merged, keyed by path, so a rescan does not re-read them. */
   readonly #known = new Set<StoragePath>();
   /**
@@ -126,10 +136,21 @@ export class PackStore {
    * It must outlive a single pull. Packs already merged are skipped without being
    * re-read, so a per-pull map would be empty for those devices and the next pack in
    * their chain would look like it followed nothing — rejected as a broken chain even
-   * though the log is intact. That bug only appears on the second pack a device
-   * writes, which is to say immediately in real use and never in a one-shot test.
+   * though the log is intact. That bug only appears on the second pack a device writes,
+   * which is to say immediately in real use and never in a one-shot test.
    */
   readonly #chainTips = new Map<string, Uint8Array>();
+  /**
+   * Packs already merged, identified by device and sequence rather than by path.
+   *
+   * A path is not an identity here: a sync client renames files, so the same pack can
+   * reappear under a name we have never seen. Re-evaluating it would compare its
+   * predecessor hash against a chain tip that has since moved on, and reject a pack we
+   * already hold as a broken chain — permanently, on every later cycle. Found by the
+   * simulator, which is exactly the sort of thing no one writes a unit test for in
+   * advance.
+   */
+  readonly #appliedPacks = new Set<string>();
 
   constructor(options: PackStoreOptions) {
     this.#storage = options.storage;
@@ -159,9 +180,8 @@ export class PackStore {
    * the user's cloud client quiet too.
    */
   async push(doc: LoroDoc): Promise<PushResult | undefined> {
-    const frontiers = JSON.stringify(doc.frontiers());
-    if (frontiers === '[]') return undefined; // nothing has ever been written
-    if (frontiers === this.#lastPushedFrontiers) return undefined; // nothing new
+    const current = versionCounters(doc.version());
+    if (!hasNewOperations(current, this.#publishedCounters)) return undefined;
 
     const payload =
       this.#lastPushed === undefined
@@ -200,9 +220,15 @@ export class PackStore {
 
     this.#lastSeq = seq;
     this.#lastHash = hash(pack);
+    // Record our own chain tip as a reader would compute it. Without this, a pack we
+    // wrote ourselves has no recorded predecessor, so if it ever comes back under a
+    // different name — a sync client renaming it — its successor fails the chain check
+    // and every later pack is rejected for good. Found by the simulator.
+    this.#chainTips.set(this.#deviceHex, this.#lastHash);
+    this.#appliedPacks.add(`${this.#deviceHex}:${seq}`);
     // Both describe the same moment: the state the payload above was exported from.
     this.#lastPushed = publishedVersion;
-    this.#lastPushedFrontiers = frontiers;
+    this.#publishedCounters = versionCounters(publishedVersion);
     this.#known.add(path);
     await this.#writeHead();
 
@@ -217,34 +243,124 @@ export class PackStore {
    */
   async pull(doc: LoroDoc): Promise<PullResult> {
     const result: PullResult = { applied: 0, adopted: 0, skipped: 0, rejected: [] };
-
     const objects = await this.#storage.list('d/');
-    // Sorted so each device's packs arrive in sequence order and the chain can be
-    // verified as we go. Loro itself does not care about order.
-    const candidates = objects
-      .map((o) => ({ object: o, parsed: parsePackPath(o.path) }))
-      // Only this document's packs. Another document's namespace is not ours to read,
-      // and an unrecognised one is a page we have not been told about yet, not damage.
-      .filter((c) => c.parsed !== undefined && c.parsed.documentHex === this.#documentHex)
-      .sort((a, b) => a.object.path.localeCompare(b.object.path));
 
-    for (const { object, parsed } of candidates) {
+    const candidates = await this.#gatherCandidates(objects, result);
+    // Sorted by device then sequence so each chain can be verified as it is walked.
+    candidates.sort((a, b) =>
+      a.deviceHex === b.deviceHex ? a.seq - b.seq : a.deviceHex.localeCompare(b.deviceHex),
+    );
+
+    for (const candidate of candidates) {
+      if (this.#known.has(candidate.path)) {
+        result.skipped++;
+        continue;
+      }
+
+      const identity = `${candidate.deviceHex}:${candidate.seq}`;
+      if (this.#appliedPacks.has(identity)) {
+        // The same pack under a different name. Remember the new path so it is not
+        // decoded again, and move on.
+        this.#known.add(candidate.path);
+        result.skipped++;
+        continue;
+      }
+
+      const expectedPrev = this.#chainTips.get(candidate.deviceHex) ?? new Uint8Array(32);
+      const isRoot = candidate.decoded.header.prevPackHash.every((b) => b === 0);
+      if (!isRoot && !equalBytes(candidate.decoded.header.prevPackHash, expectedPrev)) {
+        // A gap in a device's chain means an earlier pack is missing or has not synced
+        // yet. Do not apply past it: continuing would hide the missing pack forever.
+        result.rejected.push({
+          path: candidate.path,
+          code: 'BROKEN_CHAIN',
+          message:
+            `pack ${candidate.path} does not chain to the previous pack from device ` +
+            `${candidate.deviceHex}; an earlier pack is missing or has not synced yet`,
+        });
+        continue;
+      }
+
+      doc.import(candidate.decoded.payload);
+      this.#chainTips.set(candidate.deviceHex, hash(candidate.bytes));
+      this.#known.add(candidate.path);
+      this.#appliedPacks.add(identity);
+      if (candidate.adopted) result.adopted++;
+      else result.applied++;
+
+      if (candidate.deviceHex === this.#deviceHex && candidate.seq > this.#lastSeq) {
+        // Adopt our own history on restart, so the next push continues the chain.
+        this.#lastSeq = candidate.seq;
+        this.#lastHash = hash(candidate.bytes);
+      }
+    }
+
+    if (result.applied > 0 || result.adopted > 0) {
+      // Imported operations are already in the log, so they must not be re-published
+      // inside one of our own packs. But OUR OWN unpushed work is not in the log, and
+      // an earlier version of this simply took the whole document version here — which
+      // marked anything written while offline as published and silently dropped it.
+      // Our own peer's counter is therefore held back to what was really pushed.
+      const merged = versionCounters(doc.version());
+      const ownPeer = doc.peerIdStr;
+      const published = this.#publishedCounters.get(ownPeer);
+      if (published === undefined) merged.delete(ownPeer);
+      else merged.set(ownPeer, published);
+
+      this.#publishedCounters = merged;
+      this.#lastPushed = new VersionVector(new Map(merged));
+    }
+    return result;
+  }
+
+  /**
+   * Every pack for this document that is worth considering, decoded and verified.
+   *
+   * Conflict copies are gathered HERE rather than handled after the chain pass, which is
+   * the bug the simulator found: recovering a renamed pack afterwards left the pack that
+   * followed it failing its chain check on every future cycle, so one rename by a sync
+   * client silently froze a device's history at that point.
+   *
+   * A copy is only considered when the canonically named pack is absent. If both exist
+   * the copy is a duplicate, and decoding it every cycle would cost work for operations
+   * already merged.
+   */
+  async #gatherCandidates(
+    objects: { path: StoragePath }[],
+    result: PullResult,
+  ): Promise<PackCandidate[]> {
+    const present = new Set(objects.map((o) => o.path));
+    const out: PackCandidate[] = [];
+
+    for (const object of objects) {
+      if (!object.path.endsWith('.kpack')) continue;
+
+      const named = parsePackPath(object.path);
+      if (named !== undefined) {
+        if (named.documentHex !== this.#documentHex) continue;
+      } else {
+        // Possibly a conflict copy. Only ours, and only when the real pack is gone.
+        const parts = object.path.split('/');
+        if (parts.length !== 4 || parts[0] !== 'd' || parts[2] !== this.#documentHex) continue;
+      }
+
       if (this.#known.has(object.path)) {
         result.skipped++;
         continue;
       }
 
       const bytes = await this.#storage.get(object.path);
-      if (bytes === undefined) {
-        // Listed but unreadable. Normal while a cloud client is still materialising a
-        // file; try again next cycle rather than treating it as damage.
-        continue;
-      }
+      if (bytes === undefined) continue; // listed but not yet readable
 
       let decoded;
       try {
         decoded = decodePack(bytes, object.path);
       } catch (error) {
+        if (named === undefined) {
+          // An unreadable file merely bearing our extension is ordinary in a synced
+          // folder, and reporting it as damage would train people to ignore the report.
+          continue;
+        }
         if (error instanceof PackFormatError) {
           result.rejected.push({ path: object.path, code: error.code, message: error.message });
           continue;
@@ -252,91 +368,15 @@ export class PackStore {
         throw error;
       }
 
-      const device = parsed!.deviceHex;
-      const expectedPrev = this.#chainTips.get(device) ?? new Uint8Array(32);
-      const isRoot = decoded.header.prevPackHash.every((b) => b === 0);
-      if (!isRoot && !equalBytes(decoded.header.prevPackHash, expectedPrev)) {
-        // A gap in a device's chain means a pack is missing or out of order. Do not
-        // apply past it: silently continuing would hide the missing pack forever.
-        result.rejected.push({
-          path: object.path,
-          code: 'BROKEN_CHAIN',
-          message:
-            `pack ${object.path} does not chain to the previous pack from device ${device}; ` +
-            'an earlier pack is missing or has not synced yet',
-        });
-        continue;
-      }
-
-      doc.import(decoded.payload);
-      this.#chainTips.set(device, hash(bytes));
-      this.#known.add(object.path);
-      result.applied++;
-
-      if (device === this.#deviceHex && parsed!.seq > this.#lastSeq) {
-        // Adopt our own history on restart, so the next push continues the chain.
-        this.#lastSeq = parsed!.seq;
-        this.#lastHash = hash(bytes);
-      }
-    }
-
-    await this.#adoptConflictCopies(doc, objects, result);
-
-    if (result.applied > 0 || result.adopted > 0) {
-      // Remote operations are now ours to build on, but they are already in the log, so
-      // they must not be re-pushed inside one of our own packs.
-      this.#lastPushed = doc.version();
-      this.#lastPushedFrontiers = JSON.stringify(doc.frontiers());
-    }
-    return result;
-  }
-
-  /**
-   * Recover packs from conflict copies whose original is missing.
-   *
-   * Only when the canonical file is absent. If it is present the copy is a duplicate,
-   * and importing it would be a harmless no-op that still costs a decode on every
-   * cycle — so it is skipped rather than adopted.
-   *
-   * The identity used is the one INSIDE the file, never the filename: the filename is
-   * exactly what the sync client mangled.
-   */
-  async #adoptConflictCopies(
-    doc: LoroDoc,
-    objects: { path: StoragePath }[],
-    result: PullResult,
-  ): Promise<void> {
-    const present = new Set(objects.map((o) => o.path));
-
-    for (const object of objects) {
-      if (!object.path.endsWith('.kpack')) continue;
-      if (parsePackPath(object.path) !== undefined) continue; // a well-named pack
-      if (this.#known.has(object.path)) continue;
-
-      const parts = object.path.split('/');
-      if (parts.length !== 4 || parts[0] !== 'd') continue;
-      if (parts[2] !== this.#documentHex) continue;
-
-      const bytes = await this.#storage.get(object.path);
-      if (bytes === undefined) continue;
-
-      let decoded;
-      try {
-        decoded = decodePack(bytes, object.path);
-      } catch {
-        // Unreadable files with our extension are ordinary in a synced folder; a
-        // partially materialised one is not damage worth reporting.
-        continue;
-      }
-
       const deviceHex = toHex(decoded.header.deviceId);
-      const canonical = packPath(deviceHex, this.#documentHex, Number(decoded.header.seq));
-      if (present.has(canonical)) continue; // the real pack is there; this is a duplicate
+      const seq = Number(decoded.header.seq);
+      if (named === undefined && present.has(packPath(deviceHex, this.#documentHex, seq))) {
+        continue; // the real pack is there; this is a duplicate
+      }
 
-      doc.import(decoded.payload);
-      this.#known.add(object.path);
-      result.adopted += 1;
+      out.push({ path: object.path, deviceHex, seq, bytes, decoded, adopted: named === undefined });
     }
+    return out;
   }
 
   /**
@@ -389,4 +429,21 @@ export async function listDocumentPacks(storage: StoragePort): Promise<Map<strin
     else byDocument.set(parsed.documentHex, [object.path]);
   }
   return byDocument;
+}
+
+/** A version vector as a plain peer-to-counter map. */
+function versionCounters(version: VersionVector): Map<PeerID, number> {
+  const out = new Map<PeerID, number>();
+  for (const [peer, counter] of version.toJSON()) {
+    out.set(String(peer) as PeerID, Number(counter));
+  }
+  return out;
+}
+
+/** True when the document holds an operation not covered by what was published. */
+function hasNewOperations(current: Map<PeerID, number>, published: Map<PeerID, number>): boolean {
+  for (const [peer, counter] of current) {
+    if (counter > (published.get(peer) ?? 0)) return true;
+  }
+  return false;
 }
