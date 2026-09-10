@@ -34,9 +34,11 @@ import {
   computeTrimFloor,
   detectEvicted,
   listDocumentPacks,
+  type PackCrypto,
 } from '@knowtion/sync';
 
 import { normaliseText, plainTextFromLoroJson } from './plain-text.js';
+import { currentKey, keyringFrom, type WorkspaceKeyMaterial } from './workspace-keys.js';
 
 /** How long to wait after the last edit before sealing a pack. */
 const FLUSH_DELAY_MS = 400;
@@ -61,6 +63,14 @@ export interface WorkspaceHostOptions {
   peerId: bigint;
   /** This device's keypairs. Its public halves go into the registry record. */
   deviceKeys: DeviceKeys;
+  /**
+   * The workspace keys this device holds. Absent means the workspace is still
+   * plaintext, and every pack is written under suite NONE exactly as before.
+   *
+   * The host builds the sync engine's crypto bundle from this rather than taking one
+   * ready-made, because rule 7 needs the device registry and the host is what owns it.
+   */
+  workspaceKeys?: WorkspaceKeyMaterial;
   /** Shown in the device list. Never trusted for anything else. */
   deviceLabel?: string;
   /** Injected so tests can flush synchronously instead of waiting. */
@@ -129,6 +139,16 @@ export class WorkspaceHost {
   #storage!: NodeStorage;
   #index!: ReadModel;
   #registry!: DeviceRegistry;
+  #crypto: PackCrypto | undefined;
+  /**
+   * Signing keys already looked up, for reading rule 7.
+   *
+   * Only successes are cached. A device record is written once and never mutated
+   * (FORMAT.md section 9), so a hit can be trusted forever — but a miss means "that
+   * device has not enrolled yet, or its record has not synced", and caching that would
+   * lock the device out permanently the moment it did appear.
+   */
+  readonly #signingKeys = new Map<string, Uint8Array>();
   /**
    * Page bodies currently loaded.
    *
@@ -188,17 +208,20 @@ export class WorkspaceHost {
     );
     host.#storage = storage;
     host.#workspace = Workspace.create({ runtime: systemRuntime(), peerId: options.peerId });
+    host.#registry = new DeviceRegistry(storage);
+    host.#crypto = host.#buildCrypto();
+
     host.#store = new PackStore({
       storage,
       workspaceId: options.workspaceId,
       deviceId: options.deviceId,
+      ...(host.#crypto === undefined ? {} : { crypto: host.#crypto }),
     });
 
     // Beside the log, never inside it. ADR-0004 requires two separate roots: a cloud
     // client copying a live SQLite file mid-transaction produces a reliably corrupt
     // one, and the index bytes are not even deterministic across machines.
     host.#index = ReadModel.open(join(options.dataDir, 'index.db'));
-    host.#registry = new DeviceRegistry(storage);
     host.#compactor = new Compactor({
       storage,
       workspaceId: options.workspaceId,
@@ -206,6 +229,12 @@ export class WorkspaceHost {
       deviceHex: toHex(options.deviceId),
       documentHex: '0'.repeat(32),
       now: () => Date.now(),
+      ...(host.#crypto?.sealWith === undefined
+        ? {}
+        : {
+            sealWith: host.#crypto.sealWith,
+            signingSecretKey: options.deviceKeys.signingSecretKey,
+          }),
     });
 
     // Publish this device before reading anyone else's work, so a device that has
@@ -392,6 +421,7 @@ export class WorkspaceHost {
       workspaceId: this.#options.workspaceId,
       deviceId: this.#options.deviceId,
       documentId: uuidToBytes(page.uuid),
+      ...(this.#crypto === undefined ? {} : { crypto: this.#crypto }),
     });
 
     const result = await store.pull(doc);
@@ -458,6 +488,7 @@ export class WorkspaceHost {
         workspaceId: this.#options.workspaceId,
         deviceId: this.#options.deviceId,
         documentId: uuidToBytes(page.uuid),
+        ...(this.#crypto === undefined ? {} : { crypto: this.#crypto }),
       });
       await store.push(doc);
 
@@ -488,6 +519,33 @@ export class WorkspaceHost {
    * anywhere — recoverable, but it would silently re-download them next time, and the
    * ordering costs nothing to get right.
    */
+  /**
+   * The sync engine's crypto bundle, or undefined while the workspace is plaintext.
+   *
+   * Rule 7 needs the device registry, which is workspace-wide, while a pack store is
+   * per document — so the lookup is supplied from here rather than the registry being
+   * handed to every store.
+   */
+  #buildCrypto(): PackCrypto | undefined {
+    const material = this.#options.workspaceKeys;
+    if (material === undefined) return undefined;
+    return {
+      keyring: keyringFrom(material),
+      sealWith: currentKey(material),
+      signingSecretKey: this.#options.deviceKeys.signingSecretKey,
+      signingKeyFor: (deviceHex) => this.#signingKeyFor(deviceHex),
+    };
+  }
+
+  async #signingKeyFor(deviceHex: string): Promise<Uint8Array | undefined> {
+    const cached = this.#signingKeys.get(deviceHex);
+    if (cached !== undefined) return cached;
+    const record = await this.#registry.get(deviceHex);
+    if (record === undefined) return undefined;
+    this.#signingKeys.set(deviceHex, record.signingPublicKey);
+    return record.signingPublicKey;
+  }
+
   async sync(): Promise<SyncStatus> {
     if (this.#haltedReason !== undefined) {
       return { treePacksApplied: 0, bodiesUpdated: 0, rejected: 0, halted: this.#haltedReason };
@@ -578,6 +636,7 @@ export class WorkspaceHost {
           workspaceId: this.#options.workspaceId,
           deviceId: this.#options.deviceId,
           documentId: uuidToBytes(page.uuid),
+          ...(this.#crypto === undefined ? {} : { crypto: this.#crypto }),
         });
         await store.pull(doc);
         this.#indexBody(page.id, doc);
