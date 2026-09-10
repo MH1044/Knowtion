@@ -28,3 +28,4 @@ An ADR records a decision that was **expensive to make and expensive to reverse*
 | [0010](0010-per-document-pack-namespaces.md)    | Packs are namespaced by document, not only by device         | Accepted |
 | [0011](0011-node-sqlite-over-better-sqlite3.md) | Node's built-in SQLite rather than better-sqlite3            | Accepted |
 | [0012](0012-encryption-parameters.md)           | The encryption parameters ADR-0007 left open                 | Accepted |
+| [0013](0013-reading-snapshots.md)               | Snapshots are read, and re-anchor their device's chain       | Accepted |

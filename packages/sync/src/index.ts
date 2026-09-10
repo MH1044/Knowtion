@@ -34,6 +34,7 @@ export {
   listDocumentPacks,
   packPath,
   parsePackPath,
+  parseSnapshotPath,
 } from './pack-store.js';
 export { isTransientReadError } from './read-errors.js';
 

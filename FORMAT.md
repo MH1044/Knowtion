@@ -89,7 +89,8 @@ A reader MUST apply these in order and MUST reject the file on any failure:
 6. padding_len is not greater than payload_len.
 7. If suite_id is not 0, device_signature verifies against the registered public key
    for device_id.
-8. prev_pack_hash chains to the previous seq from that device, or is zero at a root.
+8. prev_pack_hash chains to the previous seq from that device, or is zero at a root, or
+   the pack sits immediately above a snapshot from that device (see section 8.1).
 
 A rejected pack MUST be logged with its path and the failing rule. It MUST NOT be
 silently skipped: silent skipping is indistinguishable from data loss, and in a synced
@@ -269,9 +270,38 @@ Rules, all forced by OneDrive and SharePoint naming restrictions:
   a normal state during sync, not damage.
 - A pack filename MUST match exactly twelve digits followed by .kpack. Anything else —
   a sync client's conflict copy, a partial download — is ignored rather than parsed.
+- A snapshot filename MUST match exactly twelve digits followed by .ksnap, and MUST sit
+  in the `snap/` directory beneath a document. It is five path segments rather than four,
+  and a reader MUST parse the two forms separately: the pack form decides what a device
+  may DELETE during compaction, so a parser that accepted both would let compaction
+  delete the snapshots superseding the packs it is trimming.
 - Generated paths SHOULD stay under 250 characters.
 - No object may be named .lock or desktop.ini, or any Windows reserved device name, and
   none may contain the substring _vti_ or begin with a tilde-dollar pair.
+
+### 8.1 Reading a snapshot
+
+A snapshot is a pack envelope with flags bit 0 set, whose payload is a Loro shallow
+snapshot. It exists because compaction deletes the packs it supersedes, so a reader that
+ignores it sees a hole where trimmed history used to be.
+
+Readers MUST apply the same rules 1 to 7 to a snapshot as to a pack, and MUST then:
+
+- apply snapshots **before** packs, oldest sequence first. A shallow snapshot carries
+  history the packs beside it may no longer contain, and Loro cannot import updates
+  concurrent to a snapshot's start version.
+- treat a snapshot at sequence N from device D as **re-anchoring D's chain at N**. Packs
+  from D at or below N are already contained in it. The pack at N+1 MUST be accepted
+  without a rule 8 predecessor check, and rule 8 resumes above it.
+
+The re-anchor is required, not an optimisation: a snapshot carries no prev_pack_hash of
+its own, so it cannot supply the predecessor hash rule 8 wants — and that predecessor is
+the pack compaction just deleted. Without it, every pack written after a collection would
+be rejected forever.
+
+A snapshot that cannot be applied MUST be reported rather than skipped, and MUST NOT
+fail the cycle. The reporting requirement is strongest here: once the packs it supersedes
+have been collected, it is the only copy.
 
 ---
 
