@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 
-import { api, type ImportReport, type Page, type PageNode } from './api.js';
+import { api, type ImportReport, type KeyStatus, type Page, type PageNode } from './api.js';
+import { RecoverySetup } from './RecoverySetup.js';
 import { PageBody } from './PageBody.js';
 import { PageTree } from './PageTree.js';
 import { Search } from './Search.js';
@@ -24,6 +25,15 @@ export function App(): React.JSX.Element {
   const [error, setError] = useState<string>();
   const [importReport, setImportReport] = useState<ImportReport>();
   const [importing, setImporting] = useState(false);
+  const [keyStatus, setKeyStatus] = useState<KeyStatus>();
+
+  const loadKeyStatus = useCallback(async () => {
+    try {
+      setKeyStatus(await api.keyStatus());
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause));
+    }
+  }, []);
 
   const refresh = useCallback(async () => {
     try {
@@ -37,8 +47,14 @@ export function App(): React.JSX.Element {
   }, []);
 
   useEffect(() => {
-    void refresh();
-  }, [refresh]);
+    void loadKeyStatus();
+  }, [loadKeyStatus]);
+
+  useEffect(() => {
+    // The workspace is not open until setup is done, so asking for the tree before
+    // then would only produce an error the user can do nothing about.
+    if (keyStatus?.needsSetup === false) void refresh();
+  }, [keyStatus, refresh]);
 
   /** Run an intent, then reload. Errors surface rather than failing silently. */
   const run = useCallback(
@@ -55,6 +71,11 @@ export function App(): React.JSX.Element {
   );
 
   const selected = selectedId === undefined ? undefined : findPage(tree, selectedId);
+
+  if (keyStatus === undefined) return <div className="app loading">Starting Knowtion…</div>;
+  if (keyStatus.needsSetup) {
+    return <RecoverySetup status={keyStatus} onDone={() => void loadKeyStatus()} />;
+  }
 
   return (
     <div className="app">
