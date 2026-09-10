@@ -48,6 +48,21 @@ export {
 } from './recovery-phrase.js';
 export type { RecoveryPhraseProblem } from './recovery-phrase.js';
 
+export {
+  DEFAULT_KDF_PARAMS,
+  FIRST_KEY_EPOCH,
+  KEY_WRAP_VERSION,
+  KeyWrapError,
+  WORKSPACE_KEY_SIZE,
+  generateWorkspaceKey,
+  rotateWorkspaceKey,
+  unwrapKeyFromDevice,
+  unwrapKeyFromRecoveryPhrase,
+  wrapKeyToDevice,
+  wrapKeyToRecoveryPhrase,
+} from './key-wrap.js';
+export type { KdfParams, KeyWrapProblem, WorkspaceKey } from './key-wrap.js';
+
 export { generateDeviceKeys, sign, verify } from './keys.js';
 export type { DeviceKeys, DevicePublicKeys } from './keys.js';
 
