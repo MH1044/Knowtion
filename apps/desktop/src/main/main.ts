@@ -40,6 +40,17 @@ let secretsOsBacked = false;
 let logWatcher: FSWatcher | undefined;
 let watchDebounce: NodeJS.Timeout | undefined;
 
+/** `host`/`identity` are module-level `let`s set once at boot; throws if read too early. */
+function must<T>(value: T | null | undefined, what: string): T {
+  if (value === null || value === undefined) throw new Error(`expected ${what} to be set`);
+  return value;
+}
+
+/** IPC handlers below are only registered after `host` is opened in `whenReady`. */
+function mustHost(): WorkspaceHost {
+  return must(host, 'workspace host');
+}
+
 /**
  * How often to look for another device's work.
  *
@@ -129,22 +140,24 @@ function handle(channel: string, fn: (...args: never[]) => unknown): void {
 }
 
 function registerHandlers(): void {
-  handle('workspace:tree', () => host!.tree());
-  handle('workspace:trash', () => host!.trash());
+  handle('workspace:tree', () => mustHost().tree());
+  handle('workspace:trash', () => mustHost().trash());
   handle('workspace:create', (input: { parentId?: string; title?: string }) =>
-    host!.createPage(input as never),
+    mustHost().createPage(input as never),
   );
   handle('workspace:rename', (input: { id: string; title: string }) =>
-    host!.renamePage(input.id as never, input.title),
+    mustHost().renamePage(input.id as never, input.title),
   );
   handle('workspace:move', (input: { id: string; parentId?: string }) =>
-    host!.movePage(input.id as never, input.parentId as never),
+    mustHost().movePage(input.id as never, input.parentId as never),
   );
-  handle('workspace:archive', (input: { id: string }) => host!.archivePage(input.id as never));
-  handle('workspace:restore', (input: { id: string }) => host!.restorePage(input.id as never));
-  handle('workspace:delete', (input: { id: string }) => host!.deletePage(input.id as never));
+  handle('workspace:archive', (input: { id: string }) => mustHost().archivePage(input.id as never));
+  handle('workspace:restore', (input: { id: string }) => mustHost().restorePage(input.id as never));
+  handle('workspace:delete', (input: { id: string }) => {
+    mustHost().deletePage(input.id as never);
+  });
   handle('workspace:search', (input: { query: string; limit?: number }) =>
-    host!.search(input.query, input.limit),
+    mustHost().search(input.query, input.limit),
   );
   // The file picker runs in the main process: the renderer is sandboxed and has no
   // filesystem access, which is the point of the sandbox.
@@ -159,7 +172,7 @@ function registerHandlers(): void {
         return { ok: true, value: null };
       }
       const bytes = new Uint8Array(await readFile(chosen.filePaths[0]));
-      return { ok: true, value: await host!.importNotion(bytes) };
+      return { ok: true, value: await mustHost().importNotion(bytes) };
     } catch (error) {
       return { ok: false, error: error instanceof Error ? error.message : String(error) };
     }
@@ -183,11 +196,11 @@ function registerHandlers(): void {
 
   ipcMain.handle('sync:devices', async () => {
     try {
-      const listed = await host!.devices();
+      const listed = await mustHost().devices();
       return {
         ok: true,
         value: {
-          thisFingerprint: host!.fingerprint,
+          thisFingerprint: mustHost().fingerprint,
           secretsOsBacked,
           devices: listed.devices.map((d) => ({
             deviceHex: Buffer.from(d.deviceId).toString('hex'),
@@ -206,7 +219,7 @@ function registerHandlers(): void {
 
   ipcMain.handle('sync:forget', async (_event, input: { deviceHex: string }) => {
     try {
-      return { ok: true, value: await host!.forgetDevice(input.deviceHex) };
+      return { ok: true, value: await mustHost().forgetDevice(input.deviceHex) };
     } catch (error) {
       return { ok: false, error: error instanceof Error ? error.message : String(error) };
     }
@@ -254,7 +267,7 @@ function registerHandlers(): void {
         // workspaces is not possible — each has its own root document, and combining
         // them keeps one and silently discards the other (ADR-0009). Refusing while
         // there is anything to lose is the only honest option.
-        if (host!.tree().length > 0 || host!.trash().length > 0) {
+        if (mustHost().tree().length > 0 || mustHost().trash().length > 0) {
           return {
             ok: false,
             error:
@@ -272,15 +285,16 @@ function registerHandlers(): void {
       // up operating on a closed store. Nulling it out here, before `close()` even
       // starts, is what makes the guard correct for the whole transition.
       if (syncTimer) clearTimeout(syncTimer);
-      const closingHost = host!;
+      const closingHost = mustHost();
       const previousLogDir = currentLogDir;
-      const previousIdentity = identity!;
+      const previousIdentity = must(identity, 'identity');
       host = undefined;
 
       let nextIdentity = previousIdentity;
       try {
         if (check.existingWorkspace) {
-          const remote = (await readWorkspaceIdFrom(folder))!; // re-checked above, folder unchanged
+          // re-checked above, folder unchanged
+          const remote = must(await readWorkspaceIdFrom(folder), 'workspace id in folder');
           await closingHost.close();
           nextIdentity = await adoptWorkspace(dataDir, previousIdentity, remote, protector);
         } else {
@@ -354,7 +368,7 @@ function registerHandlers(): void {
   });
 
   ipcMain.handle('workspace:flush', async () => {
-    await host!.flush();
+    await mustHost().flush();
     return { ok: true, value: null };
   });
 
@@ -362,7 +376,7 @@ function registerHandlers(): void {
   ipcMain.handle('body:open', async (_event, input: { id: string }) => {
     try {
       // Structured clone carries a Uint8Array, so the bytes cross without base64.
-      return { ok: true, value: await host!.openBody(input.id as never) };
+      return { ok: true, value: await mustHost().openBody(input.id as never) };
     } catch (error) {
       return { ok: false, error: error instanceof Error ? error.message : String(error) };
     }
@@ -370,7 +384,7 @@ function registerHandlers(): void {
 
   ipcMain.handle('body:update', async (_event, input: { id: string; update: Uint8Array }) => {
     try {
-      await host!.applyBodyUpdate(input.id as never, input.update);
+      await mustHost().applyBodyUpdate(input.id as never, input.update);
       return { ok: true, value: null };
     } catch (error) {
       return { ok: false, error: error instanceof Error ? error.message : String(error) };
@@ -406,14 +420,16 @@ async function createWindow(): Promise<void> {
     },
   });
 
-  window.once('ready-to-show', () => window.show());
+  window.once('ready-to-show', () => {
+    window.show();
+  });
   await window.loadFile(join(here, '..', 'renderer', 'index.html'));
-  if (isDevelopment && process.env['KNOWTION_DEVTOOLS'] === '1') {
+  if (isDevelopment && process.env.KNOWTION_DEVTOOLS === '1') {
     window.webContents.openDevTools({ mode: 'detach' });
   }
 }
 
-app.whenReady().then(async () => {
+void app.whenReady().then(async () => {
   // No remote content is ever loaded, so everything is locked to the app's own origin.
   session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
     callback({
@@ -468,7 +484,9 @@ app.on('before-quit', (event) => {
   event.preventDefault();
   const pending = host;
   host = undefined;
-  void pending.close().finally(() => app.quit());
+  void pending.close().finally(() => {
+    app.quit();
+  });
 });
 
 app.on('window-all-closed', () => {

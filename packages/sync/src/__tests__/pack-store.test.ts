@@ -13,6 +13,19 @@ const hexB = 'bb'.repeat(16);
 /** The page hierarchy's reserved document identifier. */
 const TREE = '0'.repeat(32);
 
+/** Unwraps a lookup/result the test knows must have succeeded. */
+function must<T>(value: T | null | undefined, what: string): T {
+  if (value === null || value === undefined) throw new Error(`expected ${what} to exist`);
+  return value;
+}
+
+/** Indexing an array can't statically prove the element is there. */
+function at<T>(array: readonly T[], index: number): T {
+  const value = array[index];
+  if (value === undefined) throw new Error(`expected index ${String(index)} to exist`);
+  return value;
+}
+
 function device(storage: MemoryStorage, id: Uint8Array, peerId: bigint) {
   const doc = new LoroDoc();
   doc.setPeerId(peerId);
@@ -98,9 +111,11 @@ describe('push and pull', () => {
     a.write('two', '2');
     const second = await a.store.push(a.doc);
 
-    expect(second!.seq).toBe(2);
+    expect(must(second, 'a push result').seq).toBe(2);
     // The second pack holds one operation, not the whole history.
-    expect(second!.bytes).toBeLessThan(first!.bytes + 100);
+    expect(must(second, 'a push result').bytes).toBeLessThan(
+      must(first, 'a push result').bytes + 100,
+    );
 
     const reloaded = device(storage, DEVICE_A, 1n);
     await reloaded.store.pull(reloaded.doc);
@@ -235,8 +250,8 @@ describe('damaged and hostile files', () => {
 
     expect(result.applied).toBe(0);
     expect(result.rejected).toHaveLength(1);
-    expect(result.rejected[0]!.code).toBe('TOO_SHORT');
-    expect(result.rejected[0]!.path).toBe(packPath(hexA, TREE, 1));
+    expect(at(result.rejected, 0).code).toBe('TOO_SHORT');
+    expect(at(result.rejected, 0).path).toBe(packPath(hexA, TREE, 1));
   });
 
   it('rejects a corrupted header rather than trusting its fields', async () => {
@@ -249,7 +264,7 @@ describe('damaged and hostile files', () => {
     const b = device(storage, DEVICE_B, 2n);
     const result = await b.store.pull(b.doc);
     expect(result.applied).toBe(0);
-    expect(result.rejected[0]!.code).toBe('BAD_HEADER_CRC');
+    expect(at(result.rejected, 0).code).toBe('BAD_HEADER_CRC');
   });
 
   it('ignores foreign files without reporting them as damage', async () => {
@@ -327,11 +342,11 @@ describe('edits made while a write is in flight', () => {
     const expected: Record<string, string> = {};
 
     for (let i = 0; i < 20; i++) {
-      a.write(`key${i}`, String(i));
-      expected[`key${i}`] = String(i);
+      a.write(`key${String(i)}`, String(i));
+      expected[`key${String(i)}`] = String(i);
       storage.duringWrite = () => {
-        a.write(`mid${i}`, `m${i}`);
-        expected[`mid${i}`] = `m${i}`;
+        a.write(`mid${String(i)}`, `m${String(i)}`);
+        expected[`mid${String(i)}`] = `m${String(i)}`;
       };
       await a.store.push(a.doc);
     }
@@ -348,7 +363,7 @@ describe('edits made while a write is in flight', () => {
 describe('conflict copies', () => {
   /** A sync client renaming a file, which is what they do when they see a clash. */
   async function renameTo(storage: MemoryStorage, from: string, to: string): Promise<void> {
-    const bytes = (await storage.get(from))!;
+    const bytes = must(await storage.get(from), 'the file being renamed');
     await storage.putIfAbsent(to, bytes);
     await storage.delete(from);
   }
@@ -393,7 +408,7 @@ describe('conflict copies', () => {
     const a = device(storage, DEVICE_A, 1n);
     a.write('k', 'v');
     await a.store.push(a.doc);
-    const original = (await storage.get(packPath(hexA, TREE, 1)))!;
+    const original = must(await storage.get(packPath(hexA, TREE, 1)), 'the original pack');
     await storage.putIfAbsent(`d/${hexA}/${TREE}/000000000001 (1).kpack`, original);
 
     const b = device(storage, DEVICE_B, 2n);
@@ -466,7 +481,7 @@ describe('a rename in the middle of a chain', () => {
 
     // The client renames the middle pack.
     const middle = packPath(hexA, TREE, 2);
-    const bytes = (await storage.get(middle))!;
+    const bytes = must(await storage.get(middle), 'the middle pack');
     await storage.putIfAbsent(`d/${hexA}/${TREE}/000000000002-DESKTOP-AB12.kpack`, bytes);
     await storage.delete(middle);
 
@@ -486,7 +501,7 @@ describe('a rename in the middle of a chain', () => {
     await a.store.push(a.doc);
 
     const second = packPath(hexA, TREE, 2);
-    const bytes = (await storage.get(second))!;
+    const bytes = must(await storage.get(second), 'the second pack');
     await storage.delete(second);
 
     const b = device(storage, DEVICE_B, 2n);

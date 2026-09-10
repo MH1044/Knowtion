@@ -405,6 +405,9 @@ export class WorkspaceHost {
   }
 
   /** Merge an edit made in the renderer into the page's document. */
+  // Must stay a rejected Promise, not a synchronous throw: callers (main.ts, tests)
+  // use `.rejects.toThrow`.
+  // eslint-disable-next-line @typescript-eslint/require-await
   async applyBodyUpdate(id: NodeId, update: Uint8Array): Promise<void> {
     const body = this.#bodies.get(id);
     if (!body) {

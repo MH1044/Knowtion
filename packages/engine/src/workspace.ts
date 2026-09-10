@@ -79,12 +79,16 @@ export class Workspace {
       // returns an unresolvable sentinel for a deleted parent, so it must be filtered
       // before use or traversal throws. See ADR-0009.
       parentId: parent && !parent.isDeleted() ? parent.id : undefined,
-      uuid: data['uuid'] as Page['uuid'],
-      title: (data['title'] as string) ?? UNTITLED,
-      ...(typeof data['icon'] === 'string' ? { icon: data['icon'] } : {}),
-      createdAt: (data['createdAt'] as number) ?? 0,
-      updatedAt: (data['updatedAt'] as number) ?? 0,
-      ...(typeof data['archivedAt'] === 'number' ? { archivedAt: data['archivedAt'] } : {}),
+      uuid: data.uuid as Page['uuid'],
+      // These `as ... | undefined` casts (rather than a plain `as string`/`as number`)
+      // are load-bearing: node.data is untyped Loro tree JSON, so a page written before
+      // a field existed can genuinely be missing it, and the cast must say so or the
+      // `??` fallback below reads as dead code to the type checker.
+      title: (data.title as string | undefined) ?? UNTITLED,
+      ...(typeof data.icon === 'string' ? { icon: data.icon } : {}),
+      createdAt: (data.createdAt as number | undefined) ?? 0,
+      updatedAt: (data.updatedAt as number | undefined) ?? 0,
+      ...(typeof data.archivedAt === 'number' ? { archivedAt: data.archivedAt } : {}),
     };
   }
 

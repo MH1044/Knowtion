@@ -3,13 +3,20 @@ import { describe, expect, it } from 'vitest';
 import { bytesToUuid, createIdGen, uuidToBytes, uuidTimestamp } from '../ids.js';
 import { deterministicRuntime, systemRuntime } from '../runtime.js';
 
+/** Indexing a Uint8Array can't statically prove the index is in bounds. */
+function at(bytes: Uint8Array, index: number): number {
+  const value = bytes[index];
+  if (value === undefined) throw new Error(`expected index ${String(index)} to exist`);
+  return value;
+}
+
 describe('UUIDv7', () => {
   it('has the version and variant bits RFC 9562 requires', () => {
     const gen = createIdGen(deterministicRuntime(1));
     for (let i = 0; i < 200; i++) {
       const b = gen.nextBytes();
-      expect(b[6]! >>> 4, 'version nibble').toBe(0x7);
-      expect(b[8]! >>> 6, 'variant bits').toBe(0b10);
+      expect(at(b, 6) >>> 4, 'version nibble').toBe(0x7);
+      expect(at(b, 8) >>> 6, 'variant bits').toBe(0b10);
     }
   });
 

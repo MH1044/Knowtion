@@ -65,20 +65,22 @@ export class SimulatedDevice {
 
     switch (action) {
       case 'createPage': {
-        const page = this.workspace.createPage({ title: `p${Math.floor(random() * 10_000)}` });
+        const page = this.workspace.createPage({
+          title: `p${String(Math.floor(random() * 10_000))}`,
+        });
         return `create ${page.title}`;
       }
       case 'createChild': {
         if (!target) return 'create skipped: no parent';
         const page = this.workspace.createPage({
           parentId: target.id,
-          title: `c${Math.floor(random() * 10_000)}`,
+          title: `c${String(Math.floor(random() * 10_000))}`,
         });
         return `create ${page.title} under ${target.title}`;
       }
       case 'renamePage': {
         if (!target) return 'rename skipped';
-        this.workspace.renamePage(target.id, `r${Math.floor(random() * 10_000)}`);
+        this.workspace.renamePage(target.id, `r${String(Math.floor(random() * 10_000))}`);
         return `rename ${target.title}`;
       }
       case 'movePage': {
@@ -107,7 +109,7 @@ export class SimulatedDevice {
       }
       case 'editBody': {
         if (!target) return 'edit skipped';
-        this.#bodies.set(target.id, `body text ${Math.floor(random() * 10_000)}`);
+        this.#bodies.set(target.id, `body text ${String(Math.floor(random() * 10_000))}`);
         return `edit body of ${target.title}`;
       }
     }
@@ -145,7 +147,12 @@ export class SimulatedDevice {
     const fresh = ReadModel.open(':memory:');
     fresh.projectPages(this.workspace.allPages());
     for (const [id, text] of this.#bodies) fresh.setPageBody(id, text);
-    return { pages: fresh.pages(), close: () => fresh.close() };
+    return {
+      pages: fresh.pages(),
+      close: () => {
+        fresh.close();
+      },
+    };
   }
 
   get indexPages(): ReturnType<ReadModel['pages']> {

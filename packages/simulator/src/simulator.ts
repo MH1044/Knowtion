@@ -22,6 +22,17 @@ import { checkDataLoss, type FaultProfile, FaultyStorage } from '@knowtion/sync'
 import { SimulatedDevice, type Action } from './device.js';
 import { VirtualClock, choose, seededRandom } from './deterministic.js';
 
+/** Unwraps a lookup the caller knows must have succeeded (e.g. a non-empty array). */
+function must<T>(value: T | undefined, what: string): T {
+  if (value === undefined) throw new Error(`expected ${what} to exist`);
+  return value;
+}
+
+/** Indexing an array can't statically prove the index is in bounds. */
+function at<T>(array: readonly T[], index: number): T {
+  return must(array[index], `element at index ${String(index)}`);
+}
+
 const ACTIONS: Action[] = [
   'createPage',
   'createChild',
@@ -60,7 +71,7 @@ export class InvariantViolation extends Error {
 
   constructor(message: string, seed: number, trace: string[]) {
     super(
-      `${message}\n\nSeed ${seed}. Last steps:\n  ${trace.slice(-25).join('\n  ')}\n\n` +
+      `${message}\n\nSeed ${String(seed)}. Last steps:\n  ${trace.slice(-25).join('\n  ')}\n\n` +
         'Re-run with this seed to reproduce exactly.',
     );
     this.name = 'InvariantViolation';
@@ -119,7 +130,7 @@ export async function runSimulation(options: SimulationOptions): Promise<Simulat
   const workspaceId = new Uint8Array(16).fill(0x11);
   const devices = Array.from({ length: deviceCount }, (_, i) => {
     return new SimulatedDevice({
-      name: `device-${i}`,
+      name: `device-${String(i)}`,
       storage,
       workspaceId,
       deviceId: new Uint8Array(16).fill(0xa0 + i),
@@ -134,15 +145,15 @@ export async function runSimulation(options: SimulationOptions): Promise<Simulat
   };
 
   for (let step = 0; step < steps; step++) {
-    const device = choose(random, devices)!;
-    const action = choose(random, ACTIONS)!;
+    const device = must(choose(random, devices), 'a device to choose from a non-empty list');
+    const action = must(choose(random, ACTIONS), 'an action to choose from a non-empty list');
 
-    trace.push(`[${step}] ${device.name} ${device.act(random, action)}`);
+    trace.push(`[${String(step)}] ${device.name} ${device.act(random, action)}`);
 
     // Going offline and coming back is the normal state of a laptop, not an edge case.
     if (random() < 0.08) {
       device.online = !device.online;
-      trace.push(`[${step}] ${device.name} is now ${device.online ? 'online' : 'offline'}`);
+      trace.push(`[${String(step)}] ${device.name} is now ${device.online ? 'online' : 'offline'}`);
     }
 
     if (random() < 0.6) await device.push();
@@ -162,7 +173,9 @@ export async function runSimulation(options: SimulationOptions): Promise<Simulat
         // Rejections are expected while a file is materialising: the pack is truncated
         // and verification catches it. What must never happen is a rejection that
         // persists, which the convergence check at the end would catch.
-        trace.push(`[${step}] ${device.name} rejected ${result.rejected.length} pack(s)`);
+        trace.push(
+          `[${String(step)}] ${device.name} rejected ${String(result.rejected.length)} pack(s)`,
+        );
       }
     }
 
@@ -199,11 +212,13 @@ export async function runSimulation(options: SimulationOptions): Promise<Simulat
 
   const shapes = devices.map(shape);
   const converged = shapes.every((s) => JSON.stringify(s) === JSON.stringify(shapes[0]));
-  const finalPageCount = devices[0]!.workspace.allPages().length;
+  const finalPageCount = at(devices, 0).workspace.allPages().length;
   const writeFailures = devices.reduce((sum, d) => sum + d.pendingWriteFailures, 0);
 
   if (!converged) {
-    const detail = devices.map((d, i) => `  ${d.name}: ${shapes[i]!.length} pages`).join('\n');
+    const detail = devices
+      .map((d, i) => `  ${d.name}: ${String(at(shapes, i).length)} pages`)
+      .join('\n');
     fail(`devices did not converge:\n${detail}`);
   }
 

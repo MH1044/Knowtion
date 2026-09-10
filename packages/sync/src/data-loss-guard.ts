@@ -64,8 +64,8 @@ export function checkDataLoss(
   return {
     safe: false,
     reason:
-      `Refusing to continue: this would remove ${lost} of ${before} pages ` +
-      `(${Math.round(fraction * 100)}%). That is not something ordinary editing does, ` +
+      `Refusing to continue: this would remove ${String(lost)} of ${String(before)} pages ` +
+      `(${String(Math.round(fraction * 100))}%). That is not something ordinary editing does, ` +
       'so Knowtion has stopped rather than apply it. Your local notes are unchanged.',
   };
 }

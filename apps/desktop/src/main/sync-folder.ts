@@ -85,7 +85,7 @@ async function listFiles(root: string): Promise<string[]> {
     if (!entry.isFile()) continue;
     // A publish in flight, not an object anyone should copy.
     if (entry.name.endsWith('.tmp')) continue;
-    const absolute = join(entry.parentPath ?? root, entry.name);
+    const absolute = join(entry.parentPath, entry.name);
     files.push(relative(root, absolute));
   }
   return files;

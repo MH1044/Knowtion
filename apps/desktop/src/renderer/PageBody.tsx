@@ -38,6 +38,11 @@ export function PageBody({ pageId }: { pageId: string }): React.JSX.Element {
     void (async () => {
       try {
         const snapshot = await api.openBody(pageId);
+        // `disposed` is flipped to true by the effect's cleanup (a sibling closure) while
+        // this async function is suspended at the `await` above. TypeScript's narrowing
+        // can't see that cross-closure mutation and treats it as always false here, but
+        // it genuinely can be true — that's the whole point of the flag.
+        // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
         if (disposed || !holder.current) return;
 
         const mounted = await mountPageEditor({
@@ -53,6 +58,9 @@ export function PageBody({ pageId }: { pageId: string }): React.JSX.Element {
         // mountPageEditor awaits its own dynamic import of the Loro binding, so the
         // component may have been torn down (and its cleanup already run, before
         // `editor` was set) by the time this resolves — destroy rather than leak it.
+        // See the note above: `disposed` can genuinely be true here even though
+        // TypeScript's narrowing can't see the cross-closure mutation.
+        // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
         if (disposed) {
           mounted.destroy();
           return;

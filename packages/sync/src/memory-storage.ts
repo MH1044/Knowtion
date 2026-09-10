@@ -9,6 +9,13 @@
 
 import type { StorageObject, StoragePath, StoragePort } from './storage-port.js';
 
+/** Reading a byte out of a Uint8Array can't statically prove the index is in bounds. */
+function at(bytes: Uint8Array, index: number): number {
+  const value = bytes[index];
+  if (value === undefined) throw new Error(`expected byte index ${String(index)} to exist`);
+  return value;
+}
+
 export interface MemoryStorageOptions {
   /**
    * Make list() lag behind writes by this many objects, newest first.
@@ -78,7 +85,7 @@ export class MemoryStorage implements StoragePort {
   damage(path: StoragePath, byteIndex: number): void {
     const bytes = this.#objects.get(path);
     if (!bytes) throw new Error(`cannot damage a missing object: ${path}`);
-    bytes[byteIndex] = (bytes[byteIndex]! ^ 0xff) & 0xff;
+    bytes[byteIndex] = (at(bytes, byteIndex) ^ 0xff) & 0xff;
   }
 
   /** Test-only: truncate an object, the signature of a half-synced cloud file. */

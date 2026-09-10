@@ -131,8 +131,7 @@ export class NodeStorage implements StoragePort {
     for (const entry of entries) {
       if (!entry.isFile()) continue;
       if (entry.name.endsWith('.tmp')) continue; // a publish in flight, not an object
-      const parentPath = entry.parentPath ?? full;
-      const absolute = join(parentPath, entry.name);
+      const absolute = join(entry.parentPath, entry.name);
       const relative = absolute
         .slice(this.#root.length + 1)
         .split(sep)
@@ -162,7 +161,7 @@ export class NodeStorage implements StoragePort {
 
     const now = policy.now();
     const previous = this.#seen.get(path);
-    if (previous === undefined || previous.size !== size || previous.mtimeMs !== mtimeMs) {
+    if (previous?.size !== size || previous.mtimeMs !== mtimeMs) {
       this.#seen.set(path, { size, mtimeMs, at: now });
       return false;
     }

@@ -13,8 +13,22 @@ import {
   isUnsupportedVersion,
   signedBytes,
 } from '../index.js';
+import type { PackRejectionCode } from '../index.js';
 
 const bytesOf = (n: number, fill = 0) => new Uint8Array(n).fill(fill);
+
+/** vitest types `expect.objectContaining` as `any`; this gives the matcher an honest,
+ * narrow type at the call site instead of letting `any` flow into `.toThrowError()`. */
+function rejectedWith(code: PackRejectionCode): Error {
+  return expect.objectContaining({ code }) as Error;
+}
+
+/** Indexing a Uint8Array can't statically prove the index is in bounds. */
+function at(bytes: Uint8Array, index: number): number {
+  const value = bytes[index];
+  if (value === undefined) throw new Error(`expected index ${String(index)} to exist`);
+  return value;
+}
 
 const validPack = (over: Partial<Parameters<typeof encodePack>[0]> = {}) =>
   encodePack({
@@ -33,7 +47,7 @@ function resealCrc(pack: Uint8Array): Uint8Array {
   let crc = 0xffffffff;
   const poly = 0x82f63b78;
   for (let i = 0; i < OFFSET.headerCrc32c; i++) {
-    crc ^= out[i]!;
+    crc ^= at(out, i);
     for (let b = 0; b < 8; b++) crc = crc & 1 ? (crc >>> 1) ^ poly : crc >>> 1;
   }
   view.setUint32(OFFSET.headerCrc32c, (crc ^ 0xffffffff) >>> 0, true);
@@ -80,16 +94,14 @@ describe('pack envelope', () => {
 describe('reading rules — every rejection is specific and ordered', () => {
   it('rule 1: rejects anything shorter than a header as TOO_SHORT', () => {
     for (const n of [0, 1, HEADER_SIZE - 1]) {
-      expect(() => decodePack(bytesOf(n), 'p.kpack')).toThrowError(
-        expect.objectContaining({ code: 'TOO_SHORT' }),
-      );
+      expect(() => decodePack(bytesOf(n), 'p.kpack')).toThrowError(rejectedWith('TOO_SHORT'));
     }
   });
 
   it('rule 2: rejects a non-Knowtion file as BAD_MAGIC, not as corruption', () => {
     // A conflict copy or an unrelated file must be ignorable, not alarming.
     expect(() => decodePack(bytesOf(HEADER_SIZE + 10, 0x5a))).toThrowError(
-      expect.objectContaining({ code: 'BAD_MAGIC' }),
+      rejectedWith('BAD_MAGIC'),
     );
   });
 
@@ -97,9 +109,9 @@ describe('reading rules — every rejection is specific and ordered', () => {
     const pack = validPack();
     for (const offset of [OFFSET.suiteId, OFFSET.seq, OFFSET.deviceId, OFFSET.deviceSignature]) {
       const damaged = Uint8Array.from(pack);
-      damaged[offset]! ^= 0b0000_0001;
-      expect(() => decodePack(damaged), `offset ${offset}`).toThrowError(
-        expect.objectContaining({ code: 'BAD_HEADER_CRC' }),
+      damaged[offset] = at(damaged, offset) ^ 0b0000_0001;
+      expect(() => decodePack(damaged), `offset ${String(offset)}`).toThrowError(
+        rejectedWith('BAD_HEADER_CRC'),
       );
     }
   });
@@ -108,9 +120,7 @@ describe('reading rules — every rejection is specific and ordered', () => {
     // Corrupt the version field without resealing: the CRC must catch it first.
     const damaged = Uint8Array.from(validPack());
     new DataView(damaged.buffer).setUint16(OFFSET.envelopeVersion, 9999, true);
-    expect(() => decodePack(damaged)).toThrowError(
-      expect.objectContaining({ code: 'BAD_HEADER_CRC' }),
-    );
+    expect(() => decodePack(damaged)).toThrowError(rejectedWith('BAD_HEADER_CRC'));
   });
 
   it('rule 4: a newer format version is a distinct, detectable condition', () => {
@@ -134,16 +144,14 @@ describe('reading rules — every rejection is specific and ordered', () => {
   it('rule 4: an unknown cipher suite is never treated as plaintext', () => {
     const odd = Uint8Array.from(validPack());
     odd[OFFSET.suiteId] = 0x7f;
-    expect(() => decodePack(resealCrc(odd))).toThrowError(
-      expect.objectContaining({ code: 'UNKNOWN_SUITE' }),
-    );
+    expect(() => decodePack(resealCrc(odd))).toThrowError(rejectedWith('UNKNOWN_SUITE'));
   });
 
   it('rule 5: a truncated payload is caught even though the header is intact', () => {
     // The signature failure mode of a half-synced cloud folder.
     const pack = validPack();
     expect(() => decodePack(pack.subarray(0, pack.length - 1))).toThrowError(
-      expect.objectContaining({ code: 'LENGTH_MISMATCH' }),
+      rejectedWith('LENGTH_MISMATCH'),
     );
   });
 
@@ -151,17 +159,13 @@ describe('reading rules — every rejection is specific and ordered', () => {
     const pack = validPack();
     const appended = new Uint8Array(pack.length + 4);
     appended.set(pack);
-    expect(() => decodePack(appended)).toThrowError(
-      expect.objectContaining({ code: 'LENGTH_MISMATCH' }),
-    );
+    expect(() => decodePack(appended)).toThrowError(rejectedWith('LENGTH_MISMATCH'));
   });
 
   it('rule 6: padding larger than the payload is rejected', () => {
     const pack = Uint8Array.from(validPack({ payload: bytesOf(8) }));
     new DataView(pack.buffer).setUint32(OFFSET.paddingLen, 9, true);
-    expect(() => decodePack(resealCrc(pack))).toThrowError(
-      expect.objectContaining({ code: 'BAD_PADDING' }),
-    );
+    expect(() => decodePack(resealCrc(pack))).toThrowError(rejectedWith('BAD_PADDING'));
   });
 
   it('includes the file path in the error so a rejection can be logged, never skipped', () => {
@@ -233,7 +237,7 @@ describe('round-trip properties', () => {
         const pack = encodePack(input);
         const target = idx % OFFSET.headerCrc32c;
         const damaged = Uint8Array.from(pack);
-        damaged[target] = (damaged[target]! + delta) % 256;
+        damaged[target] = (at(damaged, target) + delta) % 256;
         if (damaged[target] === pack[target]) return; // delta wrapped to a no-op
         expect(() => decodePack(damaged)).toThrow();
       }),

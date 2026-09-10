@@ -31,17 +31,24 @@ export function hash(bytes: Uint8Array): Uint8Array {
  */
 export function keyedHash(key: Uint8Array, bytes: Uint8Array): Uint8Array {
   if (key.length !== 32) {
-    throw new TypeError(`a keyed hash needs a 32-byte key, received ${key.length}`);
+    throw new TypeError(`a keyed hash needs a 32-byte key, received ${String(key.length)}`);
   }
   return Uint8Array.from(blake3(bytes, { key }));
 }
 
 const HEX: string[] = Array.from({ length: 256 }, (_, i) => i.toString(16).padStart(2, '0'));
 
+/** `bytes` only ever yields values 0-255, which HEX always has an entry for. */
+function hexDigits(byte: number): string {
+  const value = HEX[byte];
+  if (value === undefined) throw new Error(`no hex digits for byte ${String(byte)}`);
+  return value;
+}
+
 /** Lowercase hex. FORMAT.md section 8 forbids base64 in names. */
 export function toHex(bytes: Uint8Array): string {
   let out = '';
-  for (const b of bytes) out += HEX[b];
+  for (const b of bytes) out += hexDigits(b);
   return out;
 }
 

@@ -62,8 +62,18 @@ export interface DecodedPack {
 
 function requireLength(name: string, value: Uint8Array, expected: number): void {
   if (value.length !== expected) {
-    throw new TypeError(`${name} must be exactly ${expected} bytes, received ${value.length}`);
+    throw new TypeError(
+      `${name} must be exactly ${String(expected)} bytes, received ${String(value.length)}`,
+    );
   }
+}
+
+/** noUncheckedIndexedAccess makes a byte read `number | undefined`; the header-length
+ * checks that run before every call site already guarantee the index is in bounds. */
+function byteAt(bytes: Uint8Array, index: number): number {
+  const value = bytes[index];
+  if (value === undefined) throw new Error(`expected byte at index ${String(index)}`);
+  return value;
 }
 
 /** Chain root sentinel: a pack that is the first this device wrote. */
@@ -104,13 +114,15 @@ export function encodePack(input: PackInput): Uint8Array {
   requireLength('deviceSignature', deviceSignature, SIZE.deviceSignature);
 
   if (seq < 1n || seq > 0xffff_ffff_ffff_ffffn) {
-    throw new TypeError(`seq must be between 1 and 2^64-1, received ${seq}`);
+    throw new TypeError(`seq must be between 1 and 2^64-1, received ${String(seq)}`);
   }
   if (paddingLen > payload.length) {
-    throw new TypeError(`paddingLen ${paddingLen} exceeds payload length ${payload.length}`);
+    throw new TypeError(
+      `paddingLen ${String(paddingLen)} exceeds payload length ${String(payload.length)}`,
+    );
   }
   if (payload.length > 0xffff_ffff) {
-    throw new TypeError(`payload of ${payload.length} bytes exceeds the u32 length field`);
+    throw new TypeError(`payload of ${String(payload.length)} bytes exceeds the u32 length field`);
   }
 
   const bytes = new Uint8Array(HEADER_SIZE + payload.length);
@@ -169,7 +181,7 @@ export function decodePack(bytes: Uint8Array, path?: string): DecodedPack {
   if (bytes.length < HEADER_SIZE) {
     throw new PackFormatError(
       'TOO_SHORT',
-      `expected at least ${HEADER_SIZE} bytes, received ${bytes.length}; ` +
+      `expected at least ${String(HEADER_SIZE)} bytes, received ${String(bytes.length)}; ` +
         'most likely a partially synced file',
       path,
     );
@@ -190,7 +202,7 @@ export function decodePack(bytes: Uint8Array, path?: string): DecodedPack {
   if (expectedCrc !== actualCrc) {
     throw new PackFormatError(
       'BAD_HEADER_CRC',
-      `header checksum mismatch: declared ${expectedCrc}, computed ${actualCrc}; ` +
+      `header checksum mismatch: declared ${String(expectedCrc)}, computed ${String(actualCrc)}; ` +
         'the file is damaged rather than merely unexpected',
       path,
     );
@@ -201,13 +213,13 @@ export function decodePack(bytes: Uint8Array, path?: string): DecodedPack {
   if (envelopeVersion > ENVELOPE_VERSION) {
     throw new PackFormatError(
       'UNSUPPORTED_VERSION',
-      `pack is format version ${envelopeVersion}, this build understands ${ENVELOPE_VERSION}; ` +
+      `pack is format version ${String(envelopeVersion)}, this build understands ${String(ENVELOPE_VERSION)}; ` +
         'this workspace was written by a newer Knowtion and must not be written to',
       path,
     );
   }
 
-  const suiteId = bytes[OFFSET.suiteId]!;
+  const suiteId = byteAt(bytes, OFFSET.suiteId);
   if (!KNOWN_SUITES.includes(suiteId)) {
     throw new PackFormatError(
       'UNKNOWN_SUITE',
@@ -223,8 +235,8 @@ export function decodePack(bytes: Uint8Array, path?: string): DecodedPack {
   if (bytes.length !== HEADER_SIZE + payloadLen) {
     throw new PackFormatError(
       'LENGTH_MISMATCH',
-      `declared payload of ${payloadLen} implies a ${HEADER_SIZE + payloadLen} byte file, ` +
-        `received ${bytes.length}`,
+      `declared payload of ${String(payloadLen)} implies a ${String(HEADER_SIZE + payloadLen)} byte file, ` +
+        `received ${String(bytes.length)}`,
       path,
     );
   }
@@ -234,7 +246,7 @@ export function decodePack(bytes: Uint8Array, path?: string): DecodedPack {
   if (paddingLen > payloadLen) {
     throw new PackFormatError(
       'BAD_PADDING',
-      `padding of ${paddingLen} exceeds payload of ${payloadLen}`,
+      `padding of ${String(paddingLen)} exceeds payload of ${String(payloadLen)}`,
       path,
     );
   }
@@ -246,7 +258,7 @@ export function decodePack(bytes: Uint8Array, path?: string): DecodedPack {
     header: {
       envelopeVersion,
       suiteId,
-      flags: bytes[OFFSET.flags]!,
+      flags: byteAt(bytes, OFFSET.flags),
       workspaceId: slice(OFFSET.workspaceId, SIZE.workspaceId),
       deviceId: slice(OFFSET.deviceId, SIZE.deviceId),
       seq: view.getBigUint64(OFFSET.seq, true),

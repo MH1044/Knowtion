@@ -68,7 +68,7 @@ export function computeTrimFloor(input: TrimFloorInput): TrimFloor | undefined {
 
     const counters = new Map<PeerID, number>();
     for (const [peer, counter] of version.toJSON()) {
-      counters.set(String(peer) as PeerID, Number(counter));
+      counters.set(peer, counter);
     }
 
     if (first) {

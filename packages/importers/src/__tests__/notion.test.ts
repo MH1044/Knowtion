@@ -20,6 +20,19 @@ const page = (title: string, id: string, body: string) => `
 const types = (doc: DocNode): string[] => (doc.content ?? []).map((n) => n.type);
 const textOf = (node: DocNode): string => node.text ?? (node.content ?? []).map(textOf).join('');
 
+/** Unwraps an optional value the test knows must be present. */
+function must<T>(value: T | undefined, what: string): T {
+  if (value === undefined) throw new Error(`expected ${what} to be defined`);
+  return value;
+}
+
+/** Indexes an array, failing loudly instead of silently reading `undefined`. */
+function at<T>(array: readonly T[], index: number): T {
+  const value = array[index];
+  if (value === undefined) throw new Error(`expected index ${String(index)} to exist`);
+  return value;
+}
+
 describe('splitNotionName', () => {
   it('separates the title from the identifier Notion appends', () => {
     expect(splitNotionName('Meeting notes 1a2b3c4d5e6f70718293a4b5c6d7e8f9.html')).toEqual({
@@ -77,7 +90,7 @@ describe('parseNotionPage', () => {
 
   it('folds headings deeper than three rather than dropping them', () => {
     const parsed = parseNotionPage(page('T', 'a'.repeat(32), '<h5>Deep heading</h5>'));
-    expect(parsed.doc.content![0]!.attrs).toEqual({ level: 3 });
+    expect(at(must(parsed.doc.content, 'doc content'), 0).attrs).toEqual({ level: 3 });
     expect(textOf(parsed.doc)).toBe('Deep heading');
   });
 
@@ -92,10 +105,10 @@ describe('parseNotionPage', () => {
          </ul>`,
       ),
     );
-    const items = parsed.doc.content!;
+    const items = must(parsed.doc.content, 'doc content');
     expect(items.map((i) => i.type)).toEqual(['todo_item', 'todo_item']);
-    expect(items[0]!.attrs).toEqual({ checked: true });
-    expect(items[1]!.attrs).toEqual({ checked: false });
+    expect(at(items, 0).attrs).toEqual({ checked: true });
+    expect(at(items, 1).attrs).toEqual({ checked: false });
   });
 
   it('turns a callout into a quote rather than losing it', () => {
@@ -131,7 +144,9 @@ describe('parseNotionPage', () => {
       ),
     );
     const marks = new Set(
-      (parsed.doc.content![0]!.content ?? []).flatMap((n) => (n.marks ?? []).map((m) => m.type)),
+      (at(must(parsed.doc.content, 'doc content'), 0).content ?? []).flatMap((n) =>
+        (n.marks ?? []).map((m) => m.type),
+      ),
     );
     expect(marks).toEqual(new Set(['strong', 'em', 'code']));
   });
@@ -141,7 +156,9 @@ describe('parseNotionPage', () => {
     const parsed = parseNotionPage(
       page('T', 'a'.repeat(32), '<p><a href="javascript:alert(1)">click me</a></p>'),
     );
-    const marks = (parsed.doc.content![0]!.content ?? []).flatMap((n) => n.marks ?? []);
+    const marks = (at(must(parsed.doc.content, 'doc content'), 0).content ?? []).flatMap(
+      (n) => n.marks ?? [],
+    );
     expect(marks.filter((m) => m.type === 'link')).toEqual([]);
     expect(textOf(parsed.doc)).toBe('click me');
   });
@@ -182,9 +199,11 @@ describe('importing a whole export', () => {
     const { pages } = importNotionEntries(exportEntries);
     const byTitle = new Map(pages.map((p) => [p.title, p]));
 
-    expect(byTitle.get('Home')!.parentPath).toBeUndefined();
-    expect(byTitle.get('Child')!.parentPath).toBe(`Export-abc/Home ${ID.home}.html`);
-    expect(byTitle.get('Grandchild')!.parentPath).toBe(
+    expect(must(byTitle.get('Home'), 'page "Home"').parentPath).toBeUndefined();
+    expect(must(byTitle.get('Child'), 'page "Child"').parentPath).toBe(
+      `Export-abc/Home ${ID.home}.html`,
+    );
+    expect(must(byTitle.get('Grandchild'), 'page "Grandchild"').parentPath).toBe(
       `Export-abc/Home ${ID.home}/Child ${ID.child}.html`,
     );
   });
@@ -268,7 +287,7 @@ describe('importing a whole export', () => {
     const entries = [entry('Export-abc/Truncated.html', page('Truncated', ID.home, '<p>x</p>'))];
     const { pages, report } = importNotionEntries(entries);
     expect(pages).toHaveLength(1);
-    expect(pages[0]!.notionId).toBe(ID.home);
+    expect(at(pages, 0).notionId).toBe(ID.home);
     expect(report.skipped).toEqual([]);
   });
 
@@ -278,6 +297,6 @@ describe('importing a whole export', () => {
     ];
     const { pages, report } = importNotionEntries(entries);
     expect(pages).toEqual([]);
-    expect(report.skipped[0]!.reason).toMatch(/no Notion identifier/);
+    expect(at(report.skipped, 0).reason).toMatch(/no Notion identifier/);
   });
 });

@@ -1,4 +1,4 @@
-import { LoroDoc, VersionVector, type PeerID } from 'loro-crdt';
+import { LoroDoc, VersionVector } from 'loro-crdt';
 import { describe, expect, it } from 'vitest';
 
 import { Compactor } from '../compactor.js';
@@ -12,6 +12,12 @@ const HEX = 'aa'.repeat(16);
 const TREE = '0'.repeat(32);
 const DAY = 24 * 60 * 60 * 1000;
 
+/** Unwraps a lookup/computation the test knows must have succeeded. */
+function must<T>(value: T | null | undefined, what: string): T {
+  if (value === null || value === undefined) throw new Error(`expected ${what} to exist`);
+  return value;
+}
+
 /** A clock the test drives, so a ninety-day grace period takes no time at all. */
 function clock(start = 1_700_000_000_000) {
   let value = start;
@@ -23,7 +29,7 @@ async function workspaceWithPacks(storage: MemoryStorage, packs: number) {
   doc.setPeerId(1n);
   const store = new PackStore({ storage, workspaceId: WORKSPACE, deviceId: DEVICE });
   for (let i = 0; i < packs; i++) {
-    doc.getMap('notes').set(`k${i}`, i);
+    doc.getMap('notes').set(`k${String(i)}`, i);
     doc.commit();
     await store.push(doc);
   }
@@ -33,10 +39,13 @@ async function workspaceWithPacks(storage: MemoryStorage, packs: number) {
 /** A floor at everything this document currently holds. */
 function floorAt(doc: LoroDoc) {
   const merged = Buffer.from(doc.version().encode()).toString('hex');
-  return computeTrimFloor({
-    registeredDevices: [HEX],
-    acks: new Map([[HEX, { mergedVersion: merged, updatedAt: 1 }]]),
-  })!;
+  return must(
+    computeTrimFloor({
+      registeredDevices: [HEX],
+      acks: new Map([[HEX, { mergedVersion: merged, updatedAt: 1 }]]),
+    }),
+    'a trim floor',
+  );
 }
 
 function compactorFor(storage: MemoryStorage, time: ReturnType<typeof clock>, policy = {}) {
@@ -84,11 +93,11 @@ describe('publishing a snapshot', () => {
     // it is a reason to keep everything.
     const storage = new MemoryStorage();
     const { doc } = await workspaceWithPacks(storage, 2);
-    const unknownPeer = new VersionVector(new Map([['999' as PeerID, 50]]));
+    const unknownPeer = new VersionVector(new Map([['999', 50]]));
 
     const record = await compactorFor(storage, clock()).writeSnapshot(
       doc,
-      { version: unknownPeer, counters: new Map([['999' as PeerID, 50]]) },
+      { version: unknownPeer, counters: new Map([['999', 50]]) },
       2,
     );
     expect(record).toBeUndefined();
@@ -99,8 +108,11 @@ describe('publishing a snapshot', () => {
     const { doc } = await workspaceWithPacks(storage, 5);
     await compactorFor(storage, clock()).writeSnapshot(doc, floorAt(doc), 5);
 
-    const snapshotPath = (await storage.list('d/')).find((o) => o.path.includes('/snap/'))!.path;
-    const bytes = (await storage.get(snapshotPath))!;
+    const snapshotPath = must(
+      (await storage.list('d/')).find((o) => o.path.includes('/snap/')),
+      'a snapshot object',
+    ).path;
+    const bytes = must(await storage.get(snapshotPath), 'the snapshot bytes');
     // The payload sits inside a normal envelope, 180 bytes in.
     const reloaded = new LoroDoc();
     reloaded.import(bytes.slice(180));

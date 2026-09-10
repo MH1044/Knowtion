@@ -14,6 +14,13 @@ import { mountPageEditor, schema } from '../index.js';
 const settle = () => new Promise((resolve) => setTimeout(resolve, 30));
 const editors: { destroy(): void }[] = [];
 
+/** Indexing an array can't statically prove the index is in bounds. */
+function at<T>(array: readonly T[], index: number): T {
+  const value = array[index];
+  if (value === undefined) throw new Error(`expected index ${String(index)} to exist`);
+  return value;
+}
+
 afterEach(() => {
   while (editors.length) editors.pop()?.destroy();
   document.body.innerHTML = '';
@@ -61,14 +68,14 @@ describe('schema', () => {
     );
     const types = doc.content.content.map((n) => n.type.name);
     expect(types).toEqual(['heading', 'bullet_list', 'blockquote']);
-    expect(doc.content.content[0]!.attrs['level']).toBe(2);
+    expect(at(doc.content.content, 0).attrs.level).toBe(2);
   });
 
   it('folds heading levels deeper than three rather than dropping the block', () => {
     // Word and Docs emit h4 to h6. Dropping them would lose the user's structure.
     const doc = parseHtml('<h5>Deep</h5>');
-    expect(doc.content.content[0]!.type.name).toBe('heading');
-    expect(doc.content.content[0]!.attrs['level']).toBe(3);
+    expect(at(doc.content.content, 0).type.name).toBe('heading');
+    expect(at(doc.content.content, 0).attrs.level).toBe(3);
     expect(doc.textContent).toBe('Deep');
   });
 
@@ -87,7 +94,7 @@ describe('schema', () => {
     const doc = parseHtml('<p><a href="javascript:alert(1)">click</a></p>');
     const hrefs: unknown[] = [];
     doc.descendants((node) => {
-      for (const mark of node.marks) if (mark.type.name === 'link') hrefs.push(mark.attrs['href']);
+      for (const mark of node.marks) if (mark.type.name === 'link') hrefs.push(mark.attrs.href);
     });
     expect(hrefs).toEqual([]);
     expect(doc.textContent).toBe('click'); // the text survives, only the link is dropped
@@ -97,7 +104,7 @@ describe('schema', () => {
     const doc = parseHtml('<p><a href="https://example.com">ok</a></p>');
     const hrefs: unknown[] = [];
     doc.descendants((node) => {
-      for (const mark of node.marks) if (mark.type.name === 'link') hrefs.push(mark.attrs['href']);
+      for (const mark of node.marks) if (mark.type.name === 'link') hrefs.push(mark.attrs.href);
     });
     expect(hrefs).toEqual(['https://example.com']);
   });

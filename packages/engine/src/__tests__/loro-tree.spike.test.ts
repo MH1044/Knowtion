@@ -10,6 +10,17 @@ import { LoroDoc } from 'loro-crdt';
 import type { TreeID } from 'loro-crdt';
 import { describe, expect, it } from 'vitest';
 
+/** Unwraps a lookup the test knows must have succeeded. */
+function must<T>(value: T | null | undefined, what: string): T {
+  if (value === null || value === undefined) throw new Error(`expected ${what} to exist`);
+  return value;
+}
+
+/** Indexing an array can't statically prove the index is in bounds. */
+function at<T>(array: readonly T[], index: number): T {
+  return must(array[index], `index ${String(index)}`);
+}
+
 /** A device. Peer ids must be distinct or merges are meaningless. */
 function device(peerId: bigint) {
   const doc = new LoroDoc();
@@ -161,8 +172,8 @@ describe('Loro movable tree — randomised concurrent moves', () => {
       for (const p of peers) {
         const pt = p.getTree('pages');
         for (let i = 0; i < 15; i++) {
-          const target = ids[Math.floor(rand() * ids.length)]!;
-          const parent = ids[Math.floor(rand() * ids.length)]!;
+          const target = at(ids, Math.floor(rand() * ids.length));
+          const parent = at(ids, Math.floor(rand() * ids.length));
           if (target === parent) continue;
           try {
             pt.move(target, parent);
@@ -181,14 +192,14 @@ describe('Loro movable tree — randomised concurrent moves', () => {
       }
 
       for (const p of peers) {
-        expect(hasCycle(p), `seed ${seed}: cycle detected`).toBe(false);
+        expect(hasCycle(p), `seed ${String(seed)}: cycle detected`).toBe(false);
       }
-      const first = shape(peers[0]!);
+      const first = shape(at(peers, 0));
       for (const p of peers.slice(1)) {
-        expect(shape(p), `seed ${seed}: divergence`).toEqual(first);
+        expect(shape(p), `seed ${String(seed)}: divergence`).toEqual(first);
       }
       // No node may be lost: a move must never delete.
-      expect(nodeIds(peers[0]!).length, `seed ${seed}: nodes lost`).toBe(20);
+      expect(nodeIds(at(peers, 0)).length, `seed ${String(seed)}: nodes lost`).toBe(20);
     }
   });
 });
@@ -227,9 +238,9 @@ describe('Loro shallow snapshots — the history-trimming claim', () => {
     const root = t.createNode();
     for (let i = 0; i < 200; i++) {
       const n = t.createNode(root.id);
-      n.data.set('title', `page ${i}`);
+      n.data.set('title', `page ${String(i)}`);
       // Churn: repeated edits are what makes history grow.
-      for (let j = 0; j < 5; j++) n.data.set('title', `page ${i} rev ${j}`);
+      for (let j = 0; j < 5; j++) n.data.set('title', `page ${String(i)} rev ${String(j)}`);
     }
     doc.commit();
 
@@ -261,14 +272,18 @@ describe('Loro deleted-node traversal — a trap every tree walker must handle',
     // The deleted node is still enumerated.
     expect(rt.nodes().map((n) => n.id)).toContain(doomed.id);
 
-    const dead = rt.nodes().find((n) => n.id === doomed.id)!;
+    const dead = must(
+      rt.nodes().find((n) => n.id === doomed.id),
+      'the deleted node',
+    );
     expect(dead.isDeleted()).toBe(true);
 
     // Its parent is a sentinel that getNodeByID cannot resolve. Touching it throws.
-    const sentinel = dead.parent();
-    expect(sentinel).toBeDefined();
-    expect(sentinel!.id).not.toBe(keep.id);
-    expect(() => rt.getNodeByID(sentinel!.id)!.children()).toThrow();
+    const maybeSentinel = dead.parent();
+    expect(maybeSentinel).toBeDefined();
+    const sentinel = must(maybeSentinel, 'a parent sentinel');
+    expect(sentinel.id).not.toBe(keep.id);
+    expect(() => must(rt.getNodeByID(sentinel.id), 'resolved node').children()).toThrow();
 
     // The safe pattern, which all production traversal must follow.
     const live = rt.nodes().filter((n) => !n.isDeleted());

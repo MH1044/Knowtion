@@ -3,6 +3,13 @@ import { crc32c } from '../crc32c.js';
 
 const ascii = (s: string) => new TextEncoder().encode(s);
 
+/** Indexing a Uint8Array can't statically prove the index is in bounds. */
+function at(bytes: Uint8Array, index: number): number {
+  const value = bytes[index];
+  if (value === undefined) throw new Error(`expected index ${String(index)} to exist`);
+  return value;
+}
+
 describe('crc32c', () => {
   // The standard check value for CRC-32C, from the algorithm's specification.
   it('matches the standard check vector for "123456789"', () => {
@@ -15,7 +22,7 @@ describe('crc32c', () => {
 
   it('is stable across calls, so the lazy table is not corrupted by use', () => {
     const first = crc32c(ascii('knowtion'));
-    for (let i = 0; i < 100; i++) crc32c(ascii(`noise-${i}`));
+    for (let i = 0; i < 100; i++) crc32c(ascii(`noise-${String(i)}`));
     expect(crc32c(ascii('knowtion'))).toBe(first);
   });
 
@@ -25,15 +32,15 @@ describe('crc32c', () => {
     for (let byte = 0; byte < buf.length; byte++) {
       for (let bit = 0; bit < 8; bit++) {
         const flipped = Uint8Array.from(buf);
-        flipped[byte]! ^= 1 << bit;
-        expect(crc32c(flipped), `byte ${byte} bit ${bit}`).not.toBe(base);
+        flipped[byte] = at(flipped, byte) ^ (1 << bit);
+        expect(crc32c(flipped), `byte ${String(byte)} bit ${String(bit)}`).not.toBe(base);
       }
     }
   });
 
   it('always returns an unsigned 32-bit value', () => {
     for (let i = 0; i < 200; i++) {
-      const v = crc32c(ascii(`sample ${i}`));
+      const v = crc32c(ascii(`sample ${String(i)}`));
       expect(v).toBeGreaterThanOrEqual(0);
       expect(v).toBeLessThanOrEqual(0xffffffff);
       expect(Number.isInteger(v)).toBe(true);
