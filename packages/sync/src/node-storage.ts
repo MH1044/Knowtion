@@ -136,7 +136,16 @@ export class NodeStorage implements StoragePort {
         .slice(this.#root.length + 1)
         .split(sep)
         .join(posix.sep);
-      const stats = await stat(absolute);
+      // readdir and stat are separate syscalls, so the file can be renamed away by a
+      // sync client in between. Losing the whole listing because one entry moved would
+      // stall every device's next cycle; a listing is advisory anyway, so the honest
+      // answer is to report one fewer object and pick it up next time.
+      let stats;
+      try {
+        stats = await stat(absolute);
+      } catch {
+        continue;
+      }
       if (!this.#hasSettled(relative, stats.size, stats.mtimeMs)) continue;
       found.push({ path: relative, size: stats.size });
     }

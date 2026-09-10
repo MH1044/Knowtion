@@ -34,6 +34,7 @@ import {
   type WorkspaceKey,
 } from '@knowtion/format';
 
+import { isTransientReadError } from './read-errors.js';
 import type { StoragePath, StoragePort } from './storage-port.js';
 
 /** FORMAT.md section 8: exactly twelve digits, so lexical order equals numeric order. */
@@ -103,7 +104,7 @@ export interface PackCrypto {
 
 export interface RejectedPack {
   path: StoragePath;
-  code: PackRejectionCode | 'BROKEN_CHAIN';
+  code: PackRejectionCode | 'BROKEN_CHAIN' | 'UNREADABLE';
   message: string;
 }
 
@@ -438,7 +439,26 @@ export class PackStore {
         continue;
       }
 
-      const bytes = await this.#storage.get(object.path);
+      // A read that fails must cost one file, not the cycle. Before this guard a single
+      // unreadable pack — a OneDrive placeholder that could not be recalled, a file the
+      // sync client had open — threw out of this loop and abandoned every remaining
+      // candidate, including packs from devices that were perfectly readable.
+      let bytes: Uint8Array | undefined;
+      try {
+        bytes = await this.#storage.get(object.path);
+      } catch (error) {
+        if (!isTransientReadError(error)) throw error;
+        // Reported rather than skipped, per FORMAT.md section 3: a silent skip is
+        // indistinguishable from data loss. The next cycle retries it.
+        result.rejected.push({
+          path: object.path,
+          code: 'UNREADABLE',
+          message:
+            `pack ${object.path} could not be read this cycle ` +
+            `(${(error as NodeJS.ErrnoException).code ?? 'unknown'}); it will be retried`,
+        });
+        continue;
+      }
       if (bytes === undefined) continue; // listed but not yet readable
 
       let decoded;

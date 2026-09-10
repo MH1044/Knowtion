@@ -49,6 +49,34 @@ export interface FaultProfile {
   renameChance?: number;
   /** Probability the simulated sync client leaves a duplicate copy on a tick. */
   duplicateChance?: number;
+  /**
+   * Probability a read fails outright rather than returning bytes.
+   *
+   * Models a cloud placeholder that could not be recalled, a file the sync client is
+   * holding open, or a scanner mid-scan. Transient like everything else here: the path
+   * becomes readable again after unreadableForMs, because a permanently unreadable sole
+   * copy is genuine data loss rather than something convergence could ride out.
+   *
+   * This is the only fault in this file that makes `get` THROW. Nothing did before,
+   * which is exactly why no caller used to handle it.
+   */
+  unreadableChance?: number;
+  /** How long a path stays unreadable once it fails, in virtual milliseconds. */
+  unreadableForMs?: number;
+}
+
+/**
+ * A read that failed for a reason that will pass.
+ *
+ * Carries a Windows-shaped errno so it classifies as transient through the same path a
+ * real failure would, rather than by a special case only the simulator can produce.
+ */
+export class UnreadableError extends Error {
+  readonly code = 'EBUSY';
+  constructor(path: StoragePath) {
+    super(`could not read ${path}: the file is locked or has not been recalled`);
+    this.name = 'UnreadableError';
+  }
 }
 
 export class QuotaExceededError extends Error {
@@ -88,7 +116,16 @@ export class FaultyStorage implements StoragePort {
   readonly #faults: FaultProfile;
 
   /** Counts, so a test can assert a fault actually fired rather than hoping it did. */
-  readonly stats = { quotaRefusals: 0, renames: 0, duplicates: 0, slowWrites: 0 };
+  readonly stats = {
+    quotaRefusals: 0,
+    renames: 0,
+    duplicates: 0,
+    slowWrites: 0,
+    unreadable: 0,
+  };
+
+  /** Paths currently failing to read, and the virtual time each recovers at. */
+  readonly #unreadableUntil = new Map<StoragePath, number>();
 
   constructor(options: FaultyStorageOptions) {
     this.#random = options.random;
@@ -143,6 +180,21 @@ export class FaultyStorage implements StoragePort {
     if (stored === undefined) return Promise.resolve(undefined);
 
     const now = this.#now();
+
+    // Checked before the visibility arithmetic, because a locked file is locked whether
+    // or not it has finished materialising.
+    const until = this.#unreadableUntil.get(path);
+    if (until !== undefined && now < until) {
+      return Promise.reject(new UnreadableError(path));
+    }
+    if (until !== undefined) this.#unreadableUntil.delete(path);
+
+    if (this.#chance(this.#faults.unreadableChance)) {
+      this.stats.unreadable += 1;
+      this.#unreadableUntil.set(path, now + (this.#faults.unreadableForMs ?? 5_000));
+      return Promise.reject(new UnreadableError(path));
+    }
+
     if (now < stored.visibleAt) return Promise.resolve(undefined);
     if (now >= stored.completeAt) return Promise.resolve(Uint8Array.from(stored.bytes));
 
