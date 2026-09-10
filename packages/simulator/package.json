@@ -1,0 +1,25 @@
+{
+  "name": "@knowtion/simulator",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Deterministic multi-device sync simulation. Replays any failure from its seed.",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc --build"
+  },
+  "dependencies": {
+    "@knowtion/engine": "*",
+    "@knowtion/format": "*",
+    "@knowtion/readmodel": "*",
+    "@knowtion/sync": "*"
+  }
+}
