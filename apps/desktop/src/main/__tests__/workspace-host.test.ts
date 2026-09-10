@@ -15,6 +15,7 @@ import {
   decodePack,
   generateDeviceKeys,
   generateWorkspaceKey,
+  rotateWorkspaceKey,
   verifyPackSignature,
 } from '@knowtion/format';
 
@@ -876,5 +877,74 @@ describe('approving a second device for an encrypted workspace', () => {
 
     await expect(a.grantCurrentKey('dd'.repeat(16))).rejects.toThrow(/no registry record/);
     await a.close();
+  });
+});
+
+describe('rotating the key away from a revoked device', () => {
+  it('leaves old packs readable and new ones not', async () => {
+    // The exact promise ADR-0007 makes: revocation stops FUTURE reads. A device that
+    // already held the key has already read what it read, and rotation cannot reach
+    // back into that — so the test asserts both halves, not just the reassuring one.
+    const first = generateWorkspaceKey();
+    const shared = await dataDir();
+    const logDir = join(shared, 'shared-log');
+    const bDataDir = await dataDir();
+    const aDataDir = await dataDir();
+
+    const openDevice = async (
+      dir: string,
+      deviceId: Uint8Array,
+      peerId: bigint,
+      keys: ReturnType<typeof withEpoch>,
+    ) =>
+      WorkspaceHost.open({
+        dataDir: dir,
+        logDir,
+        workspaceId: WORKSPACE_ID,
+        deviceId,
+        peerId,
+        deviceKeys: keysFor(deviceId),
+        workspaceKeys: keys,
+        flushDelayMs: 0,
+        settleMs: 0,
+      });
+
+    const beforeKeys = withEpoch(undefined, first);
+    const a1 = await openDevice(aDataDir, DEVICE_A, 1n, beforeKeys);
+    a1.createPage({ title: 'Before revocation' });
+    await a1.flush();
+    await a1.close();
+
+    // B holds only epoch 1, which is what a revoked device is left with.
+    const b1 = await openDevice(bDataDir, DEVICE_B, 2n, beforeKeys);
+    await b1.sync();
+    expect(b1.tree().map((p) => p.title)).toEqual(['Before revocation']);
+    await b1.close();
+
+    // A rotates and keeps writing.
+    const second = rotateWorkspaceKey(first);
+    const a2 = await openDevice(aDataDir, DEVICE_A, 1n, withEpoch(beforeKeys, second));
+    await a2.sync();
+    a2.createPage({ title: 'After revocation' });
+    await a2.flush();
+    await a2.close();
+
+    // B, still on epoch 1, keeps everything it had and gains nothing new.
+    const b2 = await openDevice(bDataDir, DEVICE_B, 2n, beforeKeys);
+    const status = await b2.sync();
+    expect(b2.tree().map((p) => p.title)).toEqual(['Before revocation']);
+    expect(status.rejected).toBeGreaterThan(0);
+    await b2.close();
+
+    // A, holding both epochs, reads the whole history. An epoch dropped from the
+    // keyring would take its packs with it, which is why nothing prunes them.
+    const a3 = await openDevice(aDataDir, DEVICE_A, 1n, withEpoch(beforeKeys, second));
+    expect(
+      a3
+        .tree()
+        .map((p) => p.title)
+        .sort(),
+    ).toEqual(['After revocation', 'Before revocation']);
+    await a3.close();
   });
 });

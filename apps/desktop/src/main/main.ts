@@ -16,6 +16,9 @@ import { BrowserWindow, app, dialog, ipcMain, session } from 'electron';
 
 import {
   checkRecoveryPhrase,
+  equalBytes,
+  rotateWorkspaceKey,
+  unwrapKeyFromRecoveryPhrase,
   generateRecoveryPhrase,
   generateWorkspaceKey,
   RECOVERY_PHRASE_WORDS,
@@ -331,12 +334,14 @@ function registerHandlers(): void {
         value: {
           thisFingerprint: mustHost().fingerprint,
           secretsOsBacked,
+          encrypted: workspaceKeys !== undefined,
           devices: listed.devices.map((d) => ({
             deviceHex: Buffer.from(d.deviceId).toString('hex'),
             label: d.label,
             fingerprint: d.fingerprint,
             enrolledAt: d.enrolledAt,
             isThisDevice: d.isThisDevice,
+            hasCurrentKey: d.hasCurrentKey,
           })),
           rejected: listed.rejected,
         },
@@ -357,6 +362,27 @@ function registerHandlers(): void {
   ipcMain.handle('keys:grant', async (_event, input: { deviceHex: string }) => {
     try {
       return { ok: true, value: { granted: await mustHost().grantCurrentKey(input.deviceHex) } };
+    } catch (error) {
+      return { ok: false, error: error instanceof Error ? error.message : String(error) };
+    }
+  });
+
+  /**
+   * Revoke a device: rotate the key away from it, then remove its history.
+   *
+   * Rotation first, deliberately. It is the part that actually protects anything, and
+   * if the eviction fails afterwards it can simply be retried — whereas evicting first
+   * and then failing to rotate leaves the device gone from the list while still able to
+   * read everything written from then on, which is worse than doing nothing because it
+   * looks finished.
+   *
+   * Revocation stops FUTURE reads only. A device that already held the key has already
+   * read what it read, and no amount of rotation reaches back into that.
+   */
+  ipcMain.handle('keys:revoke', async (_event, input: { deviceHex: string; phrase: string }) => {
+    try {
+      await rotateAwayFrom(input.deviceHex, input.phrase);
+      return { ok: true, value: await mustHost().forgetDevice(input.deviceHex) };
     } catch (error) {
       return { ok: false, error: error instanceof Error ? error.message : String(error) };
     }
@@ -601,6 +627,57 @@ async function publishOwnWraps(phrase?: string): Promise<void> {
     // are what lets ANOTHER device in, and the next sync will try again.
     console.error(`[knowtion] could not publish key wraps: ${String(error)}`);
   }
+}
+
+/**
+ * Mint the next key epoch and grant it to everyone except the named device.
+ *
+ * The phrase is checked by using it: it must open the CURRENT epoch's recovery wrap.
+ * Checking only that it is a well-formed BIP-39 phrase would accept any valid phrase at
+ * all, and would then write the new epoch's recovery wrap under words that cannot open
+ * anything — quietly destroying the recovery path at the exact moment the user believed
+ * they were tightening security.
+ */
+async function rotateAwayFrom(deviceHex: string, phrase: string): Promise<void> {
+  const material = must(workspaceKeys, 'workspace keys');
+  const id = must(identity, 'identity');
+  const logDir = currentLogDir === '' ? join(app.getPath('userData'), 'log') : currentLogDir;
+  const storage = new NodeStorage(logDir);
+  const current = currentKey(material);
+
+  const existing = await storage.get(`keys/${String(current.epoch)}/recovery.wrap`);
+  if (existing === undefined) {
+    throw new Error(
+      'this workspace has no recovery wrap to check your phrase against, so the key ' +
+        'cannot be rotated safely. Reconnect the sync folder and try again.',
+    );
+  }
+  const opened = unwrapKeyFromRecoveryPhrase(existing, phrase, id.workspaceId);
+  if (!equalBytes(opened.key, current.key)) {
+    throw new Error('that phrase does not match this workspace');
+  }
+
+  // Everyone who can read today, minus the device being removed. A device that was
+  // never approved is not granted one now: revocation is not the moment to widen access.
+  const listed = await mustHost().devices();
+  const recipients = listed.devices
+    .filter((d) => d.hasCurrentKey && Buffer.from(d.deviceId).toString('hex') !== deviceHex)
+    .map((d) => ({
+      deviceHex: Buffer.from(d.deviceId).toString('hex'),
+      wrappingPublicKey: d.wrappingPublicKey,
+    }));
+
+  const next = rotateWorkspaceKey(current);
+  await publishKeyWraps(storage, id.workspaceId, next, recipients, phrase);
+
+  const rotated = withEpoch(material, next);
+  await writeWorkspaceKeys(app.getPath('userData'), rotated, chooseProtector().protector);
+  workspaceKeys = rotated;
+
+  // The host built its keyring when it opened, so it has to be rebuilt to seal under
+  // the new epoch. Old epochs stay in the keyring: their packs are still readable.
+  await host?.close();
+  await openWorkspace();
 }
 
 /** Open the workspace host with whatever keys this device holds. */
