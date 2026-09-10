@@ -10,7 +10,17 @@
  */
 
 import { constants } from 'node:fs';
-import { mkdir, open, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
+import {
+  link,
+  mkdir,
+  open,
+  readdir,
+  readFile,
+  rename,
+  rm,
+  stat,
+  writeFile,
+} from 'node:fs/promises';
 import { dirname, join, posix, resolve, sep } from 'node:path';
 
 import type { StorageObject, StoragePath, StoragePort } from './storage-port.js';
@@ -49,6 +59,10 @@ export class NodeStorage implements StoragePort {
   readonly #root: string;
   readonly #settle: SettlePolicy | undefined;
   /** What each path looked like when last listed, for the settle rule. */
+  /** Cleared the first time a hard link is refused, then never retried. */
+  #canHardLink = true;
+  #tempCounter = 0;
+
   readonly #seen = new Map<string, { size: number; mtimeMs: number; at: number }>();
 
   constructor(root: string, options: NodeStorageOptions = {}) {
@@ -69,18 +83,96 @@ export class NodeStorage implements StoragePort {
     return full;
   }
 
+  /**
+   * Write a pack, atomically, or report that one is already there.
+   *
+   * This writes the operation log — the only source of truth — so it must be crash
+   * safe, and until now it was the one write in this file that was not. A bare
+   * `writeFile(..., 'wx')` creates the entry first and fills it second, so a kill in
+   * between leaves a partial or zero-byte file at the canonical pack path. That file
+   * then fails to decode on every later read, so the sequence number is never adopted,
+   * so the next push targets it, finds it occupied, and refuses — permanently. A device
+   * could brick its own workspace by being closed from Task Manager at the wrong
+   * moment.
+   *
+   * `rename` cannot fix it, because it clobbers and would destroy the create-if-absent
+   * semantic this returns `false` for. `link` is the primitive that has both properties:
+   * it publishes a fully written, fsynced file under a new name in one step, and fails
+   * with EEXIST rather than overwriting. So the canonical path can now only ever hold a
+   * complete pack.
+   */
   async putIfAbsent(path: StoragePath, bytes: Uint8Array): Promise<boolean> {
     const full = this.#resolve(path);
     await mkdir(dirname(full), { recursive: true });
+    if (!this.#canHardLink) return this.#writeDirectly(full, bytes);
+
+    // Unique per call, not a fixed `.tmp`: a second process sharing this device identity
+    // would otherwise clobber our in-flight temporary. (`putOwn` still has that hazard.)
+    const temporary = `${full}.${String(process.pid)}-${String(this.#tempCounter++)}.tmp`;
     try {
-      // wx fails if the file exists, which is the create-if-absent semantic we need
-      // and the only one a local filesystem gives us for free.
+      const handle = await open(
+        temporary,
+        constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL,
+      );
+      try {
+        await handle.writeFile(bytes);
+        // The whole point. Without it the bytes may still be in the page cache when the
+        // link publishes them, and a power cut leaves a complete-looking, empty pack.
+        await handle.sync();
+      } finally {
+        await handle.close();
+      }
+
+      try {
+        await link(temporary, full);
+        return true;
+      } catch (error) {
+        const code = (error as NodeJS.ErrnoException).code;
+        if (code === 'EEXIST') return false;
+        if (code === 'EPERM' || code === 'ENOSYS' || code === 'EXDEV' || code === 'EMLINK') {
+          // FAT32, exFAT and some network redirectors cannot hard-link. Remember it for
+          // the life of this adapter rather than paying a failed syscall per pack, and
+          // fall back to the old behaviour — which is not crash safe, and is why
+          // `crashSafe` is observable rather than silently assumed.
+          this.#canHardLink = false;
+          // Awaited deliberately: inside try/finally, returning the bare promise would
+          // let the cleanup run before the write settled.
+          return await this.#writeDirectly(full, bytes);
+        }
+        throw error;
+      }
+    } finally {
+      // An orphan temporary is harmless — `list` already filters `.tmp`, and a sync
+      // client is told to ignore them — but leaving them to accumulate is untidy.
+      await rm(temporary, { force: true }).catch(() => undefined);
+    }
+  }
+
+  /**
+   * The pre-atomic path, for filesystems that cannot hard-link.
+   *
+   * Kept honest rather than hidden: this is exactly the write that can leave a torn pack,
+   * so a caller that cares can ask.
+   */
+  async #writeDirectly(full: string, bytes: Uint8Array): Promise<boolean> {
+    try {
       await writeFile(full, bytes, { flag: 'wx' });
       return true;
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === 'EEXIST') return false;
       throw error;
     }
+  }
+
+  /**
+   * False once this adapter has found the filesystem cannot publish a pack atomically.
+   *
+   * A workspace on a memory stick is a real thing a person will try, and "your notes are
+   * on a filesystem that cannot guarantee a crash-safe write" is a true statement worth
+   * being able to make.
+   */
+  get crashSafe(): boolean {
+    return this.#canHardLink;
   }
 
   /**

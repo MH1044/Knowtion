@@ -827,3 +827,86 @@ describe('a pack that cannot be read', () => {
     await expect(reader.pull(doc)).rejects.toThrow();
   });
 });
+
+describe('a torn pack left behind by a crash', () => {
+  /** One device, one pack published, then the file truncated as a kill would leave it. */
+  async function tornAtSeqOne(keepBytes: number) {
+    const storage = new MemoryStorage();
+    const a = device(storage, DEVICE_A, 1n);
+    a.write('first', 'value');
+    const pushed = await a.store.push(a.doc);
+    if (pushed === undefined) throw new Error('expected a pack');
+    storage.truncate(pushed.path, keepBytes);
+    return { storage, path: pushed.path };
+  }
+
+  it.each([
+    ['a zero-byte file, as a kill between open and write leaves', 0],
+    ['a header cut in half', 90],
+    ['a complete header with no payload', 180],
+  ])('recovers from %s', async (_label, keepBytes) => {
+    // The wedge. A partial pack at seq 1 never decodes, so it is never applied, so
+    // lastSeq stays 0 and every future push aims at the same occupied path. Before the
+    // repair, this device could never write again — for the life of the workspace.
+    const { storage, path } = await tornAtSeqOne(keepBytes);
+
+    const restarted = new PackStore({ storage, workspaceId: WORKSPACE, deviceId: DEVICE_A });
+    const doc = new LoroDoc();
+    doc.setPeerId(1n);
+    await restarted.pull(doc);
+
+    doc.getMap('notes').set('after', 'crash');
+    doc.commit();
+    const pushed = await restarted.push(doc);
+    expect(pushed?.path).toBe(path);
+
+    // And the workspace genuinely reads back, rather than merely not throwing.
+    const reader = new PackStore({ storage, workspaceId: WORKSPACE, deviceId: DEVICE_B });
+    const fresh = new LoroDoc();
+    fresh.setPeerId(9n);
+    const result = await reader.pull(fresh);
+    expect(result.rejected).toEqual([]);
+    expect(fresh.getMap('notes').toJSON()).toEqual({ after: 'crash' });
+  });
+
+  it('keeps writing afterwards, so the chain continues', async () => {
+    const { storage } = await tornAtSeqOne(40);
+    const restarted = new PackStore({ storage, workspaceId: WORKSPACE, deviceId: DEVICE_A });
+    const doc = new LoroDoc();
+    doc.setPeerId(1n);
+    await restarted.pull(doc);
+
+    for (const n of [1, 2, 3]) {
+      doc.getMap('notes').set(`k${String(n)}`, String(n));
+      doc.commit();
+      expect(await restarted.push(doc)).toBeDefined();
+    }
+
+    const reader = new PackStore({ storage, workspaceId: WORKSPACE, deviceId: DEVICE_B });
+    const fresh = new LoroDoc();
+    fresh.setPeerId(9n);
+    const result = await reader.pull(fresh);
+    expect(result.rejected).toEqual([]);
+    expect(fresh.getMap('notes').toJSON()).toEqual({ k1: '1', k2: '2', k3: '3' });
+  });
+
+  it('still refuses when the occupying pack belongs to someone else', async () => {
+    // The whitelist that preserves real identity-clash detection: another writer's pack
+    // decodes, so it is not ours to replace.
+    const storage = new MemoryStorage();
+    const b = device(storage, DEVICE_B, 2n);
+    b.write('theirs', 'value');
+    const theirs = await b.store.push(b.doc);
+    if (theirs === undefined) throw new Error('expected a pack');
+
+    // Put their pack exactly where our seq 1 would go.
+    const ours = packPath(hexA, TREE, 1);
+    const bytes = await storage.get(theirs.path);
+    if (bytes === undefined) throw new Error('expected bytes');
+    await storage.putIfAbsent(ours, bytes);
+
+    const a = device(storage, DEVICE_A, 1n);
+    a.write('mine', 'value');
+    await expect(a.store.push(a.doc)).rejects.toThrow(/another process/);
+  });
+});
