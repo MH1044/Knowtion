@@ -50,6 +50,8 @@ export interface DeviceSummary {
   fingerprint: string;
   enrolledAt: number;
   isThisDevice: boolean;
+  /** False when this device cannot read what the others write, and needs approving. */
+  hasCurrentKey: boolean;
 }
 
 export interface DeviceList {
@@ -93,6 +95,7 @@ interface Bridge {
   keyStatus(): Promise<Result<KeyStatus>>;
   beginKeySetup(): Promise<Result<PhraseChallenge>>;
   confirmKeySetup(input: { answers: string[] }): Promise<Result<null>>;
+  grantKey(input: { deviceHex: string }): Promise<Result<{ granted: boolean }>>;
   syncInfo(): Promise<Result<SyncInfo>>;
   devices(): Promise<Result<DeviceList>>;
   forgetDevice(input: {
@@ -136,6 +139,7 @@ export const api = {
   keyStatus: () => unwrap(window.knowtion.keyStatus()),
   beginKeySetup: () => unwrap(window.knowtion.beginKeySetup()),
   confirmKeySetup: (answers: string[]) => unwrap(window.knowtion.confirmKeySetup({ answers })),
+  grantKey: (deviceHex: string) => unwrap(window.knowtion.grantKey({ deviceHex })),
   syncInfo: () => unwrap(window.knowtion.syncInfo()),
   devices: () => unwrap(window.knowtion.devices()),
   forgetDevice: (deviceHex: string) => unwrap(window.knowtion.forgetDevice({ deviceHex })),

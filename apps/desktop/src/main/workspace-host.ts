@@ -23,7 +23,13 @@ import {
 import { loroDocFromJson, plainTextFromJson } from '@knowtion/editor/headless';
 import { importNotionArchive, type ImportReport } from '@knowtion/importers';
 import { ReadModel, type SearchHit } from '@knowtion/readmodel';
-import { deviceFingerprint, toHex, type DeviceKeys, type DeviceRecord } from '@knowtion/format';
+import {
+  deviceFingerprint,
+  toHex,
+  wrapKeyToDevice,
+  type DeviceKeys,
+  type DeviceRecord,
+} from '@knowtion/format';
 import {
   Compactor,
   DeviceEviction,
@@ -660,19 +666,57 @@ export class WorkspaceHost {
    * attempt to impersonate a device, and both need to reach a person.
    */
   async devices(): Promise<{
-    devices: (DeviceRecord & { fingerprint: string; isThisDevice: boolean })[];
+    devices: (DeviceRecord & {
+      fingerprint: string;
+      isThisDevice: boolean;
+      hasCurrentKey: boolean;
+    })[];
     rejected: { path: string; reason: string }[];
   }> {
     const read = await this.#registry.list();
     const selfHex = toHex(this.#options.deviceId);
+    const epoch = this.#crypto?.sealWith?.epoch;
+
+    // Which devices can actually read what this one writes. Being in the registry only
+    // means somebody wrote a file into the folder; it is not permission to read the
+    // workspace, and conflating the two would hand the key to anyone who can reach the
+    // folder at all — the adversary SECURITY.md names first.
+    const granted = new Set<string>();
+    if (epoch !== undefined) {
+      for (const object of await this.#storage.list(`keys/${String(epoch)}/`)) {
+        const name = object.path.split('/').pop() ?? '';
+        if (name.endsWith('.wrap')) granted.add(name.slice(0, -'.wrap'.length));
+      }
+    }
+
     return {
       devices: read.devices.map((record) => ({
         ...record,
         fingerprint: deviceFingerprint(record),
         isThisDevice: toHex(record.deviceId) === selfHex,
+        // Plaintext workspaces have no key to hold, so nothing is gated on one.
+        hasCurrentKey: epoch === undefined || granted.has(toHex(record.deviceId)),
       })),
       rejected: read.rejected,
     };
+  }
+
+  /**
+   * Grant a device the current key, so it can read what everyone else writes.
+   *
+   * A deliberate human act, never a consequence of a device appearing in the registry.
+   * The wrap is sealed to the public key in that device's own signed record, so a
+   * grant cannot be redirected by anyone who did not hold that device's signing key.
+   */
+  async grantCurrentKey(deviceHex: string): Promise<boolean> {
+    const key = this.#crypto?.sealWith;
+    if (key === undefined) throw new Error('this workspace is not encrypted');
+
+    const record = await this.#registry.get(deviceHex);
+    if (record === undefined) throw new Error(`no registry record for device ${deviceHex}`);
+
+    const wrap = wrapKeyToDevice(key, this.#options.workspaceId, record.wrappingPublicKey);
+    return this.#storage.putIfAbsent(`keys/${String(key.epoch)}/${deviceHex}.wrap`, wrap);
   }
 
   /** This device's fingerprint, for comparing against another machine when pairing. */

@@ -120,6 +120,35 @@ export function SyncPanel({ onChanged }: { onChanged: () => void }): React.JSX.E
                   {/* Shown so a person can compare it against the other machine before
                       trusting it. A label is chosen by whoever wrote the record. */}
                   <code className="fingerprint">{device.fingerprint}</code>
+                  {!device.isThisDevice && !device.hasCurrentKey && (
+                    <button
+                      type="button"
+                      className="approve"
+                      disabled={busy}
+                      title="Give this device the key, after checking the code above matches"
+                      onClick={() => {
+                        void (async () => {
+                          setBusy(true);
+                          try {
+                            await api.grantKey(device.deviceHex);
+                            setMessage(
+                              `${device.label} can now read this workspace. It will pick the ` +
+                                'key up on its next sync.',
+                            );
+                            setDevices(await api.devices());
+                          } catch (cause) {
+                            setMessage(cause instanceof Error ? cause.message : String(cause));
+                          }
+                          setBusy(false);
+                        })();
+                      }}
+                    >
+                      Approve
+                    </button>
+                  )}
+                  {!device.isThisDevice && device.hasCurrentKey && (
+                    <span className="muted granted">has the key</span>
+                  )}
                   {!device.isThisDevice && (
                     <button
                       type="button"

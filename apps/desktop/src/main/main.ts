@@ -346,6 +346,22 @@ function registerHandlers(): void {
     }
   });
 
+  /**
+   * Grant another device the key, after a person has compared its fingerprint.
+   *
+   * Deliberately a separate act from the device appearing in the registry. Enrolment
+   * only means somebody wrote a file into the folder, and treating that as permission
+   * would hand the workspace key to anyone who can reach it — which is the first
+   * adversary SECURITY.md names.
+   */
+  ipcMain.handle('keys:grant', async (_event, input: { deviceHex: string }) => {
+    try {
+      return { ok: true, value: { granted: await mustHost().grantCurrentKey(input.deviceHex) } };
+    } catch (error) {
+      return { ok: false, error: error instanceof Error ? error.message : String(error) };
+    }
+  });
+
   ipcMain.handle('sync:forget', async (_event, input: { deviceHex: string }) => {
     try {
       return { ok: true, value: await mustHost().forgetDevice(input.deviceHex) };
