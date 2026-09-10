@@ -37,6 +37,17 @@ export {
 } from './aead.js';
 export type { PackBinding } from './aead.js';
 
+export {
+  RECOVERY_PHRASE_WORDS,
+  RecoveryPhraseError,
+  checkRecoveryPhrase,
+  generateRecoveryPhrase,
+  isValidRecoveryPhrase,
+  normaliseRecoveryPhrase,
+  recoveryPhraseEntropy,
+} from './recovery-phrase.js';
+export type { RecoveryPhraseProblem } from './recovery-phrase.js';
+
 export { generateDeviceKeys, sign, verify } from './keys.js';
 export type { DeviceKeys, DevicePublicKeys } from './keys.js';
 
