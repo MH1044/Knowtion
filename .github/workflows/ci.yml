@@ -49,5 +49,18 @@ jobs:
       - name: Licence gate
         run: npm run licences
 
-      - name: Test
-        run: npm test
+      - name: Test with coverage
+        run: npm run test:coverage
+
+      # Every step above exercises source code in isolation; none of them ever start
+      # the real Electron app, so a renderer that throws before React mounts (e.g. a
+      # CSP silently blocking the app's own wasm module) would pass every one of them
+      # and still exit 0. Ubuntu only for now, to keep this cheap while it proves out;
+      # widen to the other two OSes once it has run clean for a while.
+      - name: Install Xvfb (Linux, for the Electron launch smoke test)
+        if: matrix.os == 'ubuntu-latest'
+        run: sudo apt-get update && sudo apt-get install -y xvfb
+
+      - name: E2E launch smoke test (Electron)
+        if: matrix.os == 'ubuntu-latest'
+        run: xvfb-run --auto-servernum npm run test:e2e
