@@ -1,0 +1,7 @@
+{
+  "WARNING": "Throwaway test keys for a golden fixture. They protect nothing and must never be used for anything else.",
+  "epoch": 1,
+  "workspaceKey": "161abf93afaaf680264318250d8e50377ecd78aa5cd9123ea00d47d2fc8864ec",
+  "signingPublicKey": "a0acf2b99f8be2ff5c20fa34725c5d0dfd331ddc6b8cb9e38612d72fc807911c",
+  "plaintext": "knowtion golden fixture payload, encrypted"
+}
