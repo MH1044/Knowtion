@@ -10,9 +10,16 @@ import { tmpdir } from 'node:os';
 import { join, sep } from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
 
-import { generateDeviceKeys } from '@knowtion/format';
+import {
+  SUITE,
+  decodePack,
+  generateDeviceKeys,
+  generateWorkspaceKey,
+  verifyPackSignature,
+} from '@knowtion/format';
 
 import { WorkspaceHost } from '../workspace-host.js';
+import { withEpoch } from '../workspace-keys.js';
 
 const WORKSPACE_ID = new Uint8Array(16).fill(0x11);
 const DEVICE_A = new Uint8Array(16).fill(0xaa);
@@ -670,5 +677,91 @@ describe('compaction', () => {
     await expect(a.forgetDevice(aHex)).rejects.toThrow(/cannot forget itself/);
     await a.close();
     await b.close();
+  });
+});
+
+describe('an encrypted workspace', () => {
+  const material = withEpoch(undefined, generateWorkspaceKey());
+
+  const openEncrypted = (dir: string, deviceId = DEVICE_A, peerId = 1n) =>
+    WorkspaceHost.open({
+      dataDir: dir,
+      workspaceId: WORKSPACE_ID,
+      deviceId,
+      peerId,
+      deviceKeys: keysFor(deviceId),
+      workspaceKeys: material,
+      flushDelayMs: 0,
+    });
+
+  /** Every pack the host wrote, tree document and page bodies alike. */
+  async function packsUnder(dir: string): Promise<{ path: string; bytes: Uint8Array }[]> {
+    const { readFile } = await import('node:fs/promises');
+    const root = join(dir, 'log');
+    const out: { path: string; bytes: Uint8Array }[] = [];
+    const walk = async (at: string): Promise<void> => {
+      for (const entry of await readdir(at, { withFileTypes: true })) {
+        const full = join(at, entry.name);
+        if (entry.isDirectory()) await walk(full);
+        else if (entry.name.endsWith('.kpack')) {
+          out.push({ path: full, bytes: new Uint8Array(await readFile(full)) });
+        }
+      }
+    };
+    await walk(root);
+    return out;
+  }
+
+  it('writes every pack encrypted and signed, and reads them back', async () => {
+    const dir = await dataDir();
+    const host = await openEncrypted(dir);
+    const page = host.createPage({ title: 'A page title' });
+    await host.openBody(page.id);
+    await host.flush();
+    await host.close();
+
+    const packs = await packsUnder(dir);
+    expect(packs.length).toBeGreaterThan(0);
+    for (const pack of packs) {
+      const { header } = decodePack(pack.bytes, pack.path);
+      expect(header.suiteId).toBe(SUITE.XCHACHA20POLY1305_ARGON2ID);
+      expect(header.keyEpoch).toBe(material.current);
+      expect(verifyPackSignature(pack.bytes, keysFor(DEVICE_A).signingPublicKey)).toBe(true);
+      // The title is the one thing a reader of the folder must not be able to see.
+      expect(Buffer.from(pack.bytes).includes(Buffer.from('A page title'))).toBe(false);
+    }
+
+    const reopened = await openEncrypted(dir);
+    expect(reopened.tree().map((p) => p.title)).toEqual(['A page title']);
+    await reopened.close();
+  });
+
+  it('still reads a workspace that was written in plaintext before the cipher was on', async () => {
+    // The upgrade path. Every pack declares its own suite, so switching costs privacy
+    // for what was already written and never readability.
+    const dir = await dataDir();
+    const before = await open(dir);
+    before.createPage({ title: 'Written before' });
+    await before.flush();
+    await before.close();
+
+    const after = await openEncrypted(dir);
+    expect(after.tree().map((p) => p.title)).toEqual(['Written before']);
+    after.createPage({ title: 'Written after' });
+    await after.flush();
+    await after.close();
+
+    const suites = (await packsUnder(dir)).map((p) => decodePack(p.bytes).header.suiteId);
+    expect(suites).toContain(SUITE.NONE);
+    expect(suites).toContain(SUITE.XCHACHA20POLY1305_ARGON2ID);
+
+    const reopened = await openEncrypted(dir);
+    expect(
+      reopened
+        .tree()
+        .map((p) => p.title)
+        .sort(),
+    ).toEqual(['Written after', 'Written before']);
+    await reopened.close();
   });
 });
