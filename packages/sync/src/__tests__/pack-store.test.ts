@@ -447,3 +447,55 @@ describe('conflict copies', () => {
     expect((await b.store.pull(b.doc)).adopted).toBe(0);
   });
 });
+
+describe('a rename in the middle of a chain', () => {
+  it('still delivers every later pack', async () => {
+    // Found by the simulator. Adoption recovered the renamed pack, but it ran AFTER the
+    // chain pass — so pack 3 saw pack 2 missing, failed its prevPackHash check, and was
+    // rejected on every future cycle. One rename by a sync client silently froze a
+    // device's history at that point.
+    const storage = new MemoryStorage();
+    const a = device(storage, DEVICE_A, 1n);
+
+    a.write('one', '1');
+    await a.store.push(a.doc);
+    a.write('two', '2');
+    await a.store.push(a.doc);
+    a.write('three', '3');
+    await a.store.push(a.doc);
+
+    // The client renames the middle pack.
+    const middle = packPath(hexA, TREE, 2);
+    const bytes = (await storage.get(middle))!;
+    await storage.putIfAbsent(`d/${hexA}/${TREE}/000000000002-DESKTOP-AB12.kpack`, bytes);
+    await storage.delete(middle);
+
+    const b = device(storage, DEVICE_B, 2n);
+    const result = await b.store.pull(b.doc);
+
+    expect(result.rejected, 'nothing should be permanently rejected').toEqual([]);
+    expect(b.notes()).toEqual({ one: '1', two: '2', three: '3' });
+  });
+
+  it('recovers on a later cycle if the copy appears after the gap was seen', async () => {
+    const storage = new MemoryStorage();
+    const a = device(storage, DEVICE_A, 1n);
+    a.write('one', '1');
+    await a.store.push(a.doc);
+    a.write('two', '2');
+    await a.store.push(a.doc);
+
+    const second = packPath(hexA, TREE, 2);
+    const bytes = (await storage.get(second))!;
+    await storage.delete(second);
+
+    const b = device(storage, DEVICE_B, 2n);
+    await b.store.pull(b.doc); // sees the gap
+    expect(b.notes()).toEqual({ one: '1' });
+
+    // The copy turns up later, as a still-syncing folder does.
+    await storage.putIfAbsent(`d/${hexA}/${TREE}/000000000002 (1).kpack`, bytes);
+    await b.store.pull(b.doc);
+    expect(b.notes()).toEqual({ one: '1', two: '2' });
+  });
+});
