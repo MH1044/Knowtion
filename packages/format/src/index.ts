@@ -84,5 +84,9 @@ export {
   isChainRoot,
   isShallowSnapshot,
   signedBytes,
+  verifyPackSignature,
 } from './envelope.js';
+
+export { keyringOf, openPack, sealPack } from './sealed-pack.js';
+export type { Keyring, SealPackInput } from './sealed-pack.js';
 export type { DecodedPack, PackHeader, PackInput } from './envelope.js';
