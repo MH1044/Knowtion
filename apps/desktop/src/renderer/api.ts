@@ -43,6 +43,8 @@ export interface SyncInfo {
 }
 
 export interface DeviceSummary {
+  /** Hex identifier, needed to forget the device. */
+  deviceHex: string;
   label: string;
   /** Short readable form of the device's signing key, for comparing between machines. */
   fingerprint: string;
@@ -76,6 +78,9 @@ interface Bridge {
   importNotion(): Promise<Result<ImportReport | null>>;
   syncInfo(): Promise<Result<SyncInfo>>;
   devices(): Promise<Result<DeviceList>>;
+  forgetDevice(input: {
+    deviceHex: string;
+  }): Promise<Result<{ deleted: number; remaining: number; done: boolean }>>;
   syncNow(): Promise<Result<null>>;
   /** Resolves to null when the user cancels the folder picker. */
   chooseSyncFolder(): Promise<
@@ -113,6 +118,7 @@ export const api = {
   importNotion: () => unwrap(window.knowtion.importNotion()),
   syncInfo: () => unwrap(window.knowtion.syncInfo()),
   devices: () => unwrap(window.knowtion.devices()),
+  forgetDevice: (deviceHex: string) => unwrap(window.knowtion.forgetDevice({ deviceHex })),
   syncNow: () => unwrap(window.knowtion.syncNow()),
   chooseSyncFolder: () => unwrap(window.knowtion.chooseSyncFolder()),
   flush: () => unwrap(window.knowtion.flush()),
