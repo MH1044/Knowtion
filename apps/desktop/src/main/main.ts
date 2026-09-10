@@ -14,7 +14,7 @@ import { fileURLToPath } from 'node:url';
 
 import { BrowserWindow, app, dialog, ipcMain, session } from 'electron';
 
-import { adoptWorkspace, loadOrCreateIdentity, type Identity } from './identity.js';
+import { adoptWorkspace, loadOrCreateIdentity, saveIdentity, type Identity } from './identity.js';
 import { chooseProtector } from './secret-protector.js';
 import { readSettings, writeSettings } from './settings.js';
 import { checkSyncFolder, copyLog } from './sync-folder.js';
@@ -263,27 +263,83 @@ function registerHandlers(): void {
               'empty workspace. Your existing notes are untouched.',
           };
         }
-
-        await host!.close();
-        identity = await adoptWorkspace(dataDir, identity!, remote, protector);
-      } else {
-        // Taking our own workspace with us.
-        await host!.close();
-        const previousLogDir = currentLogDir === '' ? join(dataDir, 'log') : currentLogDir;
-        await copyLog(previousLogDir, folder);
       }
 
-      await writeSettings(dataDir, { syncFolder: folder });
-      currentLogDir = folder;
-      host = await WorkspaceHost.open({
-        dataDir,
-        logDir: folder,
-        workspaceId: identity!.workspaceId,
-        deviceId: identity!.deviceId,
-        peerId: identity!.peerId,
-        deviceKeys: identity!.keys,
-        deviceLabel: identity!.label,
-      });
+      // Detach the current host and its timer BEFORE any teardown or reopen I/O below.
+      // Both the poll timer and the renderer's "sync now" button call runSync(), whose
+      // only guard is `if (!host) return`; leaving `host` pointing at an instance that
+      // is mid-close (or already closed) means that guard never trips, and runSync ends
+      // up operating on a closed store. Nulling it out here, before `close()` even
+      // starts, is what makes the guard correct for the whole transition.
+      if (syncTimer) clearTimeout(syncTimer);
+      const closingHost = host!;
+      const previousLogDir = currentLogDir;
+      const previousIdentity = identity!;
+      host = undefined;
+
+      let nextIdentity = previousIdentity;
+      try {
+        if (check.existingWorkspace) {
+          const remote = (await readWorkspaceIdFrom(folder))!; // re-checked above, folder unchanged
+          await closingHost.close();
+          nextIdentity = await adoptWorkspace(dataDir, previousIdentity, remote, protector);
+        } else {
+          // Taking our own workspace with us.
+          await closingHost.close();
+          const sourceLogDir = previousLogDir === '' ? join(dataDir, 'log') : previousLogDir;
+          await copyLog(sourceLogDir, folder);
+        }
+
+        // Settings and currentLogDir are only committed once the new host actually
+        // opens — otherwise a failure below would leave disk state pointing at a
+        // folder this process never successfully started using.
+        const opened = await WorkspaceHost.open({
+          dataDir,
+          logDir: folder,
+          workspaceId: nextIdentity.workspaceId,
+          deviceId: nextIdentity.deviceId,
+          peerId: nextIdentity.peerId,
+          deviceKeys: nextIdentity.keys,
+          deviceLabel: nextIdentity.label,
+        });
+        await writeSettings(dataDir, { syncFolder: folder });
+        currentLogDir = folder;
+        identity = nextIdentity;
+        host = opened;
+      } catch (error) {
+        // The switch failed partway through. The user's previous workspace must not be
+        // stranded until a restart: put back whatever this attempt changed, and reopen
+        // it exactly as it was.
+        if (check.existingWorkspace && nextIdentity !== previousIdentity) {
+          await saveIdentity(dataDir, previousIdentity, protector);
+        }
+        identity = previousIdentity;
+        currentLogDir = previousLogDir;
+        try {
+          host = await WorkspaceHost.open({
+            dataDir,
+            logDir: previousLogDir,
+            workspaceId: previousIdentity.workspaceId,
+            deviceId: previousIdentity.deviceId,
+            peerId: previousIdentity.peerId,
+            deviceKeys: previousIdentity.keys,
+            deviceLabel: previousIdentity.label,
+          });
+          scheduleSync();
+          startWatching();
+        } catch (reopenError) {
+          // Both the switch and the rollback failed. Say so plainly rather than
+          // returning only the first error and leaving the app silently unusable.
+          const first = error instanceof Error ? error.message : String(error);
+          const second = reopenError instanceof Error ? reopenError.message : String(reopenError);
+          throw new Error(
+            `could not switch sync folders (${first}), and reopening the previous ` +
+              `workspace also failed (${second}) — restart Knowtion`,
+          );
+        }
+        throw error;
+      }
+
       await runSync();
       scheduleSync();
       startWatching();
