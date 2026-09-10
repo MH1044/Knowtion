@@ -115,7 +115,9 @@ export class KeyWrapError extends Error {
 
 function requireBytes(name: string, value: Uint8Array, expected: number): void {
   if (value.length !== expected) {
-    throw new TypeError(`${name} must be exactly ${expected} bytes, received ${value.length}`);
+    throw new TypeError(
+      `${name} must be exactly ${String(expected)} bytes, received ${String(value.length)}`,
+    );
   }
 }
 
@@ -128,7 +130,9 @@ function requireBytes(name: string, value: Uint8Array, expected: number): void {
  */
 export function generateWorkspaceKey(epoch: number = FIRST_KEY_EPOCH): WorkspaceKey {
   if (!Number.isInteger(epoch) || epoch < FIRST_KEY_EPOCH || epoch > MAX_EPOCH) {
-    throw new TypeError(`key epoch must be an integer in ${FIRST_KEY_EPOCH}..${MAX_EPOCH}`);
+    throw new TypeError(
+      `key epoch must be an integer in ${String(FIRST_KEY_EPOCH)}..${String(MAX_EPOCH)}`,
+    );
   }
   return { epoch, key: Uint8Array.from(randomBytes(WORKSPACE_KEY_SIZE)) };
 }
@@ -231,8 +235,8 @@ export function unwrapKeyFromDevice(
   requireBytes('workspaceId', workspaceId, 16);
   requireBytes('wrappingSecretKey', wrappingSecretKey, 32);
   const fields = openRecord(record, 'device', workspaceId);
-  const ephemeralPublicKey = expectBytes(fields['ephemeral'], 32, 'ephemeral');
-  const recipient = expectBytes(fields['recipient'], 32, 'recipient');
+  const ephemeralPublicKey = expectBytes(fields.ephemeral, 32, 'ephemeral');
+  const recipient = expectBytes(fields.recipient, 32, 'recipient');
 
   // Derived rather than taken from the record, so a rewritten recipient field cannot
   // steer the derivation. Comparing them turns "not addressed to this device" into its
@@ -252,7 +256,7 @@ export function unwrapKeyFromDevice(
 
   const kek = deviceKek(shared, ephemeralPublicKey, ourPublicKey);
   return {
-    epoch: fields['epoch'] as number,
+    epoch: fields.epoch as number,
     key: openSealed(fields, kek, WRAP_KIND.DEVICE, workspaceId),
   };
 }
@@ -316,12 +320,12 @@ export function unwrapKeyFromRecoveryPhrase(
 ): WorkspaceKey {
   requireBytes('workspaceId', workspaceId, 16);
   const fields = openRecord(record, 'recovery', workspaceId);
-  const salt = expectBytes(fields['salt'], SALT_SIZE, 'salt');
+  const salt = expectBytes(fields.salt, SALT_SIZE, 'salt');
   const params = readParams(fields);
 
   const kek = recoveryKek(phrase, salt, params);
   return {
-    epoch: fields['epoch'] as number,
+    epoch: fields.epoch as number,
     key: openSealed(fields, kek, WRAP_KIND.RECOVERY, workspaceId),
   };
 }
@@ -342,13 +346,14 @@ function checkParams(params: KdfParams): void {
     throw new KeyWrapError(
       'MALFORMED',
       `key-derivation cost m=${String(params.m)} t=${String(params.t)} p=${String(params.p)} ` +
-        `is outside the accepted range (m ${minM}..${maxM}, t ${minT}..${maxT}, p ${minP}..${maxP})`,
+        `is outside the accepted range (m ${String(minM)}..${String(maxM)}, ` +
+        `t ${String(minT)}..${String(maxT)}, p ${String(minP)}..${String(maxP)})`,
     );
   }
 }
 
 function readParams(fields: Record<string, unknown>): KdfParams {
-  const params = { m: fields['m'], t: fields['t'], p: fields['p'] };
+  const params = { m: fields.m, t: fields.t, p: fields.p };
   if (
     typeof params.m !== 'number' ||
     typeof params.t !== 'number' ||
@@ -363,7 +368,10 @@ function readParams(fields: Record<string, unknown>): KdfParams {
 
 function expectBytes(value: unknown, length: number, field: string): Uint8Array {
   if (!(value instanceof Uint8Array) || value.length !== length) {
-    throw new KeyWrapError('MALFORMED', `key wrap field ${field} must be ${length} bytes`);
+    throw new KeyWrapError(
+      'MALFORMED',
+      `key wrap field ${field} must be ${String(length)} bytes`,
+    );
   }
   return value;
 }
@@ -391,21 +399,21 @@ function openRecord(
   }
   const fields = decoded as Record<string, unknown>;
 
-  const version = fields['v'];
+  const version = fields.v;
   if (typeof version !== 'number' || version > KEY_WRAP_VERSION) {
     throw new KeyWrapError(
       'UNSUPPORTED_VERSION',
-      `key wrap is version ${String(version)}; this build understands ${KEY_WRAP_VERSION}`,
+      `key wrap is version ${String(version)}; this build understands ${String(KEY_WRAP_VERSION)}`,
     );
   }
-  if (fields['kind'] !== kind) {
+  if (fields.kind !== kind) {
     throw new KeyWrapError(
       'MALFORMED',
-      `expected a ${kind} key wrap, found ${String(fields['kind'])}`,
+      `expected a ${kind} key wrap, found ${String(fields.kind)}`,
     );
   }
 
-  const epoch = fields['epoch'];
+  const epoch = fields.epoch;
   if (
     !Number.isInteger(epoch) ||
     (epoch as number) < FIRST_KEY_EPOCH ||
@@ -414,7 +422,7 @@ function openRecord(
     throw new KeyWrapError('MALFORMED', `key wrap declares an impossible epoch ${String(epoch)}`);
   }
 
-  if (!equalBytes(expectBytes(fields['workspaceId'], 16, 'workspaceId'), workspaceId)) {
+  if (!equalBytes(expectBytes(fields.workspaceId, 16, 'workspaceId'), workspaceId)) {
     throw new KeyWrapError('WRONG_WORKSPACE', 'this key wrap belongs to a different workspace');
   }
   return fields;
@@ -434,9 +442,9 @@ function openSealed(
   kind: number,
   workspaceId: Uint8Array,
 ): Uint8Array {
-  const nonce = expectBytes(fields['nonce'], NONCE_SIZE, 'nonce');
-  const sealed = expectBytes(fields['sealed'], WORKSPACE_KEY_SIZE + 16, 'sealed');
-  const aad = wrapAad(kind, fields['epoch'] as number, workspaceId);
+  const nonce = expectBytes(fields.nonce, NONCE_SIZE, 'nonce');
+  const sealed = expectBytes(fields.sealed, WORKSPACE_KEY_SIZE + 16, 'sealed');
+  const aad = wrapAad(kind, fields.epoch as number, workspaceId);
   try {
     return Uint8Array.from(xchacha20poly1305(kek, nonce, aad).decrypt(sealed));
   } catch {

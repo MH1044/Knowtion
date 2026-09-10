@@ -53,7 +53,9 @@ export const AAD_SIZE = 52;
 
 function requireBytes(name: string, value: Uint8Array, expected: number): void {
   if (value.length !== expected) {
-    throw new TypeError(`${name} must be exactly ${expected} bytes, received ${value.length}`);
+    throw new TypeError(
+      `${name} must be exactly ${String(expected)} bytes, received ${String(value.length)}`,
+    );
   }
 }
 
@@ -197,8 +199,8 @@ export function decryptPayload(
   if (ciphertext.length < MIN_FRAMED_CHUNK_SIZE) {
     throw new PackFormatError(
       'BAD_CIPHERTEXT_FRAMING',
-      `encrypted payload of ${ciphertext.length} bytes is shorter than the smallest ` +
-        `possible chunk (${MIN_FRAMED_CHUNK_SIZE} bytes)`,
+      `encrypted payload of ${String(ciphertext.length)} bytes is shorter than the smallest ` +
+        `possible chunk (${String(MIN_FRAMED_CHUNK_SIZE)} bytes)`,
       path,
     );
   }
@@ -215,7 +217,7 @@ export function decryptPayload(
     if (framed < MIN_FRAMED_CHUNK_SIZE) {
       throw new PackFormatError(
         'BAD_CIPHERTEXT_FRAMING',
-        `chunk ${index} has ${framed} bytes, fewer than a nonce and a tag`,
+        `chunk ${String(index)} has ${String(framed)} bytes, fewer than a nonce and a tag`,
         path,
       );
     }
@@ -230,7 +232,7 @@ export function decryptPayload(
       // are indistinguishable by design, and guessing in the message would mislead.
       throw new PackFormatError(
         'DECRYPT_FAILED',
-        `chunk ${index} failed authentication: the key epoch is wrong, or the pack has ` +
+        `chunk ${String(index)} failed authentication: the key epoch is wrong, or the pack has ` +
           'been altered since it was written',
         path,
       );

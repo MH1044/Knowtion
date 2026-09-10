@@ -16,6 +16,13 @@ import {
 
 const bytesOf = (n: number, fill = 0) => new Uint8Array(n).fill(fill);
 
+/** Indexing a Uint8Array can't statically prove the byte is there. */
+function byteAt(bytes: Uint8Array, index: number): number {
+  const value = bytes[index];
+  if (value === undefined) throw new Error(`expected byte at index ${String(index)}`);
+  return value;
+}
+
 const binding = (over: Partial<PackBinding> = {}): PackBinding => ({
   envelopeVersion: 0,
   suiteId: SUITE.XCHACHA20POLY1305_ARGON2ID,
@@ -196,7 +203,7 @@ describe('content decryption refuses anything it cannot authenticate', () => {
   it('rejects a single flipped bit anywhere in the stream', () => {
     for (const at of [0, NONCE_SIZE, sealed.length - 1, Math.floor(sealed.length / 2)]) {
       const tampered = Uint8Array.from(sealed);
-      tampered[at]! ^= 0x01;
+      tampered[at] = byteAt(tampered, at) ^ 0x01;
       expectRejection(() => decryptPayload(KEY, tampered, binding()), 'DECRYPT_FAILED');
     }
   });

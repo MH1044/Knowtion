@@ -18,6 +18,13 @@ import {
 const WORKSPACE = new Uint8Array(16).fill(0x11);
 const OTHER_WORKSPACE = new Uint8Array(16).fill(0x22);
 
+/** Indexing a Uint8Array can't statically prove the byte is there. */
+function byteAt(bytes: Uint8Array, index: number): number {
+  const value = bytes[index];
+  if (value === undefined) throw new Error(`expected byte at index ${String(index)}`);
+  return value;
+}
+
 /**
  * Argon2id at the shipped cost is 766 ms, which would put minutes on this file. The
  * parameters are data carried in the record, so the code path under test is identical;
@@ -116,7 +123,7 @@ describe('wrapping to a device', () => {
     let attempts = 0;
     for (let i = 0; i < record.length; i += 7) {
       const tampered = Uint8Array.from(record);
-      tampered[i]! ^= 0x01;
+      tampered[i] = byteAt(tampered, i) ^ 0x01;
       attempts++;
       // Any rejection is correct. What must never happen is a DIFFERENT key coming
       // back, because that is the failure a caller cannot detect.

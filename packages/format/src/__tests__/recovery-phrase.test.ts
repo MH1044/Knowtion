@@ -14,6 +14,13 @@ import {
 
 const phrase = generateRecoveryPhrase();
 
+/** Indexing an array can't statically prove the element is there. */
+function at<T>(array: readonly T[], index: number): T {
+  const value = array[index];
+  if (value === undefined) throw new Error(`expected index ${String(index)} to exist`);
+  return value;
+}
+
 describe('generating a recovery phrase', () => {
   it('produces 24 words', () => {
     expect(phrase.split(' ')).toHaveLength(RECOVERY_PHRASE_WORDS);
@@ -67,8 +74,8 @@ describe('accepting a phrase as a person actually supplies it', () => {
         fc.boolean(),
         (separators, upper) => {
           const words = phrase.split(' ');
-          let joined = words[0]!;
-          for (const [i, sep] of separators.entries()) joined += sep + words[i + 1]!;
+          let joined = at(words, 0);
+          for (const [i, sep] of separators.entries()) joined += sep + at(words, i + 1);
           expect(isValidRecoveryPhrase(upper ? joined.toUpperCase() : joined)).toBe(true);
         },
       ),
@@ -125,8 +132,8 @@ describe('rejecting a phrase, and saying why', () => {
     // the checksum knows the order is wrong.
     const words = FIXED.split(' ');
     const swapped = [...words];
-    swapped[0] = words[1]!;
-    swapped[1] = words[0]!;
+    swapped[0] = at(words, 1);
+    swapped[1] = at(words, 0);
     const error = problemOf(swapped.join(' '));
     expect(error.problem).toBe('CHECKSUM');
     expect(error.wordIndex).toBeUndefined();

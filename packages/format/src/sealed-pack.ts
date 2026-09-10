@@ -72,7 +72,7 @@ export function sealPack(input: SealPackInput): Uint8Array {
   if (workspaceKey.epoch < FIRST_KEY_EPOCH) {
     // Epoch 0 means suite NONE. An encrypted pack claiming it would be unreadable by
     // the rule that makes key_epoch meaningful on its own.
-    throw new TypeError(`an encrypted pack cannot use key epoch ${workspaceKey.epoch}`);
+    throw new TypeError(`an encrypted pack cannot use key epoch ${String(workspaceKey.epoch)}`);
   }
 
   const packSalt = Uint8Array.from(randomBytes(PACK_SALT_SIZE));
@@ -133,7 +133,7 @@ export function openPack(decoded: DecodedPack, keys: Keyring, path?: string): Ui
   if (workspaceKey === undefined) {
     throw new PackFormatError(
       'UNKNOWN_KEY_EPOCH',
-      `pack is encrypted under key generation ${header.keyEpoch}, which this device has ` +
+      `pack is encrypted under key generation ${String(header.keyEpoch)}, which this device has ` +
         'not been granted; it needs a key wrap for that epoch before it can read this',
       path,
     );

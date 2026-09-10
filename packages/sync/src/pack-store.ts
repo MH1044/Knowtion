@@ -48,6 +48,12 @@ function at<T>(array: readonly T[], index: number): T {
   return value;
 }
 
+/** Unwraps a value an invariant elsewhere in this class has already established. */
+function must<T>(value: T | undefined, what: string): T {
+  if (value === undefined) throw new Error(`expected ${what} to be defined here`);
+  return value;
+}
+
 export interface PackStoreOptions {
   storage: StoragePort;
   /** 16 raw bytes. */
@@ -262,7 +268,7 @@ export class PackStore {
             payload,
             prevPackHash: this.#lastHash,
             workspaceKey: sealWith,
-            signingSecretKey: this.#crypto!.signingSecretKey,
+            signingSecretKey: must(this.#crypto, 'crypto').signingSecretKey,
           });
 
     const path = packPath(this.#deviceHex, this.#documentHex, seq);
@@ -522,7 +528,7 @@ export class PackStore {
   #openPayload(candidate: PackCandidate): Uint8Array {
     if (candidate.decoded.header.suiteId === SUITE.NONE) return candidate.decoded.payload;
     // #signatureProblem has already established that crypto is present.
-    return openPack(candidate.decoded, this.#crypto!.keyring, candidate.path);
+    return openPack(candidate.decoded, must(this.#crypto, 'crypto').keyring, candidate.path);
   }
 
   /**
