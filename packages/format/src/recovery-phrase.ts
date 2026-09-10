@@ -98,7 +98,7 @@ export function checkRecoveryPhrase(input: string): string {
   if (words.length !== RECOVERY_PHRASE_WORDS) {
     throw new RecoveryPhraseError(
       'WORD_COUNT',
-      `a recovery phrase is ${RECOVERY_PHRASE_WORDS} words; this one has ${words.length}`,
+      `a recovery phrase is ${String(RECOVERY_PHRASE_WORDS)} words; this one has ${String(words.length)}`,
     );
   }
 
@@ -106,7 +106,7 @@ export function checkRecoveryPhrase(input: string): string {
     if (!WORDS.has(word)) {
       throw new RecoveryPhraseError(
         'UNKNOWN_WORD',
-        `word ${index + 1}, "${word}", is not a recovery-phrase word`,
+        `word ${String(index + 1)}, "${word}", is not a recovery-phrase word`,
         index + 1,
       );
     }

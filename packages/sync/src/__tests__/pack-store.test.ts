@@ -37,6 +37,13 @@ function at<T>(array: readonly T[], index: number): T {
   return value;
 }
 
+/** Same as `at`, for a `Uint8Array`, which is not a `T[]`. */
+function byteAt(bytes: Uint8Array, index: number): number {
+  const value = bytes[index];
+  if (value === undefined) throw new Error(`expected byte at index ${String(index)}`);
+  return value;
+}
+
 function device(storage: MemoryStorage, id: Uint8Array, peerId: bigint) {
   const doc = new LoroDoc();
   doc.setPeerId(peerId);
@@ -566,13 +573,13 @@ describe('encrypted workspaces', () => {
     a.write('title', 'a very distinctive secret string');
     const pushed = await a.store.push(a.doc);
 
-    const bytes = await storage.get(pushed!.path);
-    const { header } = decodePack(bytes!);
+    const bytes = must(await storage.get(must(pushed, 'pushed').path), 'bytes');
+    const { header } = decodePack(bytes);
     expect(header.suiteId).toBe(SUITE.XCHACHA20POLY1305_ARGON2ID);
     expect(header.keyEpoch).toBe(workspaceKey.epoch);
-    expect(verifyPackSignature(bytes!, keysA.signingPublicKey)).toBe(true);
+    expect(verifyPackSignature(bytes, keysA.signingPublicKey)).toBe(true);
     // The thing the whole feature exists for.
-    expect(Buffer.from(bytes!).includes(Buffer.from('a very distinctive secret string'))).toBe(
+    expect(Buffer.from(bytes).includes(Buffer.from('a very distinctive secret string'))).toBe(
       false,
     );
   });
@@ -609,9 +616,9 @@ describe('encrypted workspaces', () => {
     after.write('written', 'after');
     const pushed = await after.store.push(after.doc);
 
-    expect(decodePack((await storage.get(pushed!.path))!).header.suiteId).toBe(
-      SUITE.XCHACHA20POLY1305_ARGON2ID,
-    );
+    expect(
+      decodePack(must(await storage.get(must(pushed, 'pushed').path), 'bytes')).header.suiteId,
+    ).toBe(SUITE.XCHACHA20POLY1305_ARGON2ID);
 
     const reader = encrypted(storage, DEVICE_B, 2n, crypto(keysB));
     const result = await reader.store.pull(reader.doc);
@@ -646,7 +653,7 @@ describe('encrypted workspaces reject what they cannot trust', () => {
     doc.getMap('notes').set('k', 'v');
     doc.commit();
     const pushed = await writer(storage).push(doc);
-    return pushed!.path;
+    return must(pushed, 'pushed').path;
   }
 
   const readerWith = (storage: MemoryStorage, crypto?: PackCrypto) =>
@@ -667,7 +674,7 @@ describe('encrypted workspaces reject what they cannot trust', () => {
     const result = await readerWith(storage).pull(doc);
     expect(result.applied).toBe(0);
     expect(result.rejected.map((r) => r.code)).toEqual(['UNKNOWN_KEY_EPOCH']);
-    expect(result.rejected[0]!.path).toBe(path);
+    expect(at(result.rejected, 0).path).toBe(path);
   });
 
   it('refuses a pack from a device it has no registry record for', async () => {
@@ -686,8 +693,9 @@ describe('encrypted workspaces reject what they cannot trust', () => {
   it('refuses a pack altered after it was written', async () => {
     const storage = new MemoryStorage();
     const path = await onePack(storage);
-    const bytes = Uint8Array.from((await storage.get(path))!);
-    bytes[bytes.length - 1]! ^= 0x01;
+    const bytes = Uint8Array.from(must(await storage.get(path), 'bytes'));
+    const lastIndex = bytes.length - 1;
+    bytes[lastIndex] = byteAt(bytes, lastIndex) ^ 0x01;
     await storage.putOwn(path, bytes);
 
     const doc = new LoroDoc();

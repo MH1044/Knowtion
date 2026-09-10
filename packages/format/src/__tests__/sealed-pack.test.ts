@@ -24,6 +24,13 @@ const workspaceKey = generateWorkspaceKey();
 const keys = keyringOf(workspaceKey);
 const plaintext = new TextEncoder().encode('a loro update export would live here');
 
+/** Indexing a Uint8Array can't statically prove the byte is there. */
+function byteAt(bytes: Uint8Array, index: number): number {
+  const value = bytes[index];
+  if (value === undefined) throw new Error(`expected byte at index ${String(index)}`);
+  return value;
+}
+
 const seal = (over: Partial<Parameters<typeof sealPack>[0]> = {}) =>
   sealPack({
     workspaceId: WORKSPACE,
@@ -89,7 +96,8 @@ describe('reading rule 7: the pack was written by the device it claims', () => {
 
   it('fails when the payload is altered', () => {
     const tampered = Uint8Array.from(pack);
-    tampered[tampered.length - 1]! ^= 0x01;
+    const lastIndex = tampered.length - 1;
+    tampered[lastIndex] = byteAt(tampered, lastIndex) ^ 0x01;
     expect(verifyPackSignature(tampered, device.signingPublicKey)).toBe(false);
   });
 
@@ -97,7 +105,7 @@ describe('reading rule 7: the pack was written by the device it claims', () => {
     // seq sits at offset 40, inside the signed prefix. Someone who can write to the
     // folder can renumber a pack; only the signature notices.
     const tampered = Uint8Array.from(pack);
-    tampered[OFFSET.seq]! ^= 0x01;
+    tampered[OFFSET.seq] = byteAt(tampered, OFFSET.seq) ^ 0x01;
     expect(verifyPackSignature(tampered, device.signingPublicKey)).toBe(false);
   });
 
