@@ -94,6 +94,17 @@ export function SyncPanel({ onChanged }: { onChanged: () => void }): React.JSX.E
 
   return (
     <div className="sync-panel">
+      {/* Above everything, and worded as a present-tense fact rather than a past event.
+          A sync that failed is an inconvenience; a workspace that is not saving is
+          losing the user's work right now, and they cannot tell by looking. */}
+      {info?.writeFailure !== null && info?.writeFailure !== undefined && (
+        <p className="write-failure" role="alert">
+          <strong>Your changes are not being saved.</strong> {info.writeFailure}
+          <br />
+          Copy anything you cannot lose out of Knowtion before closing it.
+        </p>
+      )}
+
       <div className="sync-line">
         <span className={folder === null ? 'dot local' : 'dot synced'} aria-hidden="true" />
         <span className="sync-where" title={folder ?? undefined}>

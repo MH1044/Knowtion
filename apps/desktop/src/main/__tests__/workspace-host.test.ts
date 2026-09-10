@@ -948,3 +948,39 @@ describe('rotating the key away from a revoked device', () => {
     await a3.close();
   });
 });
+
+describe('a workspace that cannot save', () => {
+  it('reports the failure, and stops reporting once a write succeeds', async () => {
+    // The worst failure this app can have is looking completely normal while nothing is
+    // being written. Until this existed, a full disk or a folder that went away was
+    // indistinguishable from working.
+    const dir = await dataDir();
+    const host = await open(dir);
+
+    host.createPage({ title: 'Before the disk filled' });
+    await host.flush();
+    expect(host.writeFailure).toBeUndefined();
+
+    // Break the log directory out from under the running host.
+    const logDir = join(dir, 'log');
+    await rm(logDir, { recursive: true, force: true });
+    const blocker = join(dir, 'log');
+    await import('node:fs/promises').then((fs) => fs.writeFile(blocker, 'not a directory'));
+
+    host.createPage({ title: 'While it was broken' });
+    await expect(host.flush()).rejects.toThrow();
+    // Read from the host rather than from a sync result: a local-only workspace never
+    // runs a cycle, and "nothing is being saved" is just as true there.
+    expect(host.writeFailure).toBeDefined();
+    expect(host.writeFailure).toContain('log');
+
+    // Put it back; the next successful write must clear the warning, or it becomes
+    // permanent furniture the user learns to ignore.
+    await rm(blocker, { force: true });
+    host.createPage({ title: 'After it was fixed' });
+    await host.flush();
+    expect(host.writeFailure).toBeUndefined();
+
+    await host.close();
+  });
+});
