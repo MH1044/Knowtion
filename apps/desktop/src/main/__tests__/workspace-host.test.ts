@@ -18,8 +18,10 @@ import {
   verifyPackSignature,
 } from '@knowtion/format';
 
+import { NodeStorage } from '@knowtion/sync';
+
 import { WorkspaceHost } from '../workspace-host.js';
-import { withEpoch } from '../workspace-keys.js';
+import { collectGrantedKeys, withEpoch } from '../workspace-keys.js';
 
 const WORKSPACE_ID = new Uint8Array(16).fill(0x11);
 const DEVICE_A = new Uint8Array(16).fill(0xaa);
@@ -763,5 +765,116 @@ describe('an encrypted workspace', () => {
         .sort(),
     ).toEqual(['Written after', 'Written before']);
     await reopened.close();
+  });
+});
+
+describe('approving a second device for an encrypted workspace', () => {
+  const hexB = Buffer.from(DEVICE_B).toString('hex');
+
+  it('will not let an unapproved device read, and does once approved', async () => {
+    const material = withEpoch(undefined, generateWorkspaceKey());
+    const shared = await dataDir();
+    const logDir = join(shared, 'shared-log');
+    const bDataDir = await dataDir();
+
+    const openDevice = async (
+      dir: string,
+      deviceId: Uint8Array,
+      peerId: bigint,
+      keys?: typeof material,
+    ) =>
+      WorkspaceHost.open({
+        dataDir: dir,
+        logDir,
+        workspaceId: WORKSPACE_ID,
+        deviceId,
+        peerId,
+        deviceKeys: keysFor(deviceId),
+        flushDelayMs: 0,
+        settleMs: 0,
+        ...(keys === undefined ? {} : { workspaceKeys: keys }),
+      });
+
+    const a = await openDevice(await dataDir(), DEVICE_A, 1n, material);
+    a.createPage({ title: 'Only for approved devices' });
+    await a.flush();
+
+    // B enrols simply by opening the folder — but enrolment is not permission. Without
+    // a grant it reads nothing, which is the whole point: the folder is reachable by
+    // anyone the cloud account is shared with, and the key must not be.
+    const b = await openDevice(bDataDir, DEVICE_B, 2n);
+    await b.sync();
+    expect(b.tree()).toEqual([]);
+    await b.close();
+
+    expect((await a.devices()).devices.find((d) => !d.isThisDevice)?.hasCurrentKey).toBe(false);
+    expect(await a.grantCurrentKey(hexB)).toBe(true);
+    expect((await a.devices()).devices.find((d) => !d.isThisDevice)?.hasCurrentKey).toBe(true);
+
+    // B collects the wrap exactly as the application does on its next sync.
+    const collected = await collectGrantedKeys(
+      new NodeStorage(logDir),
+      WORKSPACE_ID,
+      keysFor(DEVICE_B),
+      hexB,
+      undefined,
+    );
+    expect(collected.problems).toEqual([]);
+    expect(collected.material?.epochs.map((e) => e.epoch)).toEqual([material.current]);
+
+    const bWithKey = await openDevice(bDataDir, DEVICE_B, 2n, collected.material);
+    await bWithKey.sync();
+    expect(bWithKey.tree().map((p) => p.title)).toEqual(['Only for approved devices']);
+
+    await bWithKey.close();
+    await a.close();
+  });
+
+  it('grants only to the device the wrap names', async () => {
+    // The wrap is sealed to the public key in that device's own signed record, so a
+    // grant cannot be redirected by whoever happens to be able to write to the folder.
+    const material = withEpoch(undefined, generateWorkspaceKey());
+    const shared = await dataDir();
+    const logDir = join(shared, 'shared-log');
+
+    const a = await WorkspaceHost.open({
+      dataDir: await dataDir(),
+      logDir,
+      workspaceId: WORKSPACE_ID,
+      deviceId: DEVICE_A,
+      peerId: 1n,
+      deviceKeys: keysFor(DEVICE_A),
+      workspaceKeys: material,
+      flushDelayMs: 0,
+      settleMs: 0,
+    });
+    const b = await WorkspaceHost.open({
+      dataDir: await dataDir(),
+      logDir,
+      workspaceId: WORKSPACE_ID,
+      deviceId: DEVICE_B,
+      peerId: 2n,
+      deviceKeys: keysFor(DEVICE_B),
+      flushDelayMs: 0,
+      settleMs: 0,
+    });
+    await b.close();
+
+    await a.grantCurrentKey(hexB);
+
+    // A third device, never approved, finds nothing addressed to it.
+    const outsider = new Uint8Array(16).fill(0xcc);
+    const collected = await collectGrantedKeys(
+      new NodeStorage(logDir),
+      WORKSPACE_ID,
+      keysFor(outsider),
+      Buffer.from(outsider).toString('hex'),
+      undefined,
+    );
+    expect(collected.material).toBeUndefined();
+    expect(collected.problems).toEqual([]);
+
+    await expect(a.grantCurrentKey('dd'.repeat(16))).rejects.toThrow(/no registry record/);
+    await a.close();
   });
 });

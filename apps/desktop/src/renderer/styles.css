@@ -597,3 +597,28 @@ input:focus-visible {
   opacity: 0.5;
   cursor: default;
 }
+
+/* Approving a device is a grant of access, so it reads as an action, not a status. */
+.device-list .approve {
+  border: 1px solid var(--accent);
+  border-radius: 5px;
+  background: transparent;
+  color: var(--accent);
+  padding: 2px 9px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.device-list .approve:hover:not(:disabled) {
+  background: var(--accent);
+  color: #10101a;
+}
+
+.device-list .approve:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.device-list .granted {
+  font-size: 12px;
+}
