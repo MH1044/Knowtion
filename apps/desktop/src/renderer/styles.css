@@ -691,3 +691,20 @@ input:focus-visible {
   opacity: 0.5;
   cursor: default;
 }
+
+/* "Nothing is being saved" outranks everything else in this panel, so it does not share
+   the muted styling the sync messages use. */
+.write-failure {
+  margin: 0 0 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--danger);
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--danger) 12%, transparent);
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.write-failure strong {
+  color: var(--danger);
+}

@@ -245,6 +245,10 @@ function registerHandlers(): void {
     value: {
       folder: currentLogDir === '' ? null : currentLogDir,
       lastError: lastSyncError ?? null,
+      // Read from the host rather than from the last sync result, because a device with
+      // no sync folder never runs a cycle — and "nothing is being saved" is exactly as
+      // true, and exactly as worth saying, on a local-only workspace.
+      writeFailure: host?.writeFailure ?? null,
     },
   }));
 

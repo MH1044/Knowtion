@@ -40,6 +40,11 @@ export interface SyncInfo {
   /** Null when the log is local-only and nothing else can write to it. */
   folder: string | null;
   lastError: string | null;
+  /**
+   * Set while saving is failing. Distinct from lastError, which is about syncing:
+   * a workspace can sync perfectly and still be unable to write, and that is much worse.
+   */
+  writeFailure: string | null;
 }
 
 export interface DeviceSummary {

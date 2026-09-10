@@ -174,6 +174,8 @@ export class WorkspaceHost {
   readonly #indexedPacks = new Set<string>();
   /** Set once the circuit breaker has fired. Syncing does not resume on its own. */
   #haltedReason: string | undefined;
+  /** Last write error, cleared by the next write that succeeds. */
+  #writeFailure: string | undefined;
   #compactor!: Compactor;
   /** Set when another device has forgotten us and our packs are gone from the folder. */
   #evicted = false;
@@ -402,10 +404,25 @@ export class WorkspaceHost {
         await body.store.push(body.doc);
         body.dirty = false;
       }
+      // Recorded on the way out, not only on the way in: a run of failures that stops
+      // must clear, or the warning becomes permanent furniture the user learns to ignore.
+      this.#writeFailure = undefined;
     } catch (error) {
+      this.#writeFailure = error instanceof Error ? error.message : String(error);
       console.error('[knowtion] failed to write a pack:', error);
       throw error;
     }
+  }
+
+  /**
+   * Why the last write failed, if it did.
+   *
+   * Read on every sync status, so a device that has stopped saving says so even when
+   * nothing else is happening — the failure is in the write path, and waiting for a
+   * sync cycle to notice would be waiting for the wrong thing.
+   */
+  get writeFailure(): string | undefined {
+    return this.#writeFailure;
   }
 
   /** Flush and settle, for shutdown. */
