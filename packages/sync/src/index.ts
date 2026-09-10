@@ -35,4 +35,10 @@ export {
   packPath,
   parsePackPath,
 } from './pack-store.js';
-export type { PackStoreOptions, PullResult, PushResult, RejectedPack } from './pack-store.js';
+export type {
+  PackCrypto,
+  PackStoreOptions,
+  PullResult,
+  PushResult,
+  RejectedPack,
+} from './pack-store.js';
