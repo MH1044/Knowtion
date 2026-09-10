@@ -4,10 +4,14 @@
  * Undo and redo come from LoroUndoPlugin rather than prosemirror-history: the CRDT owns
  * the operation log, and its undo is scoped to the local peer so pressing undo can
  * never revert an edit another device made (ADR-0009).
+ *
+ * `undo`/`redo` are taken as parameters rather than imported from 'loro-prosemirror'
+ * directly: that package pulls in the loro-wasm binary, and the caller (editor.ts)
+ * loads it via a dynamic import() to keep it out of the app's startup bundle. A static
+ * import here would defeat that by pulling the same module back in eagerly.
  */
 
 import { baseKeymap, chainCommands, setBlockType, toggleMark } from 'prosemirror-commands';
-import { redo, undo } from 'loro-prosemirror';
 import { inputRules, textblockTypeInputRule, wrappingInputRule } from 'prosemirror-inputrules';
 import { keymap } from 'prosemirror-keymap';
 import { liftListItem, sinkListItem, splitListItem } from 'prosemirror-schema-list';
@@ -30,7 +34,7 @@ export function knowtionInputRules(): Plugin {
   });
 }
 
-export function knowtionKeymap(): Plugin {
+export function knowtionKeymap(undo: Command, redo: Command): Plugin {
   const listItem = schema.nodes['list_item']!;
 
   const bindings: Record<string, Command> = {
