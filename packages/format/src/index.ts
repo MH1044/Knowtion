@@ -25,6 +25,18 @@ export { equalBytes, hash, keyedHash, toHex } from './hash.js';
 
 export { SidecarError, decodeSidecar, encodeSidecar } from './cbor.js';
 
+export {
+  AAD_SIZE,
+  CONTENT_CHUNK_SIZE,
+  NONCE_SIZE,
+  TAG_SIZE,
+  chunkAad,
+  decryptPayload,
+  derivePackKey,
+  encryptPayload,
+} from './aead.js';
+export type { PackBinding } from './aead.js';
+
 export { generateDeviceKeys, sign, verify } from './keys.js';
 export type { DeviceKeys, DevicePublicKeys } from './keys.js';
 

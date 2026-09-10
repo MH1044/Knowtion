@@ -20,7 +20,7 @@ covering prior art we may read but not copy.
 
 <!-- GENERATED: dependency table below is written by scripts/write-third-party.mjs -->
 
-## Shipped dependencies (29)
+## Shipped dependencies (31)
 
 Dependencies that are distributed with the application. Development-only tooling is
 excluded: it is not redistributed. Workspace packages are our own and are covered by
@@ -34,8 +34,10 @@ the repository LICENSE.
 | @cbor-extract/cbor-extract-linux-arm64 | 2.2.2 | MIT |
 | @cbor-extract/cbor-extract-linux-x64 | 2.2.2 | MIT |
 | @cbor-extract/cbor-extract-win32-x64 | 2.2.2 | MIT |
+| @noble/ciphers | 2.4.0 | MIT |
 | @noble/curves | 2.4.0 | MIT |
 | @noble/hashes | 2.4.0 | MIT |
+| @scure/bip39 | 2.4.0 | MIT |
 | cbor-extract | 2.2.2 | MIT |
 | cbor-x | 1.6.6 | MIT |
 | detect-libc | 2.1.2 | Apache-2.0 |
