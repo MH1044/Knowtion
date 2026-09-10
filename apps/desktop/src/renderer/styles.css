@@ -479,3 +479,121 @@ input:focus-visible {
 .device-list .forget:hover {
   color: var(--danger);
 }
+
+/* The recovery-phrase ceremony, shown before the workspace exists. */
+.app.loading {
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+}
+
+.setup {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 48px 24px 64px;
+  line-height: 1.55;
+}
+
+.setup h1 {
+  font-size: 22px;
+  margin: 0 0 16px;
+}
+
+.setup p {
+  color: var(--muted);
+  margin: 0 0 14px;
+}
+
+/* The words themselves, numbered, in a shape that is easy to copy onto paper. */
+.setup .phrase {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px 12px;
+  list-style: none;
+  margin: 22px 0;
+  padding: 18px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-raised);
+}
+
+.setup .phrase li {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.setup .phrase .ordinal {
+  min-width: 20px;
+  text-align: right;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  font-size: 12px;
+}
+
+.setup .phrase .word {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 15px;
+  /* Selectable, because a password manager is a legitimate place to keep this. */
+  user-select: text;
+}
+
+.setup .challenge {
+  display: flex;
+  gap: 14px;
+  margin: 22px 0;
+  flex-wrap: wrap;
+}
+
+.setup .challenge label {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.setup .challenge input {
+  width: 160px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-raised);
+  color: var(--text);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 14px;
+}
+
+.setup .challenge input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.setup .actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.setup button {
+  padding: 9px 16px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-raised);
+  color: var(--text);
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.setup .actions button:last-child,
+.setup > button {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #10101a;
+  font-weight: 600;
+}
+
+.setup button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}

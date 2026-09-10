@@ -60,6 +60,20 @@ export interface DeviceList {
   rejected: { path: string; reason: string }[];
 }
 
+export interface KeyStatus {
+  /** True until the recovery phrase has been confirmed. The workspace is not open yet. */
+  needsSetup: boolean;
+  /** False when the platform has no secret store and secrets are unprotected. */
+  secretsOsBacked: boolean;
+  protectorDescription: string;
+}
+
+export interface PhraseChallenge {
+  words: string[];
+  /** 1-based positions the user must type back to prove they wrote the phrase down. */
+  challenge: number[];
+}
+
 type Result<T> = { ok: true; value: T } | { ok: false; error: string };
 
 interface Bridge {
@@ -76,6 +90,9 @@ interface Bridge {
   search(input: { query: string; limit?: number | undefined }): Promise<Result<SearchHit[]>>;
   /** Resolves to null when the user cancels the file picker. */
   importNotion(): Promise<Result<ImportReport | null>>;
+  keyStatus(): Promise<Result<KeyStatus>>;
+  beginKeySetup(): Promise<Result<PhraseChallenge>>;
+  confirmKeySetup(input: { answers: string[] }): Promise<Result<null>>;
   syncInfo(): Promise<Result<SyncInfo>>;
   devices(): Promise<Result<DeviceList>>;
   forgetDevice(input: {
@@ -116,6 +133,9 @@ export const api = {
   deletePage: (id: string) => unwrap(window.knowtion.deletePage({ id })),
   search: (query: string, limit?: number) => unwrap(window.knowtion.search({ query, limit })),
   importNotion: () => unwrap(window.knowtion.importNotion()),
+  keyStatus: () => unwrap(window.knowtion.keyStatus()),
+  beginKeySetup: () => unwrap(window.knowtion.beginKeySetup()),
+  confirmKeySetup: (answers: string[]) => unwrap(window.knowtion.confirmKeySetup({ answers })),
   syncInfo: () => unwrap(window.knowtion.syncInfo()),
   devices: () => unwrap(window.knowtion.devices()),
   forgetDevice: (deviceHex: string) => unwrap(window.knowtion.forgetDevice({ deviceHex })),

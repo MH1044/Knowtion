@@ -14,6 +14,13 @@ import { fileURLToPath } from 'node:url';
 
 import { BrowserWindow, app, dialog, ipcMain, session } from 'electron';
 
+import {
+  checkRecoveryPhrase,
+  generateRecoveryPhrase,
+  generateWorkspaceKey,
+  RECOVERY_PHRASE_WORDS,
+} from '@knowtion/format';
+
 import { adoptWorkspace, loadOrCreateIdentity, saveIdentity, type Identity } from './identity.js';
 import { chooseProtector } from './secret-protector.js';
 import { readSettings, writeSettings } from './settings.js';
@@ -21,6 +28,15 @@ import { checkSyncFolder, copyLog } from './sync-folder.js';
 import { DeviceRegistry, NodeStorage } from '@knowtion/sync';
 
 import { WorkspaceHost } from './workspace-host.js';
+import {
+  collectGrantedKeys,
+  currentKey,
+  publishKeyWraps,
+  readWorkspaceKeys,
+  withEpoch,
+  writeWorkspaceKeys,
+  type WorkspaceKeyMaterial,
+} from './workspace-keys.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const isDevelopment = !app.isPackaged;
@@ -37,6 +53,17 @@ let currentLogDir = '';
 let lastSyncError: string | undefined;
 let identity: Identity | undefined;
 let secretsOsBacked = false;
+let protectorDescription = '';
+/** Absent until the recovery phrase has been confirmed. Until then nothing is written. */
+let workspaceKeys: WorkspaceKeyMaterial | undefined;
+/**
+ * The phrase shown but not yet confirmed.
+ *
+ * Held here rather than in the renderer so the confirmation is genuinely unskippable
+ * (ADR-0007): the main process is what decides whether setup succeeded, and it will not
+ * accept an answer it did not itself pose.
+ */
+let pendingPhrase: { words: string[]; challenge: number[] } | undefined;
 let logWatcher: FSWatcher | undefined;
 let watchDebounce: NodeJS.Timeout | undefined;
 
@@ -117,6 +144,7 @@ function stopWatching(): void {
 async function runSync(): Promise<void> {
   if (!host) return;
   try {
+    await collectNewEpochs();
     await host.sync();
     lastSyncError = undefined;
   } catch (error) {
@@ -125,6 +153,37 @@ async function runSync(): Promise<void> {
     lastSyncError = error instanceof Error ? error.message : String(error);
     console.error('[knowtion] sync failed:', error);
   }
+}
+
+/**
+ * Pick up any key epoch this device has been granted since the last cycle.
+ *
+ * This is how a rotation reaches the other devices: the rotating device publishes a
+ * wrap per remaining device, and each of them collects it here. A device that misses a
+ * cycle simply collects it on the next one, because a wrap is an object that stays put
+ * rather than an event that can be missed.
+ */
+async function collectNewEpochs(): Promise<void> {
+  if (workspaceKeys === undefined || identity === undefined || currentLogDir === '') return;
+
+  const { material, problems } = await collectGrantedKeys(
+    new NodeStorage(currentLogDir),
+    identity.workspaceId,
+    identity.keys,
+    Buffer.from(identity.deviceId).toString('hex'),
+    workspaceKeys,
+  );
+  for (const problem of problems) {
+    console.error(`[knowtion] unreadable key wrap: ${problem}`);
+  }
+  if (material === undefined || material === workspaceKeys) return;
+
+  workspaceKeys = material;
+  await writeWorkspaceKeys(app.getPath('userData'), material, chooseProtector().protector);
+  // The host built its keyring at open time, so it has to be rebuilt to seal under the
+  // new epoch and to read packs written under it.
+  await host?.close();
+  await openWorkspace();
 }
 
 /** Wrap a handler so a thrown engine error reaches the renderer as a plain message. */
@@ -192,6 +251,76 @@ function registerHandlers(): void {
     return lastSyncError === undefined
       ? { ok: true, value: null }
       : { ok: false, error: lastSyncError };
+  });
+
+  /**
+   * Whether this installation still needs its recovery phrase.
+   *
+   * The renderer blocks on this before showing anything else. ADR-0007 makes the
+   * confirmation mandatory and unskippable, and the honest way to enforce that is to
+   * not open the workspace at all until it is done — so there is never a window in
+   * which a note is written in the clear and has to be un-written afterwards.
+   */
+  ipcMain.handle('keys:status', () => ({
+    ok: true,
+    value: {
+      needsSetup: workspaceKeys === undefined,
+      secretsOsBacked,
+      protectorDescription,
+    },
+  }));
+
+  /**
+   * Mint a phrase and pose the challenge that will confirm it.
+   *
+   * Calling this again returns the same pending phrase rather than a fresh one. A user
+   * who reopens the panel to finish writing it down must not silently be shown a
+   * different phrase from the one they half-copied.
+   */
+  ipcMain.handle('keys:begin', () => {
+    if (workspaceKeys !== undefined) {
+      return { ok: false, error: 'this device already has its keys' };
+    }
+    if (pendingPhrase === undefined) {
+      const words = generateRecoveryPhrase().split(' ');
+      // Three positions, drawn without replacement and sorted so the prompts read in
+      // the order the words appear on the page.
+      const positions = new Set<number>();
+      while (positions.size < 3) {
+        positions.add(1 + Math.floor(Math.random() * RECOVERY_PHRASE_WORDS));
+      }
+      pendingPhrase = { words, challenge: [...positions].sort((a, b) => a - b) };
+    }
+    return { ok: true, value: { words: pendingPhrase.words, challenge: pendingPhrase.challenge } };
+  });
+
+  /**
+   * Check the challenge, then create the workspace key and open the workspace.
+   *
+   * The answers are checked here rather than in the renderer. The renderer knows the
+   * phrase — it displayed it — so this is not about trust; it is about the check being
+   * impossible to skip by accident in UI code changed a year from now.
+   */
+  ipcMain.handle('keys:confirm', async (_event, input: { answers: string[] }) => {
+    const pending = pendingPhrase;
+    if (pending === undefined) return { ok: false, error: 'no recovery phrase is pending' };
+
+    const expected = pending.challenge.map((position) => pending.words[position - 1]);
+    const given = input.answers.map((word) => word.trim().toLowerCase());
+    if (given.length !== expected.length || expected.some((word, i) => word !== given[i])) {
+      return {
+        ok: false,
+        error: 'those words do not match the phrase. Check your copy and try again.',
+      };
+    }
+
+    try {
+      await establishKeys(pending.words.join(' '));
+      pendingPhrase = undefined;
+      return { ok: true, value: null };
+    } catch (error) {
+      return { ok: false, error: error instanceof Error ? error.message : String(error) };
+    }
   });
 
   ipcMain.handle('sync:devices', async () => {
@@ -354,6 +483,10 @@ function registerHandlers(): void {
         throw error;
       }
 
+      // The wraps travel with the log, but a folder the user JOINED will not have one
+      // for this device until another device grants it. Publishing ours is a no-op
+      // where it already exists.
+      await publishOwnWraps();
       await runSync();
       scheduleSync();
       startWatching();
@@ -405,6 +538,72 @@ async function readWorkspaceIdFrom(folder: string): Promise<Uint8Array | undefin
   return devices[0]?.workspaceId;
 }
 
+/**
+ * Create this workspace's key, then open the workspace for the first time.
+ *
+ * Order matters. The key is persisted locally BEFORE anything is written to the log:
+ * a pack sealed under a key this device could not reload after a crash would be
+ * unreadable by the only device that has it, which is the worst possible outcome and
+ * costs one await to avoid.
+ */
+async function establishKeys(phrase: string): Promise<void> {
+  const dataDir = app.getPath('userData');
+  const protector = chooseProtector().protector;
+
+  checkRecoveryPhrase(phrase);
+  const material = withEpoch(undefined, generateWorkspaceKey());
+  await writeWorkspaceKeys(dataDir, material, protector);
+  workspaceKeys = material;
+
+  await openWorkspace();
+
+  // The wraps go in after the workspace exists, because publishing them needs the log
+  // directory, and a failure here is recoverable on the next sync while a failure
+  // before the key was stored would not be.
+  await publishOwnWraps(phrase);
+}
+
+/** Write the recovery wrap and this device's own wrap for the current epoch. */
+async function publishOwnWraps(phrase?: string): Promise<void> {
+  if (workspaceKeys === undefined || identity === undefined) return;
+  const logDir = currentLogDir === '' ? join(app.getPath('userData'), 'log') : currentLogDir;
+  try {
+    await publishKeyWraps(
+      new NodeStorage(logDir),
+      identity.workspaceId,
+      currentKey(workspaceKeys),
+      [
+        {
+          deviceHex: Buffer.from(identity.deviceId).toString('hex'),
+          wrappingPublicKey: identity.keys.wrappingPublicKey,
+        },
+      ],
+      phrase,
+    );
+  } catch (error) {
+    // Not fatal: the keys are already stored locally, so the workspace works. The wraps
+    // are what lets ANOTHER device in, and the next sync will try again.
+    console.error(`[knowtion] could not publish key wraps: ${String(error)}`);
+  }
+}
+
+/** Open the workspace host with whatever keys this device holds. */
+async function openWorkspace(): Promise<void> {
+  const dataDir = app.getPath('userData');
+  host = await WorkspaceHost.open({
+    dataDir,
+    ...(currentLogDir === '' ? {} : { logDir: currentLogDir }),
+    workspaceId: must(identity, 'identity').workspaceId,
+    deviceId: must(identity, 'identity').deviceId,
+    peerId: must(identity, 'identity').peerId,
+    deviceKeys: must(identity, 'identity').keys,
+    deviceLabel: must(identity, 'identity').label,
+    ...(workspaceKeys === undefined ? {} : { workspaceKeys }),
+  });
+  scheduleSync();
+  startWatching();
+}
+
 async function createWindow(): Promise<void> {
   const window = new BrowserWindow({
     width: 1200,
@@ -450,24 +649,40 @@ void app.whenReady().then(async () => {
       `[knowtion] no OS secret store available; device keys are ${choice.protector.description}`,
     );
   }
+  protectorDescription = choice.protector.description;
   identity = await loadOrCreateIdentity(dataDir, choice.protector, hostname());
 
   const settings = await readSettings(dataDir);
   currentLogDir = settings.syncFolder ?? '';
 
-  host = await WorkspaceHost.open({
-    dataDir,
-    ...(currentLogDir === '' ? {} : { logDir: currentLogDir }),
-    workspaceId: identity.workspaceId,
-    deviceId: identity.deviceId,
-    peerId: identity.peerId,
-    deviceKeys: identity.keys,
-    deviceLabel: identity.label,
-  });
+  workspaceKeys = await readWorkspaceKeys(dataDir, choice.protector);
+  if (workspaceKeys === undefined) {
+    // A device that has been granted an epoch but never stored it — a reinstall over
+    // an existing folder — can pick it up without the phrase.
+    const collected = await collectGrantedKeys(
+      new NodeStorage(currentLogDir === '' ? join(dataDir, 'log') : currentLogDir),
+      identity.workspaceId,
+      identity.keys,
+      Buffer.from(identity.deviceId).toString('hex'),
+      undefined,
+    ).catch(() => ({ material: undefined, problems: [] as string[] }));
+    for (const problem of collected.problems) {
+      console.error(`[knowtion] unreadable key wrap: ${problem}`);
+    }
+    if (collected.material !== undefined) {
+      workspaceKeys = collected.material;
+      await writeWorkspaceKeys(dataDir, workspaceKeys, choice.protector);
+    }
+  }
+
   registerHandlers();
+
+  // The workspace is opened only once this device holds keys. Anything else would mean
+  // writing in the clear while the setup window is still open, and an append-only log
+  // cannot take that back — ADR-0007's one-way door, in miniature.
+  if (workspaceKeys !== undefined) await openWorkspace();
+
   await createWindow();
-  scheduleSync();
-  startWatching();
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) void createWindow();
