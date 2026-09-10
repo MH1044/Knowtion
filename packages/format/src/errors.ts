@@ -24,7 +24,15 @@ export type PackRejectionCode =
   /** Declared padding exceeds the payload it is supposed to sit inside. */
   | 'BAD_PADDING'
   /** A field that must be zero for this suite was not. */
-  | 'NONZERO_RESERVED_FIELD';
+  | 'NONZERO_RESERVED_FIELD'
+  /** The encrypted payload is not a whole number of well-formed chunks. */
+  | 'BAD_CIPHERTEXT_FRAMING'
+  /** A chunk's tag did not verify: the wrong key epoch, or the file was altered. */
+  | 'DECRYPT_FAILED'
+  /** Encrypted under a key generation this device has never been granted. */
+  | 'UNKNOWN_KEY_EPOCH'
+  /** The signature did not verify against the registered key for that device. */
+  | 'BAD_SIGNATURE';
 
 export class PackFormatError extends Error {
   readonly code: PackRejectionCode;

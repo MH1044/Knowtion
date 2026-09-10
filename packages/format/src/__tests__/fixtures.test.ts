@@ -20,6 +20,9 @@ import {
   decodePack,
   isChainRoot,
   isShallowSnapshot,
+  keyringOf,
+  openPack,
+  verifyPackSignature,
 } from '../index.js';
 
 const fixturesV0 = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', 'fixtures', 'v0');
@@ -32,7 +35,19 @@ const EXPECTED = {
   chained: { size: 191, crc: 0x38fdaeed },
   'shallow-snapshot': { size: 194, crc: 0xe333c61f },
   'crypto-fields-populated': { size: 198, crc: 0xd5e58e56 },
+  encrypted: { size: 262, crc: 0x00bb97d8 },
 } as const;
+
+const fromHex = (hex: string) =>
+  Uint8Array.from((hex.match(/../g) ?? []).map((b) => parseInt(b, 16)));
+
+/** Throwaway keys frozen beside the encrypted fixture. They protect nothing. */
+const testKeys = JSON.parse(readFileSync(join(fixturesV0, 'encrypted.test-keys.json'), 'utf8')) as {
+  epoch: number;
+  workspaceKey: string;
+  signingPublicKey: string;
+  plaintext: string;
+};
 
 describe('format v0 golden fixtures', () => {
   it('the fixture directory contains exactly the files we assert on', () => {
@@ -83,6 +98,25 @@ describe('format v0 golden fixtures', () => {
     const { header } = decodePack(read('shallow-snapshot'));
     expect(isShallowSnapshot(header)).toBe(true);
     expect(header.seq).toBe(100n);
+  });
+
+  it('encrypted still decrypts and still verifies', () => {
+    // The other fixtures prove the LAYOUT survives. This one proves the CRYPTO does:
+    // the AAD composition, the chunk framing, the HKDF derivation and the signature
+    // scheme must all still agree with a pack sealed by an older build, because the
+    // moment a real user has one in their cloud folder none of them can be changed.
+    const bytes = read('encrypted');
+    const decoded = decodePack(bytes, 'encrypted.kpack');
+
+    expect(decoded.header.suiteId).toBe(SUITE.XCHACHA20POLY1305_ARGON2ID);
+    expect(decoded.header.keyEpoch).toBe(testKeys.epoch);
+    expect(decoded.header.seq).toBe(7n);
+    expect(isChainRoot(decoded.header)).toBe(false);
+
+    expect(verifyPackSignature(bytes, fromHex(testKeys.signingPublicKey))).toBe(true);
+
+    const keys = keyringOf({ epoch: testKeys.epoch, key: fromHex(testKeys.workspaceKey) });
+    expect(new TextDecoder().decode(openPack(decoded, keys))).toBe(testKeys.plaintext);
   });
 
   it('crypto-fields-populated proves v0 already carries every encryption field', () => {

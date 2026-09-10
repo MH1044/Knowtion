@@ -25,6 +25,44 @@ export { equalBytes, hash, keyedHash, toHex } from './hash.js';
 
 export { SidecarError, decodeSidecar, encodeSidecar } from './cbor.js';
 
+export {
+  AAD_SIZE,
+  CONTENT_CHUNK_SIZE,
+  NONCE_SIZE,
+  TAG_SIZE,
+  chunkAad,
+  decryptPayload,
+  derivePackKey,
+  encryptPayload,
+} from './aead.js';
+export type { PackBinding } from './aead.js';
+
+export {
+  RECOVERY_PHRASE_WORDS,
+  RecoveryPhraseError,
+  checkRecoveryPhrase,
+  generateRecoveryPhrase,
+  isValidRecoveryPhrase,
+  normaliseRecoveryPhrase,
+  recoveryPhraseEntropy,
+} from './recovery-phrase.js';
+export type { RecoveryPhraseProblem } from './recovery-phrase.js';
+
+export {
+  DEFAULT_KDF_PARAMS,
+  FIRST_KEY_EPOCH,
+  KEY_WRAP_VERSION,
+  KeyWrapError,
+  WORKSPACE_KEY_SIZE,
+  generateWorkspaceKey,
+  rotateWorkspaceKey,
+  unwrapKeyFromDevice,
+  unwrapKeyFromRecoveryPhrase,
+  wrapKeyToDevice,
+  wrapKeyToRecoveryPhrase,
+} from './key-wrap.js';
+export type { KdfParams, KeyWrapProblem, WorkspaceKey } from './key-wrap.js';
+
 export { generateDeviceKeys, sign, verify } from './keys.js';
 export type { DeviceKeys, DevicePublicKeys } from './keys.js';
 
@@ -46,5 +84,9 @@ export {
   isChainRoot,
   isShallowSnapshot,
   signedBytes,
+  verifyPackSignature,
 } from './envelope.js';
+
+export { keyringOf, openPack, sealPack } from './sealed-pack.js';
+export type { Keyring, SealPackInput } from './sealed-pack.js';
 export type { DecodedPack, PackHeader, PackInput } from './envelope.js';

@@ -23,7 +23,7 @@
 
 import { LoroDoc } from 'loro-crdt';
 
-import { encodePack } from '@knowtion/format';
+import { encodePack, sealPack, type WorkspaceKey } from '@knowtion/format';
 
 import { parsePackPath } from './pack-store.js';
 import type { StoragePath, StoragePort } from './storage-port.js';
@@ -59,6 +59,16 @@ export interface CompactorOptions {
   /** Virtual in tests, real in the application. Never read from the platform here. */
   now: () => number;
   policy?: CompactionPolicy;
+  /**
+   * Seal snapshots under this key, matching whatever the pack store writes.
+   *
+   * A snapshot is a pack — same envelope, same reading rules — so leaving it plaintext
+   * in an encrypted workspace would publish the whole trimmed history in the clear,
+   * which is the exact opposite of what compaction is meant to be doing.
+   */
+  sealWith?: WorkspaceKey;
+  /** This device's Ed25519 secret. Required whenever sealWith is set. */
+  signingSecretKey?: Uint8Array;
 }
 
 export interface CollectResult {
@@ -149,13 +159,26 @@ export class Compactor {
       supersedesThrough: ownLatestSeq,
     };
 
-    const pack = encodePack({
-      workspaceId: this.#options.workspaceId,
-      deviceId: this.#options.deviceId,
-      seq: BigInt(seq),
-      payload,
-      isShallowSnapshot: true,
-    });
+    const sealWith = this.#options.sealWith;
+    const signingSecretKey = this.#options.signingSecretKey;
+    const pack =
+      sealWith === undefined || signingSecretKey === undefined
+        ? encodePack({
+            workspaceId: this.#options.workspaceId,
+            deviceId: this.#options.deviceId,
+            seq: BigInt(seq),
+            payload,
+            isShallowSnapshot: true,
+          })
+        : sealPack({
+            workspaceId: this.#options.workspaceId,
+            deviceId: this.#options.deviceId,
+            seq: BigInt(seq),
+            payload,
+            isShallowSnapshot: true,
+            workspaceKey: sealWith,
+            signingSecretKey,
+          });
 
     const path =
       `d/${this.#options.deviceHex}/${this.#options.documentHex}/` +
