@@ -66,10 +66,10 @@ export async function mountPageEditor(options: PageEditorOptions): Promise<PageE
     state: EditorState.create({
       schema,
       plugins: [
-        /* eslint-disable @typescript-eslint/no-explicit-any -- pre-1.0 generic doc type */
+        /* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment -- pre-1.0 generic doc type */
         LoroSyncPlugin({ doc: doc as any }),
-        LoroUndoPlugin({ doc: doc as any }),
-        /* eslint-enable @typescript-eslint/no-explicit-any */
+        LoroUndoPlugin({ doc: doc }),
+        /* eslint-enable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment */
         knowtionInputRules(),
         knowtionKeymap(undo, redo),
       ],
@@ -100,6 +100,8 @@ export async function mountPageEditor(options: PageEditorOptions): Promise<PageE
       }
     },
     snapshot: () => doc.export({ mode: 'snapshot' }),
-    destroy: () => view.destroy(),
+    destroy: () => {
+      view.destroy();
+    },
   };
 }

@@ -17,6 +17,12 @@ function ack(counters: Record<string, number>): Acknowledgement {
 const counters = (floor: ReturnType<typeof computeTrimFloor>) =>
   floor === undefined ? undefined : Object.fromEntries(floor.counters);
 
+/** Unwraps a lookup/computation the test knows must have succeeded. */
+function must<T>(value: T | null | undefined, what: string): T {
+  if (value === null || value === undefined) throw new Error(`expected ${what} to exist`);
+  return value;
+}
+
 describe('computing the trim floor', () => {
   it('is the per-peer minimum across every device', () => {
     const floor = computeTrimFloor({
@@ -79,15 +85,18 @@ describe('computing the trim floor', () => {
     const doc = new LoroDoc();
     doc.setPeerId(1n);
     for (let i = 0; i < 5; i++) {
-      doc.getMap('m').set(`k${i}`, i);
+      doc.getMap('m').set(`k${String(i)}`, i);
       doc.commit();
     }
     const merged = Buffer.from(doc.version().encode()).toString('hex');
 
-    const floor = computeTrimFloor({
-      registeredDevices: ['aa'],
-      acks: new Map([['aa', { mergedVersion: merged, updatedAt: 1 }]]),
-    })!;
+    const floor = must(
+      computeTrimFloor({
+        registeredDevices: ['aa'],
+        acks: new Map([['aa', { mergedVersion: merged, updatedAt: 1 }]]),
+      }),
+      'a trim floor',
+    );
 
     const shallow = doc.export({ mode: 'shallow-snapshot', frontiers: doc.frontiers() });
     const reloaded = new LoroDoc();

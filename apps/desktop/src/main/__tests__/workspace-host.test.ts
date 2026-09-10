@@ -18,6 +18,13 @@ const WORKSPACE_ID = new Uint8Array(16).fill(0x11);
 const DEVICE_A = new Uint8Array(16).fill(0xaa);
 const DEVICE_B = new Uint8Array(16).fill(0xbb);
 
+/** Indexing an array can't statically prove the index is in bounds. */
+function at<T>(array: readonly T[], index: number): T {
+  const value = array[index];
+  if (value === undefined) throw new Error(`expected index ${String(index)} to exist`);
+  return value;
+}
+
 const dirs: string[] = [];
 afterAll(async () => {
   for (const dir of dirs) {
@@ -88,7 +95,7 @@ describe('WorkspaceHost', () => {
 
     const second = await open(dir);
     expect(titles(second.tree())).toEqual(['Parent']);
-    expect(titles(second.tree()[0]!.children)).toEqual(['Child']);
+    expect(titles(at(second.tree(), 0).children)).toEqual(['Child']);
     await second.close();
   });
 
@@ -100,7 +107,7 @@ describe('WorkspaceHost', () => {
     await host.close();
 
     const entries = await readdir(dir, { recursive: true });
-    expect(entries.filter((e) => String(e).endsWith('.kpack'))).toEqual([]);
+    expect(entries.filter((e) => e.endsWith('.kpack'))).toEqual([]);
   });
 
   it('flushes pending edits on close, so quitting never loses the last keystrokes', async () => {
@@ -119,7 +126,7 @@ describe('WorkspaceHost', () => {
   it('coalesces a burst of edits rather than writing a pack each time', async () => {
     const dir = await dataDir();
     const host = await open(dir);
-    for (let i = 0; i < 25; i++) host.createPage({ title: `Page ${i}` });
+    for (let i = 0; i < 25; i++) host.createPage({ title: `Page ${String(i)}` });
     await host.close();
 
     const files = (await readdir(join(dir, 'log'), { recursive: true })).map(String);
@@ -136,7 +143,7 @@ describe('WorkspaceHost', () => {
     expect(() => host.movePage(root.id, child.id)).toThrowError(/cycle|descendant/i);
     // The tree is exactly as it was.
     expect(titles(host.tree())).toEqual(['Root']);
-    expect(titles(host.tree()[0]!.children)).toEqual(['Child']);
+    expect(titles(at(host.tree(), 0).children)).toEqual(['Child']);
     await host.close();
   });
 
@@ -368,7 +375,7 @@ describe('Notion import', () => {
 
     expect(report.pagesImported).toBe(2);
     expect(titles(host.tree())).toEqual(['Home']);
-    expect(titles(host.tree()[0]!.children)).toEqual(['Recipes']);
+    expect(titles(at(host.tree(), 0).children)).toEqual(['Recipes']);
     await host.close();
   });
 
@@ -394,7 +401,7 @@ describe('Notion import', () => {
       const host = await open(dir);
       expect(titles(host.tree())).toEqual(['Home']);
 
-      const recipes = host.tree()[0]!.children[0]!;
+      const recipes = at(at(host.tree(), 0).children, 0);
       const { LoroDoc } = await import('loro-crdt');
       const body = new LoroDoc();
       body.import(await host.openBody(recipes.id));
@@ -495,12 +502,12 @@ describe('sync between two devices sharing a folder', () => {
     // every page — that is the cost lazy loading exists to avoid.
     const { a, b } = await pair();
     for (let i = 0; i < 5; i++) {
-      const page = a.createPage({ title: `Page ${i}` });
+      const page = a.createPage({ title: `Page ${String(i)}` });
       await a.openBody(page.id);
       const { LoroDoc } = await import('loro-crdt');
       const edit = new LoroDoc();
       edit.setPeerId(BigInt(100 + i));
-      edit.getMap('doc').set('text', `content ${i}`);
+      edit.getMap('doc').set('text', `content ${String(i)}`);
       edit.commit();
       await a.applyBodyUpdate(page.id, edit.export({ mode: 'update' }));
     }
@@ -529,7 +536,7 @@ describe('sync between two devices sharing a folder', () => {
     await a.sync();
 
     for (const device of [a, b]) {
-      const children = device.tree()[0]!.children;
+      const children = at(device.tree(), 0).children;
       expect(titles(children), 'both edits survive').toEqual(['Added by A', 'Added by B']);
     }
 

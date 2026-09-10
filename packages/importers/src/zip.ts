@@ -103,7 +103,7 @@ function expand(
   budget: { bytes: number; entries: number },
 ): ZipEntry[] {
   if (depth > limits.maxDepth) {
-    throw new ArchiveError('TOO_DEEP', `archives nested more than ${limits.maxDepth} deep`);
+    throw new ArchiveError('TOO_DEEP', `archives nested more than ${String(limits.maxDepth)} deep`);
   }
 
   let raw: Record<string, Uint8Array>;
@@ -112,10 +112,14 @@ function expand(
       filter: (file) => {
         // Declared sizes are attacker-controlled, so this is a cheap first line rather
         // than the guarantee. The real limit is the running total measured below.
+        // fflate's own docs (README: "File sizes are sometimes not set") say
+        // originalSize can be absent even though its .d.ts types it as always a
+        // number — keep the runtime guard despite the type saying it's redundant.
+        // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
         if (file.originalSize !== undefined && file.originalSize > limits.maxEntryBytes) {
           throw new ArchiveError(
             'TOO_LARGE',
-            `entry ${file.name} declares ${file.originalSize} bytes`,
+            `entry ${file.name} declares ${String(file.originalSize)} bytes`,
           );
         }
         // Directory entries carry no content and are implied by their children's paths.
@@ -133,7 +137,7 @@ function expand(
     if (budget.entries > limits.maxEntries) {
       throw new ArchiveError(
         'TOO_MANY_ENTRIES',
-        `archive holds more than ${limits.maxEntries} entries`,
+        `archive holds more than ${String(limits.maxEntries)} entries`,
       );
     }
 
@@ -141,11 +145,14 @@ function expand(
     if (budget.bytes > limits.maxTotalBytes) {
       throw new ArchiveError(
         'TOO_LARGE',
-        `archive expands beyond ${limits.maxTotalBytes} bytes; refusing to continue`,
+        `archive expands beyond ${String(limits.maxTotalBytes)} bytes; refusing to continue`,
       );
     }
     if (content.length > limits.maxEntryBytes) {
-      throw new ArchiveError('TOO_LARGE', `entry ${name} expands to ${content.length} bytes`);
+      throw new ArchiveError(
+        'TOO_LARGE',
+        `entry ${name} expands to ${String(content.length)} bytes`,
+      );
     }
 
     const safe = safeEntryPath(name);

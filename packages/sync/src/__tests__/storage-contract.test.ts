@@ -21,6 +21,12 @@ const bytes = (s: string) => new TextEncoder().encode(s);
 const text = (b: Uint8Array | undefined) =>
   b === undefined ? undefined : new TextDecoder().decode(b);
 
+/** Unwraps a storage read the test knows must have succeeded. */
+function must<T>(value: T | null | undefined, what: string): T {
+  if (value === null || value === undefined) throw new Error(`expected ${what} to exist`);
+  return value;
+}
+
 const temporaryRoots: string[] = [];
 afterAll(async () => {
   for (const root of temporaryRoots) await rm(root, { recursive: true, force: true });
@@ -103,7 +109,7 @@ describe.each(adapters)('storage contract: %s', (_name, make) => {
   it('returns an independent copy, so a caller cannot mutate stored bytes', async () => {
     const s = await make();
     await s.putIfAbsent('d/aa/000000000001.kpack', bytes('original'));
-    const first = (await s.get('d/aa/000000000001.kpack'))!;
+    const first = must(await s.get('d/aa/000000000001.kpack'), 'the stored bytes');
     first[0] = 0x00;
     expect(text(await s.get('d/aa/000000000001.kpack'))).toBe('original');
   });
@@ -114,7 +120,9 @@ describe.each(adapters)('storage contract: %s', (_name, make) => {
     const s = await make();
     const binary = Uint8Array.from([0x00, 0xff, 0x0d, 0x0a, 0x1a, 0x80, 0x7f]);
     await s.putIfAbsent('d/aa/000000000003.kpack', binary);
-    expect(Array.from((await s.get('d/aa/000000000003.kpack'))!)).toEqual(Array.from(binary));
+    expect(Array.from(must(await s.get('d/aa/000000000003.kpack'), 'the stored bytes'))).toEqual(
+      Array.from(binary),
+    );
   });
 });
 

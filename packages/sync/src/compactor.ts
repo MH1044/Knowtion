@@ -192,12 +192,12 @@ export class Compactor {
     const superseded = (await this.#options.storage.list(prefix))
       .map((object) => ({ path: object.path, parsed: parsePackPath(object.path) }))
       .filter(
-        (entry) =>
-          entry.parsed !== undefined &&
-          entry.parsed.deviceHex === this.#options.deviceHex &&
-          entry.parsed.seq <= through,
+        (
+          entry,
+        ): entry is { path: StoragePath; parsed: NonNullable<ReturnType<typeof parsePackPath>> } =>
+          entry.parsed?.deviceHex === this.#options.deviceHex && entry.parsed.seq <= through,
       )
-      .sort((a, b) => a.parsed!.seq - b.parsed!.seq);
+      .sort((a, b) => a.parsed.seq - b.parsed.seq);
 
     // A rolling hour, so a burst cannot be laundered by waiting a few minutes.
     const hourAgo = now - 60 * 60 * 1000;

@@ -26,15 +26,22 @@ function buildTable(): Uint32Array {
   return t;
 }
 
+/** The `& 0xff` mask keeps this in range by construction; the table always has 256
+ * entries. */
+function tableAt(t: Uint32Array, index: number): number {
+  const value = t[index];
+  if (value === undefined) throw new Error(`crc table missing entry ${String(index)}`);
+  return value;
+}
+
 /**
  * @returns the CRC-32C of the given bytes, as an unsigned 32-bit number.
  */
 export function crc32c(bytes: Uint8Array): number {
   table ??= buildTable();
   let crc = 0xffffffff;
-  for (let i = 0; i < bytes.length; i++) {
-    // Both operands are in range by construction, so the index is always defined.
-    crc = (crc >>> 8) ^ table[(crc ^ bytes[i]!) & 0xff]!;
+  for (const byte of bytes) {
+    crc = (crc >>> 8) ^ tableAt(table, (crc ^ byte) & 0xff);
   }
   return (crc ^ 0xffffffff) >>> 0;
 }

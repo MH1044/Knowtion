@@ -29,6 +29,14 @@ import type { Runtime } from './runtime.js';
 /** A UUIDv7 as its canonical lowercase hyphenated string. */
 export type Uuid = string & { readonly __brand: 'uuid' };
 
+/** noUncheckedIndexedAccess makes a byte read `number | undefined`; every call site
+ * here indexes a Uint8Array of a known fixed size, so the index is always in bounds. */
+function byteAt(bytes: Uint8Array, index: number): number {
+  const value = bytes[index];
+  if (value === undefined) throw new Error(`expected byte at index ${String(index)}`);
+  return value;
+}
+
 const COUNTER_MAX = 0x0fff;
 /** Reseed within the low half of the range, leaving headroom before rollover. */
 const COUNTER_SEED_MASK = 0x03ff;
@@ -51,7 +59,7 @@ export function createIdGen(runtime: Runtime): IdGen {
     if (ms > lastMs) {
       lastMs = ms;
       runtime.random.bytes(scratch.subarray(0, 2));
-      counter = ((scratch[0]! << 8) | scratch[1]!) & COUNTER_SEED_MASK;
+      counter = ((byteAt(scratch, 0) << 8) | byteAt(scratch, 1)) & COUNTER_SEED_MASK;
     } else {
       // Same millisecond, or a clock that went backwards. Either way, keep ordering
       // monotonic rather than trusting the clock.
@@ -62,7 +70,7 @@ export function createIdGen(runtime: Runtime): IdGen {
         lastMs += 1;
         ms = lastMs;
         runtime.random.bytes(scratch.subarray(0, 2));
-        counter = ((scratch[0]! << 8) | scratch[1]!) & COUNTER_SEED_MASK;
+        counter = ((byteAt(scratch, 0) << 8) | byteAt(scratch, 1)) & COUNTER_SEED_MASK;
       }
     }
 
@@ -82,7 +90,7 @@ export function createIdGen(runtime: Runtime): IdGen {
 
     // 62 bits of randomness, with the variant bits forced to 0b10.
     runtime.random.bytes(bytes.subarray(8, 16));
-    bytes[8] = (bytes[8]! & 0x3f) | 0x80;
+    bytes[8] = (byteAt(bytes, 8) & 0x3f) | 0x80;
 
     return bytes;
   }
@@ -92,15 +100,22 @@ export function createIdGen(runtime: Runtime): IdGen {
 
 const HEX: string[] = Array.from({ length: 256 }, (_, i) => i.toString(16).padStart(2, '0'));
 
+/** `byte` is always 0-255, which HEX always has an entry for. */
+function hexDigits(byte: number): string {
+  const value = HEX[byte];
+  if (value === undefined) throw new Error(`no hex digits for byte ${String(byte)}`);
+  return value;
+}
+
 /** Canonical lowercase hyphenated form. */
 export function bytesToUuid(bytes: Uint8Array): Uuid {
   if (bytes.length !== 16) {
-    throw new TypeError(`a UUID is 16 bytes, received ${bytes.length}`);
+    throw new TypeError(`a UUID is 16 bytes, received ${String(bytes.length)}`);
   }
   let out = '';
   for (let i = 0; i < 16; i++) {
     if (i === 4 || i === 6 || i === 8 || i === 10) out += '-';
-    out += HEX[bytes[i]!];
+    out += hexDigits(byteAt(bytes, i));
   }
   return out as Uuid;
 }
@@ -121,6 +136,11 @@ export function uuidToBytes(uuid: string): Uint8Array {
 export function uuidTimestamp(uuid: string): number {
   const b = uuidToBytes(uuid);
   return (
-    b[0]! * 2 ** 40 + b[1]! * 2 ** 32 + b[2]! * 2 ** 24 + b[3]! * 2 ** 16 + b[4]! * 2 ** 8 + b[5]!
+    byteAt(b, 0) * 2 ** 40 +
+    byteAt(b, 1) * 2 ** 32 +
+    byteAt(b, 2) * 2 ** 24 +
+    byteAt(b, 3) * 2 ** 16 +
+    byteAt(b, 4) * 2 ** 8 +
+    byteAt(b, 5)
   );
 }

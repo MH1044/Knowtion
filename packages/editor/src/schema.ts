@@ -39,7 +39,9 @@ const heading: NodeSpec = {
     { tag: 'h5', attrs: { level: 3 } },
     { tag: 'h6', attrs: { level: 3 } },
   ],
-  toDOM: (node): DOMOutputSpec => [`h${node.attrs['level']}`, 0],
+  // node.attrs is ProseMirror's Attrs = Record<string, any>; String()/Number() give an
+  // honest, narrow type at the point of use instead of letting `any` flow through.
+  toDOM: (node): DOMOutputSpec => [`h${String(node.attrs.level)}`, 0],
 };
 
 const listItem: NodeSpec = {
@@ -63,11 +65,11 @@ const orderedList: NodeSpec = {
   parseDOM: [
     {
       tag: 'ol',
-      getAttrs: (node) => ({ order: Number((node as HTMLElement).getAttribute('start')) || 1 }),
+      getAttrs: (node) => ({ order: Number(node.getAttribute('start')) || 1 }),
     },
   ],
   toDOM: (node): DOMOutputSpec =>
-    node.attrs['order'] === 1 ? ['ol', 0] : ['ol', { start: node.attrs['order'] }, 0],
+    node.attrs.order === 1 ? ['ol', 0] : ['ol', { start: Number(node.attrs.order) }, 0],
 };
 
 const todoItem: NodeSpec = {
@@ -79,13 +81,13 @@ const todoItem: NodeSpec = {
     {
       tag: 'li[data-todo]',
       getAttrs: (node) => ({
-        checked: (node as HTMLElement).getAttribute('data-checked') === 'true',
+        checked: node.getAttribute('data-checked') === 'true',
       }),
     },
   ],
   toDOM: (node): DOMOutputSpec => [
     'li',
-    { 'data-todo': 'true', 'data-checked': String(node.attrs['checked']) },
+    { 'data-todo': 'true', 'data-checked': String(node.attrs.checked) },
     0,
   ],
 };
@@ -118,7 +120,7 @@ const marks: Record<string, MarkSpec> = {
   strong: {
     parseDOM: [
       { tag: 'strong' },
-      { tag: 'b', getAttrs: (node) => (node as HTMLElement).style.fontWeight !== 'normal' && null },
+      { tag: 'b', getAttrs: (node) => node.style.fontWeight !== 'normal' && null },
       { style: 'font-weight=bold' },
       { style: 'font-weight=700' },
     ],
@@ -143,7 +145,7 @@ const marks: Record<string, MarkSpec> = {
       {
         tag: 'a[href]',
         getAttrs: (node) => {
-          const href = (node as HTMLElement).getAttribute('href') ?? '';
+          const href = node.getAttribute('href') ?? '';
           // Scheme allowlist at the parse boundary, per SECURITY.md. A javascript:
           // or data: href pasted from a web page is an XSS sink that would otherwise
           // be baked into an immutable log forever.
@@ -153,7 +155,7 @@ const marks: Record<string, MarkSpec> = {
     ],
     toDOM: (mark): DOMOutputSpec => [
       'a',
-      { href: mark.attrs['href'], rel: 'noopener noreferrer' },
+      { href: String(mark.attrs.href), rel: 'noopener noreferrer' },
       0,
     ],
   },

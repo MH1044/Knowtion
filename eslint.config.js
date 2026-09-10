@@ -64,7 +64,16 @@ export default tseslint.config(
     ],
   },
   eslint.configs.recommended,
-  ...tseslint.configs.recommended,
+  ...tseslint.configs.strictTypeChecked,
+  ...tseslint.configs.stylisticTypeChecked,
+  {
+    languageOptions: {
+      parserOptions: {
+        projectService: true,
+        tsconfigRootDir: import.meta.dirname,
+      },
+    },
+  },
 
   // The engine must stay headless. If packages/ can reach into apps/, the boundary
   // that keeps a second host shell possible is gone, and it goes quietly.
@@ -95,6 +104,9 @@ export default tseslint.config(
   },
 
   // Build and maintenance scripts run in Node, outside the engine's determinism rules.
+  // apps/*/e2e specs live here too: they drive a real Electron process through
+  // Playwright rather than exercising app source, so they sit outside src/**/* and
+  // have no tsconfig program of their own to type-check against.
   {
     files: [
       'scripts/**/*.mjs',
@@ -103,7 +115,9 @@ export default tseslint.config(
       '*.config.js',
       '*.config.ts',
       'apps/*/*.config.ts',
+      'apps/*/e2e/**/*.ts',
     ],
+    extends: [tseslint.configs.disableTypeChecked],
     languageOptions: {
       globals: globals.node,
     },
@@ -114,6 +128,7 @@ export default tseslint.config(
   // require() here is a security requirement, not a legacy style.
   {
     files: ['**/*.cjs'],
+    extends: [tseslint.configs.disableTypeChecked],
     languageOptions: {
       globals: globals.node,
       sourceType: 'commonjs',
