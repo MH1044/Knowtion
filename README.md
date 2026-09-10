@@ -6,8 +6,11 @@ rich text, and databases with typed properties and views.
 **Your notes live on your machine.** Sync is optional and goes through storage you
 already own. There is no Knowtion server, no account to create, and no subscription.
 
-> Status: **pre-alpha, and runnable.** Nested pages, the trash and local persistence
-> work today; the block editor is next. See the roadmap below.
+> Status: **pre-alpha, and runnable.** Nested pages, the block editor, full-text search,
+> Notion import, multi-device sync through a shared folder and end-to-end encryption all
+> work today. See the roadmap below.
+>
+> **Platform: Windows.** macOS and Linux are not supported at v1 — see _Platform support_.
 
 ## Why another Notion alternative
 
@@ -20,6 +23,8 @@ local files. Knowtion aims for both:
   You point it at a folder your existing Google Drive, OneDrive, Dropbox or Syncthing
   client already syncs, and that client does the transport.
 - **Encrypted before it leaves your machine.** Your cloud provider stores ciphertext.
+  On by default: a workspace will not open until you have written down its recovery
+  phrase, because an append-only log cannot un-write a note saved in the clear.
 - **Your data stays yours.** Full export to Markdown and JSON, always, no lock-in.
 
 ## Roadmap
@@ -31,7 +36,18 @@ local files. Knowtion aims for both:
 | v0.3    | Databases: typed properties, table and board views, filter/sort/group |
 | v0.4    | Relations, rollups, formulas                                          |
 | v0.5    | Attachments, version history, optional Google Drive API mode          |
-| v1.0    | OneDrive support, templates, remaining view types                     |
+| v1.0    | OneDrive API mode, templates, remaining view types                    |
+
+## Platform support
+
+**Windows only at v1.** The engine is portable and the test suite runs on Linux in CI,
+but there are no macOS or Linux releases yet.
+
+Folder mode relies on a desktop sync client watching the folder you choose, and neither
+Google nor Microsoft ships one for Linux — Linux users would need Dropbox, Syncthing,
+rclone or insync. macOS additionally needs Apple Developer enrolment before it can
+auto-update, since Squirrel.Mac refuses to update an unsigned app. Both are deferred
+rather than ruled out.
 
 ## Development
 
