@@ -28,6 +28,12 @@ import {
 
 const WORKSPACE = new Uint8Array(16).fill(0x11);
 
+/** Unwraps a lookup/result the test knows must have succeeded. */
+function must<T>(value: T | null | undefined, what: string): T {
+  if (value === null || value === undefined) throw new Error(`expected ${what} to exist`);
+  return value;
+}
+
 const dirs: string[] = [];
 afterAll(async () => {
   for (const dir of dirs) {
@@ -66,7 +72,7 @@ describe('the local key store', () => {
 
     expect(read?.epochs).toEqual([first, second]);
     expect(read?.current).toBe(second.epoch);
-    expect(currentKey(read!)).toEqual(second);
+    expect(currentKey(must(read, 'read'))).toEqual(second);
   });
 
   it('protects the key at rest', async () => {
@@ -81,7 +87,7 @@ describe('the local key store', () => {
     expect(onDisk).not.toContain(toHex(key.key));
   });
 
-  it('keeps epochs sorted and never drops one', async () => {
+  it('keeps epochs sorted and never drops one', () => {
     // Dropping an old epoch would make every pack written under it unreadable, which
     // turns a device revocation into silent data loss.
     const a = generateWorkspaceKey();
@@ -93,7 +99,7 @@ describe('the local key store', () => {
     expect([...keyringFrom(material).keys()].sort()).toEqual([1, 2, 3]);
   });
 
-  it('ignores a repeated grant of an epoch it already holds', async () => {
+  it('ignores a repeated grant of an epoch it already holds', () => {
     const key = generateWorkspaceKey();
     expect(withEpoch(withEpoch(undefined, key), key).epochs).toHaveLength(1);
   });
@@ -135,7 +141,9 @@ describe('granting an epoch through wrap files', () => {
     expect(await storage.get(deviceWrapPath(key.epoch, hexB))).toBeDefined();
 
     const recovery = await storage.get(recoveryWrapPath(key.epoch));
-    expect(unwrapKeyFromRecoveryPhrase(recovery!, phrase, WORKSPACE).key).toEqual(key.key);
+    expect(unwrapKeyFromRecoveryPhrase(must(recovery, 'recovery'), phrase, WORKSPACE).key).toEqual(
+      key.key,
+    );
   });
 
   it('is idempotent, so it can run on every sync without accumulating', async () => {
@@ -168,7 +176,7 @@ describe('granting an epoch through wrap files', () => {
     expect(forAlice.problems).toEqual([]);
     expect(forAlice.material?.epochs.map((e) => e.epoch)).toEqual([1, 2]);
     expect(forAlice.material?.current).toBe(2);
-    expect(currentKey(forAlice.material!).key).toEqual(second.key);
+    expect(currentKey(must(forAlice.material, 'forAlice.material')).key).toEqual(second.key);
 
     // A revoked device keeps what it already had and gains nothing further. Rotation
     // protects future writes only; it cannot reach back into what Bob already read.
