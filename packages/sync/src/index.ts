@@ -11,6 +11,17 @@ export type { StorageObject, StoragePath, StoragePort } from './storage-port.js'
 export { checkDataLoss } from './data-loss-guard.js';
 export type { DataLossGuardOptions, DataLossVerdict } from './data-loss-guard.js';
 export { DeviceRegistry } from './device-registry.js';
+export { Compactor } from './compactor.js';
+export { DeviceEviction, detectEvicted } from './eviction.js';
+export type { EvictionOptions, EvictionProgress } from './eviction.js';
+export type {
+  CollectResult,
+  CompactionPolicy,
+  CompactorOptions,
+  SnapshotRecord,
+} from './compactor.js';
+export { DEFAULT_GRACE_MS, computeTrimFloor } from './trim-floor.js';
+export type { TrimFloor, TrimFloorInput } from './trim-floor.js';
 export type { Acknowledgement, RegistryRead } from './device-registry.js';
 export { FaultyStorage, QuotaExceededError } from './faulty-storage.js';
 export type { FaultProfile, FaultyStorageOptions } from './faulty-storage.js';

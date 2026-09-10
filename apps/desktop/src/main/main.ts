@@ -190,6 +190,7 @@ function registerHandlers(): void {
           thisFingerprint: host!.fingerprint,
           secretsOsBacked,
           devices: listed.devices.map((d) => ({
+            deviceHex: Buffer.from(d.deviceId).toString('hex'),
             label: d.label,
             fingerprint: d.fingerprint,
             enrolledAt: d.enrolledAt,
@@ -198,6 +199,14 @@ function registerHandlers(): void {
           rejected: listed.rejected,
         },
       };
+    } catch (error) {
+      return { ok: false, error: error instanceof Error ? error.message : String(error) };
+    }
+  });
+
+  ipcMain.handle('sync:forget', async (_event, input: { deviceHex: string }) => {
+    try {
+      return { ok: true, value: await host!.forgetDevice(input.deviceHex) };
     } catch (error) {
       return { ok: false, error: error instanceof Error ? error.message : String(error) };
     }
