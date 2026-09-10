@@ -23,6 +23,7 @@ contextBridge.exposeInMainWorld('knowtion', {
   search: call('workspace:search'),
   importNotion: call('import:notion'),
   syncInfo: call('sync:info'),
+  devices: call('sync:devices'),
   syncNow: call('sync:now'),
   chooseSyncFolder: call('sync:choose'),
   flush: call('workspace:flush'),

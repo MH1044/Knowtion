@@ -10,6 +10,8 @@ import { tmpdir } from 'node:os';
 import { join, sep } from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
 
+import { generateDeviceKeys } from '@knowtion/format';
+
 import { WorkspaceHost } from '../workspace-host.js';
 
 const WORKSPACE_ID = new Uint8Array(16).fill(0x11);
@@ -39,9 +41,28 @@ const open = (dir: string, deviceId = DEVICE_A, peerId = 1n) =>
     workspaceId: WORKSPACE_ID,
     deviceId,
     peerId,
+    deviceKeys: keysFor(deviceId),
     // Flush on the next tick so tests never wait on a real debounce.
     flushDelayMs: 0,
   });
+
+/**
+ * One keypair per device identifier, reused across reopens.
+ *
+ * A device that came back with new keys would look like a different device to the
+ * registry, and the record is write-once — so a test that reopens a host must present
+ * the same keys a real installation would have kept.
+ */
+const keyCache = new Map<string, ReturnType<typeof generateDeviceKeys>>();
+function keysFor(deviceId: Uint8Array): ReturnType<typeof generateDeviceKeys> {
+  const key = Buffer.from(deviceId).toString('hex');
+  let keys = keyCache.get(key);
+  if (!keys) {
+    keys = generateDeviceKeys();
+    keyCache.set(key, keys);
+  }
+  return keys;
+}
 
 const titles = (pages: { title: string }[]) => pages.map((p) => p.title).sort();
 
@@ -419,7 +440,11 @@ describe('sync between two devices sharing a folder', () => {
         workspaceId: WORKSPACE_ID,
         deviceId,
         peerId,
+        deviceKeys: keysFor(deviceId),
         flushDelayMs: 0,
+        // The settle rule is exercised directly in the storage tests with a controlled
+        // clock. Here it would only make every assertion wait on real time.
+        settleMs: 0,
       });
     return { a: await openDevice(DEVICE_A, 1n), b: await openDevice(DEVICE_B, 2n), logDir };
   }
@@ -542,6 +567,7 @@ describe('sync between two devices sharing a folder', () => {
         workspaceId: WORKSPACE_ID,
         deviceId: DEVICE_A,
         peerId: 1n,
+        deviceKeys: keysFor(DEVICE_A),
       }),
     ).rejects.toThrow(/corrupt|inside the sync folder/i);
   });

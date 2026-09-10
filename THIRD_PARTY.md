@@ -20,7 +20,7 @@ covering prior art we may read but not copy.
 
 <!-- GENERATED: dependency table below is written by scripts/write-third-party.mjs -->
 
-## Shipped dependencies (18)
+## Shipped dependencies (29)
 
 Dependencies that are distributed with the application. Development-only tooling is
 excluded: it is not redistributed. Workspace packages are our own and are covered by
@@ -28,13 +28,24 @@ the repository LICENSE.
 
 | Package | Version | Licence |
 |---|---|---|
+| @cbor-extract/cbor-extract-darwin-arm64 | 2.2.2 | MIT |
+| @cbor-extract/cbor-extract-darwin-x64 | 2.2.2 | MIT |
+| @cbor-extract/cbor-extract-linux-arm | 2.2.2 | MIT |
+| @cbor-extract/cbor-extract-linux-arm64 | 2.2.2 | MIT |
+| @cbor-extract/cbor-extract-linux-x64 | 2.2.2 | MIT |
+| @cbor-extract/cbor-extract-win32-x64 | 2.2.2 | MIT |
+| @noble/curves | 2.4.0 | MIT |
 | @noble/hashes | 2.4.0 | MIT |
+| cbor-extract | 2.2.2 | MIT |
+| cbor-x | 1.6.6 | MIT |
+| detect-libc | 2.1.2 | Apache-2.0 |
 | entities | 8.1.0 | BSD-2-Clause |
 | fflate | 0.8.3 | MIT |
 | isomorphic.js | 0.2.5 | MIT |
 | lib0 | 0.2.117 | MIT |
 | loro-crdt | 1.16.0 | MIT |
 | loro-prosemirror | 0.4.4 | MIT |
+| node-gyp-build-optional-packages | 5.1.1 | MIT |
 | orderedmap | 2.1.1 | MIT |
 | parse5 | 8.0.1 | MIT |
 | prosemirror-commands | 1.7.2 | MIT |

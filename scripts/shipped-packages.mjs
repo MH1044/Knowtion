@@ -11,15 +11,30 @@ import { fileURLToPath } from 'node:url';
 
 export const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
-/** A package's declared licence, read from its own manifest rather than metadata. */
-function licenceOf(nodeModulesPath) {
+/**
+ * A package's declared licence.
+ *
+ * The installed manifest is preferred, because those are the bytes that actually ship.
+ * The lock entry is the fallback, and it is not merely a convenience: npm installs only
+ * the platform-specific optional packages matching the current machine, so a dependency
+ * that ships to macOS users is simply not on disk when developing on Windows. Without
+ * this fallback the gate reported them as UNKNOWN — meaning a copyleft dependency
+ * reaching only one platform's users would never have been checked by anyone
+ * developing on another.
+ */
+function licenceOf(nodeModulesPath, lockEntry) {
   const manifestPath = join(repoRoot, nodeModulesPath, 'package.json');
-  if (!existsSync(manifestPath)) return 'UNKNOWN';
-  const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
-  if (typeof manifest.license === 'string') return manifest.license;
-  if (typeof manifest.license === 'object' && manifest.license?.type) return manifest.license.type;
-  if (Array.isArray(manifest.licenses))
-    return manifest.licenses.map((l) => l.type ?? l).join(' OR ');
+  if (existsSync(manifestPath)) {
+    const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
+    if (typeof manifest.license === 'string') return manifest.license;
+    if (typeof manifest.license === 'object' && manifest.license?.type) {
+      return manifest.license.type;
+    }
+    if (Array.isArray(manifest.licenses)) {
+      return manifest.licenses.map((l) => l.type ?? l).join(' OR ');
+    }
+  }
+  if (typeof lockEntry?.license === 'string') return lockEntry.license;
   return 'UNKNOWN';
 }
 
@@ -34,7 +49,10 @@ export function shippedPackages() {
     out.push({
       name: path.replace(/^node_modules\//, ''),
       version: entry.version ?? '',
-      licence: licenceOf(path),
+      licence: licenceOf(path, entry),
+      // Platform-specific optional packages ship to some users and not others; both
+      // are equally in scope for a licence the project has to honour.
+      platforms: Array.isArray(entry.os) ? entry.os.join(', ') : 'all',
       resolved: entry.resolved ?? '',
     });
   }

@@ -433,3 +433,38 @@ input:focus-visible {
   font-size: 0.9em;
   margin: 4px 0;
 }
+
+/* Devices */
+.devices {
+  margin: 6px 0;
+}
+
+.devices-toggle {
+  border: none;
+  color: var(--muted);
+  font-size: 0.9em;
+  padding: 2px 0;
+  text-align: left;
+  width: 100%;
+}
+
+.device-list {
+  list-style: none;
+  margin: 4px 0 0;
+  padding: 0 0 0 12px;
+}
+
+.device-list li {
+  margin-bottom: 6px;
+}
+
+.device-label {
+  display: block;
+  font-size: 0.9em;
+}
+
+.fingerprint {
+  color: var(--muted);
+  font-size: 0.8em;
+  letter-spacing: 0.03em;
+}
