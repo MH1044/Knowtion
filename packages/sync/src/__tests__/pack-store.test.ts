@@ -1,8 +1,19 @@
 import { LoroDoc } from 'loro-crdt';
 import { describe, expect, it } from 'vitest';
 
+import {
+  SUITE,
+  decodePack,
+  generateDeviceKeys,
+  generateWorkspaceKey,
+  keyringOf,
+  rotateWorkspaceKey,
+  verifyPackSignature,
+  type DeviceKeys,
+} from '@knowtion/format';
+
 import { MemoryStorage } from '../memory-storage.js';
-import { PackStore, packPath, parsePackPath } from '../pack-store.js';
+import { PackStore, packPath, parsePackPath, type PackCrypto } from '../pack-store.js';
 
 const WORKSPACE = new Uint8Array(16).fill(0x11);
 const DEVICE_A = new Uint8Array(16).fill(0xaa);
@@ -497,5 +508,195 @@ describe('a rename in the middle of a chain', () => {
     await storage.putIfAbsent(`d/${hexA}/${TREE}/000000000002 (1).kpack`, bytes);
     await b.store.pull(b.doc);
     expect(b.notes()).toEqual({ one: '1', two: '2' });
+  });
+});
+
+describe('encrypted workspaces', () => {
+  const keysA = generateDeviceKeys();
+  const keysB = generateDeviceKeys();
+  const workspaceKey = generateWorkspaceKey();
+
+  /** A registry stand-in: which signing key belongs to which device. */
+  const registry = new Map([
+    [hexA, keysA.signingPublicKey],
+    [hexB, keysB.signingPublicKey],
+  ]);
+  const signingKeyFor = (deviceHex: string) => Promise.resolve(registry.get(deviceHex));
+
+  const crypto = (deviceKeys: DeviceKeys, over: Partial<PackCrypto> = {}): PackCrypto => ({
+    keyring: keyringOf(workspaceKey),
+    sealWith: workspaceKey,
+    signingSecretKey: deviceKeys.signingSecretKey,
+    signingKeyFor,
+    ...over,
+  });
+
+  const encrypted = (storage: MemoryStorage, id: Uint8Array, peerId: bigint, c: PackCrypto) => {
+    const doc = new LoroDoc();
+    doc.setPeerId(peerId);
+    return {
+      doc,
+      store: new PackStore({ storage, workspaceId: WORKSPACE, deviceId: id, crypto: c }),
+      write(key: string, value: string) {
+        doc.getMap('notes').set(key, value);
+        doc.commit();
+      },
+      notes: () => doc.getMap('notes').toJSON() as Record<string, unknown>,
+    };
+  };
+
+  it('writes packs that are encrypted and signed on disk', async () => {
+    const storage = new MemoryStorage();
+    const a = encrypted(storage, DEVICE_A, 1n, crypto(keysA));
+    a.write('title', 'a very distinctive secret string');
+    const pushed = await a.store.push(a.doc);
+
+    const bytes = await storage.get(pushed!.path);
+    const { header } = decodePack(bytes!);
+    expect(header.suiteId).toBe(SUITE.XCHACHA20POLY1305_ARGON2ID);
+    expect(header.keyEpoch).toBe(workspaceKey.epoch);
+    expect(verifyPackSignature(bytes!, keysA.signingPublicKey)).toBe(true);
+    // The thing the whole feature exists for.
+    expect(Buffer.from(bytes!).includes(Buffer.from('a very distinctive secret string'))).toBe(
+      false,
+    );
+  });
+
+  it('converges two devices through one folder', async () => {
+    const storage = new MemoryStorage();
+    const a = encrypted(storage, DEVICE_A, 1n, crypto(keysA));
+    const b = encrypted(storage, DEVICE_B, 2n, crypto(keysB));
+
+    a.write('from', 'a');
+    await a.store.push(a.doc);
+    b.write('also', 'b');
+    await b.store.push(b.doc);
+
+    await a.store.pull(a.doc);
+    await b.store.pull(b.doc);
+    await a.store.push(a.doc);
+    await b.store.pull(b.doc);
+
+    expect(a.notes()).toEqual({ from: 'a', also: 'b' });
+    expect(b.notes()).toEqual({ from: 'a', also: 'b' });
+  });
+
+  it('reads a log holding both plaintext and encrypted packs', async () => {
+    // The property that makes turning the cipher on possible at all: every pack
+    // declares its own suite, so switching costs privacy, never readability.
+    const storage = new MemoryStorage();
+    const plain = device(storage, DEVICE_A, 1n);
+    plain.write('written', 'before');
+    await plain.store.push(plain.doc);
+
+    const after = encrypted(storage, DEVICE_A, 1n, crypto(keysA));
+    await after.store.pull(after.doc);
+    after.write('written', 'after');
+    const pushed = await after.store.push(after.doc);
+
+    expect(decodePack((await storage.get(pushed!.path))!).header.suiteId).toBe(
+      SUITE.XCHACHA20POLY1305_ARGON2ID,
+    );
+
+    const reader = encrypted(storage, DEVICE_B, 2n, crypto(keysB));
+    const result = await reader.store.pull(reader.doc);
+    expect(result.rejected).toEqual([]);
+    expect(reader.notes()).toEqual({ written: 'after' });
+  });
+});
+
+describe('encrypted workspaces reject what they cannot trust', () => {
+  const keysA = generateDeviceKeys();
+  const keysB = generateDeviceKeys();
+  const workspaceKey = generateWorkspaceKey();
+  const signingKeyFor = (deviceHex: string) =>
+    Promise.resolve(deviceHex === hexA ? keysA.signingPublicKey : undefined);
+
+  const writer = (storage: MemoryStorage) =>
+    new PackStore({
+      storage,
+      workspaceId: WORKSPACE,
+      deviceId: DEVICE_A,
+      crypto: {
+        keyring: keyringOf(workspaceKey),
+        sealWith: workspaceKey,
+        signingSecretKey: keysA.signingSecretKey,
+        signingKeyFor,
+      },
+    });
+
+  async function onePack(storage: MemoryStorage): Promise<string> {
+    const doc = new LoroDoc();
+    doc.setPeerId(1n);
+    doc.getMap('notes').set('k', 'v');
+    doc.commit();
+    const pushed = await writer(storage).push(doc);
+    return pushed!.path;
+  }
+
+  const readerWith = (storage: MemoryStorage, crypto?: PackCrypto) =>
+    new PackStore({
+      storage,
+      workspaceId: WORKSPACE,
+      deviceId: DEVICE_B,
+      ...(crypto === undefined ? {} : { crypto }),
+    });
+
+  it('refuses an encrypted pack when the workspace holds no keys, rather than importing ciphertext', async () => {
+    // Before this routing existed, ciphertext went straight to doc.import(), so a
+    // downgrade looked exactly like ordinary corruption.
+    const storage = new MemoryStorage();
+    const path = await onePack(storage);
+    const doc = new LoroDoc();
+    doc.setPeerId(9n);
+    const result = await readerWith(storage).pull(doc);
+    expect(result.applied).toBe(0);
+    expect(result.rejected.map((r) => r.code)).toEqual(['UNKNOWN_KEY_EPOCH']);
+    expect(result.rejected[0]!.path).toBe(path);
+  });
+
+  it('refuses a pack from a device it has no registry record for', async () => {
+    const storage = new MemoryStorage();
+    await onePack(storage);
+    const doc = new LoroDoc();
+    doc.setPeerId(9n);
+    const result = await readerWith(storage, {
+      keyring: keyringOf(workspaceKey),
+      signingSecretKey: keysB.signingSecretKey,
+      signingKeyFor: () => Promise.resolve(undefined),
+    }).pull(doc);
+    expect(result.rejected.map((r) => r.code)).toEqual(['BAD_SIGNATURE']);
+  });
+
+  it('refuses a pack altered after it was written', async () => {
+    const storage = new MemoryStorage();
+    const path = await onePack(storage);
+    const bytes = Uint8Array.from((await storage.get(path))!);
+    bytes[bytes.length - 1]! ^= 0x01;
+    await storage.putOwn(path, bytes);
+
+    const doc = new LoroDoc();
+    doc.setPeerId(9n);
+    const result = await readerWith(storage, {
+      keyring: keyringOf(workspaceKey),
+      signingSecretKey: keysB.signingSecretKey,
+      signingKeyFor,
+    }).pull(doc);
+    // Rule 7 fires before decryption, so the report names forgery rather than a tag.
+    expect(result.rejected.map((r) => r.code)).toEqual(['BAD_SIGNATURE']);
+    expect(result.applied).toBe(0);
+  });
+
+  it('refuses a pack under a key epoch it has not been granted', async () => {
+    const storage = new MemoryStorage();
+    await onePack(storage);
+    const doc = new LoroDoc();
+    doc.setPeerId(9n);
+    const result = await readerWith(storage, {
+      keyring: keyringOf(rotateWorkspaceKey(workspaceKey)),
+      signingSecretKey: keysB.signingSecretKey,
+      signingKeyFor,
+    }).pull(doc);
+    expect(result.rejected.map((r) => r.code)).toEqual(['UNKNOWN_KEY_EPOCH']);
   });
 });
