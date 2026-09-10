@@ -3,3 +3,4 @@ node_modules/
 package-lock.json
 THIRD_PARTY.md
 packages/format/fixtures/
+.claude/

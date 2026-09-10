@@ -53,3 +53,8 @@ apps/desktop/dist-electron/
 
 # Electron binary, fetched by its own install script
 node_modules/electron/dist/
+
+# Local tool configuration
+.claude/
+CLAUDE.md
+AGENTS.md

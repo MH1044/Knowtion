@@ -133,3 +133,53 @@ describe('NodeStorage specifics', () => {
     expect((await s.list('d/aa')).map((o) => o.path)).toEqual(['d/aa/000000000001.kpack']);
   });
 });
+
+describe('the settle rule', () => {
+  /** A controllable clock, so the test never waits on real time. */
+  function clock(start = 1_000): { now: () => number; advance: (ms: number) => void } {
+    let value = start;
+    return { now: () => value, advance: (ms) => (value += ms) };
+  }
+
+  it('withholds a file until two sightings agree', async () => {
+    // A cloud client materialises a file in stages: it can appear at size zero and gain
+    // content later. Reading it then yields a truncated pack, which verification would
+    // report as damage when nothing is actually wrong.
+    const root = await mkdtemp(join(tmpdir(), 'knowtion-settle-'));
+    temporaryRoots.push(root);
+    const time = clock();
+    const s = new NodeStorage(root, { settle: { ms: 250, now: time.now } });
+
+    await s.putIfAbsent('d/aa/000000000001.kpack', bytes('content'));
+    expect(await s.list('d/aa'), 'first sighting is withheld').toEqual([]);
+
+    time.advance(300);
+    expect((await s.list('d/aa')).map((o) => o.path)).toEqual(['d/aa/000000000001.kpack']);
+  });
+
+  it('restarts the clock when the file is still changing', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'knowtion-settle-grow-'));
+    temporaryRoots.push(root);
+    const time = clock();
+    const s = new NodeStorage(root, { settle: { ms: 250, now: time.now } });
+
+    await s.putIfAbsent('d/aa/000000000001.kpack', bytes('partial'));
+    await s.list('d/aa');
+
+    // The writer is still going, so the file changes between sightings.
+    await s.putOwn('d/aa/000000000001.kpack', bytes('partial and then some more'));
+    time.advance(300);
+    expect(await s.list('d/aa'), 'changed, so not settled').toEqual([]);
+
+    time.advance(300);
+    expect(await s.list('d/aa')).toHaveLength(1);
+  });
+
+  it('is off by default, because a local-only log has one writer', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'knowtion-nosettle-'));
+    temporaryRoots.push(root);
+    const s = new NodeStorage(root);
+    await s.putIfAbsent('d/aa/000000000001.kpack', bytes('content'));
+    expect(await s.list('d/aa')).toHaveLength(1);
+  });
+});

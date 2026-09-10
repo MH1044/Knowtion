@@ -42,6 +42,22 @@ export interface SyncInfo {
   lastError: string | null;
 }
 
+export interface DeviceSummary {
+  label: string;
+  /** Short readable form of the device's signing key, for comparing between machines. */
+  fingerprint: string;
+  enrolledAt: number;
+  isThisDevice: boolean;
+}
+
+export interface DeviceList {
+  thisFingerprint: string;
+  /** False when the platform has no secret store and device keys are unprotected. */
+  secretsOsBacked: boolean;
+  devices: DeviceSummary[];
+  rejected: { path: string; reason: string }[];
+}
+
 type Result<T> = { ok: true; value: T } | { ok: false; error: string };
 
 interface Bridge {
@@ -59,9 +75,12 @@ interface Bridge {
   /** Resolves to null when the user cancels the file picker. */
   importNotion(): Promise<Result<ImportReport | null>>;
   syncInfo(): Promise<Result<SyncInfo>>;
+  devices(): Promise<Result<DeviceList>>;
   syncNow(): Promise<Result<null>>;
   /** Resolves to null when the user cancels the folder picker. */
-  chooseSyncFolder(): Promise<Result<{ folder: string; copied: number } | null>>;
+  chooseSyncFolder(): Promise<
+    Result<{ folder: string; joined: boolean; fingerprint: string } | null>
+  >;
   flush(): Promise<Result<null>>;
   openBody(input: { id: string }): Promise<Result<Uint8Array>>;
   updateBody(input: { id: string; update: Uint8Array }): Promise<Result<null>>;
@@ -93,6 +112,7 @@ export const api = {
   search: (query: string, limit?: number) => unwrap(window.knowtion.search({ query, limit })),
   importNotion: () => unwrap(window.knowtion.importNotion()),
   syncInfo: () => unwrap(window.knowtion.syncInfo()),
+  devices: () => unwrap(window.knowtion.devices()),
   syncNow: () => unwrap(window.knowtion.syncNow()),
   chooseSyncFolder: () => unwrap(window.knowtion.chooseSyncFolder()),
   flush: () => unwrap(window.knowtion.flush()),

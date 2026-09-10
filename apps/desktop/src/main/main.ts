@@ -6,15 +6,20 @@
  * narrow, explicitly-listed channel surface below (SECURITY.md).
  */
 
-import { randomBytes } from 'node:crypto';
-import { readFile, writeFile } from 'node:fs/promises';
+import { watch, type FSWatcher } from 'node:fs';
+import { readFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
+import { hostname } from 'node:os';
 import { fileURLToPath } from 'node:url';
 
 import { BrowserWindow, app, dialog, ipcMain, session } from 'electron';
 
+import { adoptWorkspace, loadOrCreateIdentity, type Identity } from './identity.js';
+import { chooseProtector } from './secret-protector.js';
 import { readSettings, writeSettings } from './settings.js';
 import { checkSyncFolder, copyLog } from './sync-folder.js';
+import { DeviceRegistry, NodeStorage } from '@knowtion/sync';
+
 import { WorkspaceHost } from './workspace-host.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -30,6 +35,10 @@ let host: WorkspaceHost | undefined;
 let syncTimer: NodeJS.Timeout | undefined;
 let currentLogDir = '';
 let lastSyncError: string | undefined;
+let identity: Identity | undefined;
+let secretsOsBacked = false;
+let logWatcher: FSWatcher | undefined;
+let watchDebounce: NodeJS.Timeout | undefined;
 
 /**
  * How often to look for another device's work.
@@ -55,6 +64,45 @@ function scheduleSync(): void {
   );
 }
 
+/**
+ * Watch the sync folder, purely to notice another device's work sooner.
+ *
+ * Node's own watcher is used rather than a native one on purpose. It is unreliable —
+ * it misses events on network mounts, and recursive watching is not supported
+ * everywhere — and that is acceptable precisely because it is only a hint. The periodic
+ * reconcile scan is the correctness mechanism, and deleting this function entirely
+ * would leave the system correct, merely slower. A native dependency to make a hint
+ * more reliable would be paying for the wrong thing.
+ */
+function startWatching(): void {
+  stopWatching();
+  if (currentLogDir === '') return;
+
+  try {
+    logWatcher = watch(currentLogDir, { recursive: true }, () => {
+      // Coalesced: a cloud client materialising a batch fires many events at once, and
+      // one sync afterwards is worth more than one per file.
+      if (watchDebounce) clearTimeout(watchDebounce);
+      watchDebounce = setTimeout(() => {
+        void runSync();
+      }, 1_000);
+    });
+    logWatcher.on('error', () => {
+      // Watching is optional. Losing it costs latency, never correctness.
+      stopWatching();
+    });
+  } catch {
+    // Recursive watching is unsupported on some platforms and mounts. The scan covers it.
+  }
+}
+
+function stopWatching(): void {
+  if (watchDebounce) clearTimeout(watchDebounce);
+  watchDebounce = undefined;
+  logWatcher?.close();
+  logWatcher = undefined;
+}
+
 async function runSync(): Promise<void> {
   if (!host) return;
   try {
@@ -65,45 +113,6 @@ async function runSync(): Promise<void> {
     // its own, and an unreachable folder is a normal state, not a crash.
     lastSyncError = error instanceof Error ? error.message : String(error);
     console.error('[knowtion] sync failed:', error);
-  }
-}
-
-/**
- * Stable identity for this installation.
- *
- * The device identifier decides which log prefix this install owns, and FORMAT.md
- * section 9 gives every path exactly one writer. Two installs sharing an identifier
- * would fork the chain, so it is minted once and never regenerated.
- */
-async function loadIdentity(
-  dataDir: string,
-): Promise<{ workspaceId: Uint8Array; deviceId: Uint8Array; peerId: bigint }> {
-  const path = join(dataDir, 'identity.json');
-  try {
-    const parsed = JSON.parse(await readFile(path, 'utf8')) as Record<string, string>;
-    return {
-      workspaceId: Uint8Array.from(Buffer.from(parsed['workspaceId']!, 'hex')),
-      deviceId: Uint8Array.from(Buffer.from(parsed['deviceId']!, 'hex')),
-      peerId: BigInt(parsed['peerId']!),
-    };
-  } catch {
-    const workspaceId = Uint8Array.from(randomBytes(16));
-    const deviceId = Uint8Array.from(randomBytes(16));
-    // Loro peer ids are u64; keep it well inside the range.
-    const peerId = BigInt('0x' + randomBytes(6).toString('hex'));
-    await writeFile(
-      path,
-      JSON.stringify(
-        {
-          workspaceId: Buffer.from(workspaceId).toString('hex'),
-          deviceId: Buffer.from(deviceId).toString('hex'),
-          peerId: peerId.toString(),
-        },
-        null,
-        2,
-      ),
-    );
-    return { workspaceId, deviceId, peerId };
   }
 }
 
@@ -172,11 +181,36 @@ function registerHandlers(): void {
       : { ok: false, error: lastSyncError };
   });
 
+  ipcMain.handle('sync:devices', async () => {
+    try {
+      const listed = await host!.devices();
+      return {
+        ok: true,
+        value: {
+          thisFingerprint: host!.fingerprint,
+          secretsOsBacked,
+          devices: listed.devices.map((d) => ({
+            label: d.label,
+            fingerprint: d.fingerprint,
+            enrolledAt: d.enrolledAt,
+            isThisDevice: d.isThisDevice,
+          })),
+          rejected: listed.rejected,
+        },
+      };
+    } catch (error) {
+      return { ok: false, error: error instanceof Error ? error.message : String(error) };
+    }
+  });
+
   /**
    * Point the log at a folder the user's cloud client already syncs.
    *
-   * The existing log is copied rather than moved, so a mistake here is recoverable:
-   * the notes remain where they were until the user is satisfied.
+   * Two quite different operations behind one button. An empty folder means "move my
+   * workspace there", and the existing log is COPIED rather than moved so a mistake is
+   * recoverable. A folder that already holds a workspace means "join it", which is
+   * pairing: this device adopts that workspace's identifier and mints a fresh log
+   * prefix, keeping its own keys.
    */
   ipcMain.handle('sync:choose', async () => {
     try {
@@ -192,34 +226,63 @@ function registerHandlers(): void {
       const folder = chosen.filePaths[0];
       const check = await checkSyncFolder(dataDir, folder);
       if (!check.ok) return { ok: false, error: check.reason };
-      if (check.existingWorkspace) {
-        // Joining another device's workspace means adopting its identity and keys,
-        // which is device pairing — a separate step with its own confirmation. Silently
-        // merging two workspaces would be far worse than refusing.
-        return {
-          ok: false,
-          error:
-            'That folder already contains a Knowtion workspace. Joining an existing ' +
-            'workspace from a second device is not supported yet — choose an empty ' +
-            'folder for now.',
-        };
-      }
 
-      // Write everything pending, then copy the log across before switching.
-      await host!.close();
-      const previousLogDir = currentLogDir === '' ? join(dataDir, 'log') : currentLogDir;
-      const copied = await copyLog(previousLogDir, folder);
+      const protector = chooseProtector().protector;
+
+      if (check.existingWorkspace) {
+        const remote = await readWorkspaceIdFrom(folder);
+        if (remote === undefined) {
+          return {
+            ok: false,
+            error:
+              'That folder looks like a Knowtion workspace but no readable device ' +
+              'record could be found in it, so there is no way to tell which workspace ' +
+              'it is. Check that it has finished syncing.',
+          };
+        }
+
+        // Joining replaces this device's workspace. Merging two independently created
+        // workspaces is not possible — each has its own root document, and combining
+        // them keeps one and silently discards the other (ADR-0009). Refusing while
+        // there is anything to lose is the only honest option.
+        if (host!.tree().length > 0 || host!.trash().length > 0) {
+          return {
+            ok: false,
+            error:
+              'This device already has its own pages, and joining another workspace ' +
+              'would replace them. Export them first, or join from a device with an ' +
+              'empty workspace. Your existing notes are untouched.',
+          };
+        }
+
+        await host!.close();
+        identity = await adoptWorkspace(dataDir, identity!, remote, protector);
+      } else {
+        // Taking our own workspace with us.
+        await host!.close();
+        const previousLogDir = currentLogDir === '' ? join(dataDir, 'log') : currentLogDir;
+        await copyLog(previousLogDir, folder);
+      }
 
       await writeSettings(dataDir, { syncFolder: folder });
       currentLogDir = folder;
       host = await WorkspaceHost.open({
         dataDir,
         logDir: folder,
-        ...(await loadIdentity(dataDir)),
+        workspaceId: identity!.workspaceId,
+        deviceId: identity!.deviceId,
+        peerId: identity!.peerId,
+        deviceKeys: identity!.keys,
+        deviceLabel: identity!.label,
       });
+      await runSync();
       scheduleSync();
+      startWatching();
 
-      return { ok: true, value: { folder, copied } };
+      return {
+        ok: true,
+        value: { folder, joined: check.existingWorkspace, fingerprint: host.fingerprint },
+      };
     } catch (error) {
       return { ok: false, error: error instanceof Error ? error.message : String(error) };
     }
@@ -248,6 +311,19 @@ function registerHandlers(): void {
       return { ok: false, error: error instanceof Error ? error.message : String(error) };
     }
   });
+}
+
+/**
+ * Which workspace a folder belongs to, read from any device record in it.
+ *
+ * Every record carries the workspace identifier and is self-signed, so one readable
+ * record is enough — and an unreadable one is not fatal, because another device's
+ * record will usually still be there.
+ */
+async function readWorkspaceIdFrom(folder: string): Promise<Uint8Array | undefined> {
+  const registry = new DeviceRegistry(new NodeStorage(folder));
+  const { devices } = await registry.list();
+  return devices[0]?.workspaceId;
 }
 
 async function createWindow(): Promise<void> {
@@ -286,18 +362,31 @@ app.whenReady().then(async () => {
   });
 
   const dataDir = app.getPath('userData');
-  const identity = await loadIdentity(dataDir);
+  const choice = chooseProtector();
+  secretsOsBacked = choice.osBacked;
+  if (!choice.osBacked) {
+    console.warn(
+      `[knowtion] no OS secret store available; device keys are ${choice.protector.description}`,
+    );
+  }
+  identity = await loadOrCreateIdentity(dataDir, choice.protector, hostname());
+
   const settings = await readSettings(dataDir);
   currentLogDir = settings.syncFolder ?? '';
 
   host = await WorkspaceHost.open({
     dataDir,
     ...(currentLogDir === '' ? {} : { logDir: currentLogDir }),
-    ...identity,
+    workspaceId: identity.workspaceId,
+    deviceId: identity.deviceId,
+    peerId: identity.peerId,
+    deviceKeys: identity.keys,
+    deviceLabel: identity.label,
   });
   registerHandlers();
   await createWindow();
   scheduleSync();
+  startWatching();
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) void createWindow();
@@ -308,6 +397,8 @@ app.whenReady().then(async () => {
 // Quitting without flushing would lose them, which is exactly the kind of small,
 // deniable data loss that destroys trust in a notes app.
 app.on('before-quit', (event) => {
+  stopWatching();
+  if (syncTimer) clearTimeout(syncTimer);
   if (!host) return;
   event.preventDefault();
   const pending = host;

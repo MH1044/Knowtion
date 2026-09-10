@@ -344,3 +344,106 @@ describe('edits made while a write is in flight', () => {
     expect(reader.notes()).toEqual(expected);
   });
 });
+
+describe('conflict copies', () => {
+  /** A sync client renaming a file, which is what they do when they see a clash. */
+  async function renameTo(storage: MemoryStorage, from: string, to: string): Promise<void> {
+    const bytes = (await storage.get(from))!;
+    await storage.putIfAbsent(to, bytes);
+    await storage.delete(from);
+  }
+
+  it('adopts a copy when the original was the file that got renamed', async () => {
+    // Ignoring it would be safe but would lose those operations permanently.
+    const storage = new MemoryStorage();
+    const a = device(storage, DEVICE_A, 1n);
+    a.write('important', 'value');
+    await a.store.push(a.doc);
+
+    await renameTo(
+      storage,
+      packPath(hexA, TREE, 1),
+      `d/${hexA}/${TREE}/000000000001-DESKTOP-AB12.kpack`,
+    );
+
+    const b = device(storage, DEVICE_B, 2n);
+    const result = await b.store.pull(b.doc);
+
+    expect(result.adopted).toBe(1);
+    expect(result.rejected).toEqual([]);
+    expect(b.notes()).toEqual({ important: 'value' });
+  });
+
+  it('handles the parenthesised naming too', async () => {
+    const storage = new MemoryStorage();
+    const a = device(storage, DEVICE_A, 1n);
+    a.write('k', 'v');
+    await a.store.push(a.doc);
+    await renameTo(storage, packPath(hexA, TREE, 1), `d/${hexA}/${TREE}/000000000001 (1).kpack`);
+
+    const b = device(storage, DEVICE_B, 2n);
+    expect((await b.store.pull(b.doc)).adopted).toBe(1);
+    expect(b.notes()).toEqual({ k: 'v' });
+  });
+
+  it('ignores a copy whose original is still present', async () => {
+    // Then it is a duplicate, and adopting it would cost a decode every cycle for
+    // operations already merged.
+    const storage = new MemoryStorage();
+    const a = device(storage, DEVICE_A, 1n);
+    a.write('k', 'v');
+    await a.store.push(a.doc);
+    const original = (await storage.get(packPath(hexA, TREE, 1)))!;
+    await storage.putIfAbsent(`d/${hexA}/${TREE}/000000000001 (1).kpack`, original);
+
+    const b = device(storage, DEVICE_B, 2n);
+    const result = await b.store.pull(b.doc);
+    expect(result.applied).toBe(1);
+    expect(result.adopted).toBe(0);
+  });
+
+  it('does not adopt a damaged copy', async () => {
+    const storage = new MemoryStorage();
+    const a = device(storage, DEVICE_A, 1n);
+    a.write('k', 'v');
+    await a.store.push(a.doc);
+    const copyPath = `d/${hexA}/${TREE}/000000000001 (1).kpack`;
+    await renameTo(storage, packPath(hexA, TREE, 1), copyPath);
+    storage.damage(copyPath, 40);
+
+    const b = device(storage, DEVICE_B, 2n);
+    const result = await b.store.pull(b.doc);
+    expect(result.adopted).toBe(0);
+    expect(b.notes()).toEqual({});
+  });
+
+  it('uses the identity inside the file, not the mangled filename', async () => {
+    // The filename is precisely what the sync client corrupted, so trusting it would
+    // defeat the purpose.
+    const storage = new MemoryStorage();
+    const a = device(storage, DEVICE_A, 1n);
+    a.write('k', 'v');
+    await a.store.push(a.doc);
+    await renameTo(
+      storage,
+      packPath(hexA, TREE, 1),
+      `d/${hexA}/${TREE}/totally-unrelated-name.kpack`,
+    );
+
+    const b = device(storage, DEVICE_B, 2n);
+    expect((await b.store.pull(b.doc)).adopted).toBe(1);
+    expect(b.notes()).toEqual({ k: 'v' });
+  });
+
+  it('adopts a copy only once across repeated cycles', async () => {
+    const storage = new MemoryStorage();
+    const a = device(storage, DEVICE_A, 1n);
+    a.write('k', 'v');
+    await a.store.push(a.doc);
+    await renameTo(storage, packPath(hexA, TREE, 1), `d/${hexA}/${TREE}/000000000001 (1).kpack`);
+
+    const b = device(storage, DEVICE_B, 2n);
+    expect((await b.store.pull(b.doc)).adopted).toBe(1);
+    expect((await b.store.pull(b.doc)).adopted).toBe(0);
+  });
+});
