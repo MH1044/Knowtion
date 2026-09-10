@@ -57,3 +57,7 @@ node_modules/electron/dist/
 # Scratch worktrees created by tooling. Everything else under .claude — settings,
 # project skills — is deliberately shared and must stay tracked.
 .claude/worktrees/
+
+# Terminal transcripts saved by tooling into the working directory. They are session
+# logs, not project files, and a `git add -A` sweeps them into a commit unnoticed.
+*-localsave*.txt
