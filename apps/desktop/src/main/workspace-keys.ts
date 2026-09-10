@@ -33,6 +33,13 @@ import type { SecretProtector } from './identity.js';
 
 const FILE = 'workspace-keys.json';
 
+/** Indexing an array can't statically prove the element is there. */
+function at<T>(array: readonly T[], index: number): T {
+  const value = array[index];
+  if (value === undefined) throw new Error(`expected index ${String(index)} to exist`);
+  return value;
+}
+
 export interface WorkspaceKeyMaterial {
   /** Every epoch this device holds, ascending. Never pruned. */
   epochs: WorkspaceKey[];
@@ -59,7 +66,9 @@ export function keyringFrom(material: WorkspaceKeyMaterial): Keyring {
 export function currentKey(material: WorkspaceKeyMaterial): WorkspaceKey {
   const key = material.epochs.find((e) => e.epoch === material.current);
   if (key === undefined) {
-    throw new Error(`workspace keys name epoch ${material.current} as current but do not hold it`);
+    throw new Error(
+      `workspace keys name epoch ${String(material.current)} as current but do not hold it`,
+    );
   }
   return key;
 }
@@ -72,7 +81,7 @@ export function withEpoch(
   const epochs = [...(material?.epochs ?? [])];
   if (!epochs.some((e) => e.epoch === added.epoch)) epochs.push(added);
   epochs.sort((a, b) => a.epoch - b.epoch);
-  return { epochs, current: epochs[epochs.length - 1]!.epoch };
+  return { epochs, current: at(epochs, epochs.length - 1).epoch };
 }
 
 export async function readWorkspaceKeys(
@@ -92,7 +101,7 @@ export async function readWorkspaceKeys(
     // Written by a newer build. Guessing at it risks dropping an epoch we do not
     // understand, and a dropped epoch is unreadable history.
     throw new Error(
-      `workspace keys are version ${stored.v}; this build understands ${STORED_VERSION}. ` +
+      `workspace keys are version ${String(stored.v)}; this build understands ${String(STORED_VERSION)}. ` +
         'Update Knowtion rather than continuing.',
     );
   }
@@ -103,7 +112,9 @@ export async function readWorkspaceKeys(
   }));
   for (const { epoch, key } of epochs) {
     if (key.length !== 32) {
-      throw new Error(`the stored key for epoch ${epoch} is ${key.length} bytes, not 32`);
+      throw new Error(
+        `the stored key for epoch ${String(epoch)} is ${String(key.length)} bytes, not 32`,
+      );
     }
   }
   epochs.sort((a, b) => a.epoch - b.epoch);
@@ -127,11 +138,11 @@ export async function writeWorkspaceKeys(
 }
 
 export function deviceWrapPath(epoch: number, deviceHex: string): StoragePath {
-  return `keys/${epoch}/${deviceHex}.wrap`;
+  return `keys/${String(epoch)}/${deviceHex}.wrap`;
 }
 
 export function recoveryWrapPath(epoch: number): StoragePath {
-  return `keys/${epoch}/recovery.wrap`;
+  return `keys/${String(epoch)}/recovery.wrap`;
 }
 
 export interface WrapRecipient {
