@@ -8,6 +8,8 @@
  */
 
 export type { StorageObject, StoragePath, StoragePort } from './storage-port.js';
+export { DeviceRegistry } from './device-registry.js';
+export type { Acknowledgement, RegistryRead } from './device-registry.js';
 export { MemoryStorage } from './memory-storage.js';
 export type { MemoryStorageOptions } from './memory-storage.js';
 export { NodeStorage } from './node-storage.js';

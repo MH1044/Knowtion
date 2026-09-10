@@ -60,6 +60,14 @@ export interface RejectedPack {
 export interface PullResult {
   /** Packs decoded and merged into the document on this call. */
   applied: number;
+  /**
+   * Conflict copies adopted because the pack they duplicate was missing.
+   *
+   * A sync client that thinks two devices touched one file renames one of them. Our
+   * naming rules make an unrecognised copy inert, which is safe — but if the ORIGINAL
+   * is the file that got renamed, ignoring the copy loses those operations for good.
+   */
+  adopted: number;
   /** Packs already known, and therefore skipped without being re-read. */
   skipped: number;
   /**
@@ -208,7 +216,7 @@ export class PackStore {
    * the log is the only source of truth.
    */
   async pull(doc: LoroDoc): Promise<PullResult> {
-    const result: PullResult = { applied: 0, skipped: 0, rejected: [] };
+    const result: PullResult = { applied: 0, adopted: 0, skipped: 0, rejected: [] };
 
     const objects = await this.#storage.list('d/');
     // Sorted so each device's packs arrive in sequence order and the chain can be
@@ -272,13 +280,63 @@ export class PackStore {
       }
     }
 
-    if (result.applied > 0) {
+    await this.#adoptConflictCopies(doc, objects, result);
+
+    if (result.applied > 0 || result.adopted > 0) {
       // Remote operations are now ours to build on, but they are already in the log, so
       // they must not be re-pushed inside one of our own packs.
       this.#lastPushed = doc.version();
       this.#lastPushedFrontiers = JSON.stringify(doc.frontiers());
     }
     return result;
+  }
+
+  /**
+   * Recover packs from conflict copies whose original is missing.
+   *
+   * Only when the canonical file is absent. If it is present the copy is a duplicate,
+   * and importing it would be a harmless no-op that still costs a decode on every
+   * cycle — so it is skipped rather than adopted.
+   *
+   * The identity used is the one INSIDE the file, never the filename: the filename is
+   * exactly what the sync client mangled.
+   */
+  async #adoptConflictCopies(
+    doc: LoroDoc,
+    objects: { path: StoragePath }[],
+    result: PullResult,
+  ): Promise<void> {
+    const present = new Set(objects.map((o) => o.path));
+
+    for (const object of objects) {
+      if (!object.path.endsWith('.kpack')) continue;
+      if (parsePackPath(object.path) !== undefined) continue; // a well-named pack
+      if (this.#known.has(object.path)) continue;
+
+      const parts = object.path.split('/');
+      if (parts.length !== 4 || parts[0] !== 'd') continue;
+      if (parts[2] !== this.#documentHex) continue;
+
+      const bytes = await this.#storage.get(object.path);
+      if (bytes === undefined) continue;
+
+      let decoded;
+      try {
+        decoded = decodePack(bytes, object.path);
+      } catch {
+        // Unreadable files with our extension are ordinary in a synced folder; a
+        // partially materialised one is not damage worth reporting.
+        continue;
+      }
+
+      const deviceHex = toHex(decoded.header.deviceId);
+      const canonical = packPath(deviceHex, this.#documentHex, Number(decoded.header.seq));
+      if (present.has(canonical)) continue; // the real pack is there; this is a duplicate
+
+      doc.import(decoded.payload);
+      this.#known.add(object.path);
+      result.adopted += 1;
+    }
   }
 
   /**

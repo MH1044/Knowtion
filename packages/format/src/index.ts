@@ -23,6 +23,19 @@ export { crc32c } from './crc32c.js';
 
 export { equalBytes, hash, keyedHash, toHex } from './hash.js';
 
+export { SidecarError, decodeSidecar, encodeSidecar } from './cbor.js';
+
+export { generateDeviceKeys, sign, verify } from './keys.js';
+export type { DeviceKeys, DevicePublicKeys } from './keys.js';
+
+export {
+  DEVICE_RECORD_VERSION,
+  decodeDeviceRecord,
+  deviceFingerprint,
+  encodeDeviceRecord,
+} from './device-record.js';
+export type { DeviceRecord } from './device-record.js';
+
 export { PackFormatError, isUnsupportedVersion } from './errors.js';
 export type { PackRejectionCode } from './errors.js';
 

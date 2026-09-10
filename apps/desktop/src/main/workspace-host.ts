@@ -23,7 +23,8 @@ import {
 import { loroDocFromJson, plainTextFromJson } from '@knowtion/editor/headless';
 import { importNotionArchive, type ImportReport } from '@knowtion/importers';
 import { ReadModel, type SearchHit } from '@knowtion/readmodel';
-import { NodeStorage, PackStore, listDocumentPacks } from '@knowtion/sync';
+import { deviceFingerprint, toHex, type DeviceKeys, type DeviceRecord } from '@knowtion/format';
+import { DeviceRegistry, NodeStorage, PackStore, listDocumentPacks } from '@knowtion/sync';
 
 import { normaliseText, plainTextFromLoroJson } from './plain-text.js';
 
@@ -48,8 +49,20 @@ export interface WorkspaceHostOptions {
   workspaceId: Uint8Array;
   deviceId: Uint8Array;
   peerId: bigint;
+  /** This device's keypairs. Its public halves go into the registry record. */
+  deviceKeys: DeviceKeys;
+  /** Shown in the device list. Never trusted for anything else. */
+  deviceLabel?: string;
   /** Injected so tests can flush synchronously instead of waiting. */
   flushDelayMs?: number;
+  /**
+   * How long a file must look unchanged before it is read. Zero disables the check.
+   *
+   * Defaults to 250ms in folder mode, where files arrive from another writer and can be
+   * observed half-written. Injected so tests can drive sync without waiting on real
+   * time — the same reason flushDelayMs is injected.
+   */
+  settleMs?: number;
 }
 
 /**
@@ -98,6 +111,7 @@ export class WorkspaceHost {
   #store!: PackStore;
   #storage!: NodeStorage;
   #index!: ReadModel;
+  #registry!: DeviceRegistry;
   /**
    * Page bodies currently loaded.
    *
@@ -142,7 +156,14 @@ export class WorkspaceHost {
     assertSeparateRoots(options.dataDir, logDir);
     await mkdir(logDir, { recursive: true });
 
-    const storage = new NodeStorage(logDir);
+    // The settle rule only earns its keep where another writer exists. With a
+    // local-only log this device is the only writer, and delaying its own files would
+    // add latency for nothing.
+    const settleMs = options.settleMs ?? (options.logDir === undefined ? 0 : 250);
+    const storage = new NodeStorage(
+      logDir,
+      settleMs > 0 ? { settle: { ms: settleMs, now: () => Date.now() } } : {},
+    );
     host.#storage = storage;
     host.#workspace = Workspace.create({ runtime: systemRuntime(), peerId: options.peerId });
     host.#store = new PackStore({
@@ -155,6 +176,23 @@ export class WorkspaceHost {
     // client copying a live SQLite file mid-transaction produces a reliably corrupt
     // one, and the index bytes are not even deterministic across machines.
     host.#index = ReadModel.open(join(options.dataDir, 'index.db'));
+    host.#registry = new DeviceRegistry(storage);
+
+    // Publish this device before reading anyone else's work, so a device that has
+    // merged operations is always one other devices can see and account for. It matters
+    // for compaction: a device absent from the registry has no acknowledgement, and
+    // trimming past a device you do not know exists destroys history it still needs.
+    await host.#registry.enrol(
+      {
+        deviceId: options.deviceId,
+        workspaceId: options.workspaceId,
+        signingPublicKey: options.deviceKeys.signingPublicKey,
+        wrappingPublicKey: options.deviceKeys.wrappingPublicKey,
+        label: options.deviceLabel ?? 'This device',
+        enrolledAt: Date.now(),
+      },
+      options.deviceKeys.signingSecretKey,
+    );
 
     const result = await host.#store.pull(host.#workspace.doc);
     for (const rejected of result.rejected) {
@@ -427,6 +465,7 @@ export class WorkspaceHost {
     if (tree.applied > 0) this.#reindexPages();
 
     const bodiesUpdated = await this.#syncBodies();
+    await this.#writeAck();
 
     return {
       treePacksApplied: tree.applied,
@@ -489,5 +528,52 @@ export class WorkspaceHost {
       updated += 1;
     }
     return updated;
+  }
+
+  // ---- devices ------------------------------------------------------------
+
+  /**
+   * Every device that has enrolled in this workspace.
+   *
+   * Records that failed verification are returned alongside rather than hidden. On a
+   * shared folder a failed record is the difference between a corrupt file and an
+   * attempt to impersonate a device, and both need to reach a person.
+   */
+  async devices(): Promise<{
+    devices: (DeviceRecord & { fingerprint: string; isThisDevice: boolean })[];
+    rejected: { path: string; reason: string }[];
+  }> {
+    const read = await this.#registry.list();
+    const selfHex = toHex(this.#options.deviceId);
+    return {
+      devices: read.devices.map((record) => ({
+        ...record,
+        fingerprint: deviceFingerprint(record),
+        isThisDevice: toHex(record.deviceId) === selfHex,
+      })),
+      rejected: read.rejected,
+    };
+  }
+
+  /** This device's fingerprint, for comparing against another machine when pairing. */
+  get fingerprint(): string {
+    return deviceFingerprint({
+      signingPublicKey: this.#options.deviceKeys.signingPublicKey,
+      wrappingPublicKey: this.#options.deviceKeys.wrappingPublicKey,
+    });
+  }
+
+  /**
+   * Record how far this device has merged.
+   *
+   * Written after every successful cycle, because it is the only statement other
+   * devices have to go on when deciding what history is safe to discard. A device that
+   * stops acknowledging must hold history back, not have it trimmed out from under it.
+   */
+  async #writeAck(): Promise<void> {
+    await this.#registry.writeAck(toHex(this.#options.deviceId), {
+      mergedVersion: toHex(this.#workspace.doc.version().encode()),
+      updatedAt: Date.now(),
+    });
   }
 }
