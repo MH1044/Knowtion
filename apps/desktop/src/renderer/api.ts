@@ -83,11 +83,21 @@ export interface PhraseChallenge {
   challenge: number[];
 }
 
+/** Pushed by the main process whenever the workspace changed, here or on another device. */
+export interface WorkspaceChange {
+  origin: 'local' | 'remote';
+  /** Pages whose data changed. Empty means "possibly any", which a remote merge cannot narrow. */
+  pages: string[];
+  /** Pages whose body changed. Always exact. */
+  bodies: string[];
+}
+
 type Result<T> = { ok: true; value: T } | { ok: false; error: string };
 
 interface Bridge {
   tree(): Promise<Result<PageNode[]>>;
   trash(): Promise<Result<Page[]>>;
+  page(input: { id: string }): Promise<Result<Page>>;
   createPage(input: { parentId?: string; title?: string }): Promise<Result<Page>>;
   renamePage(input: { id: string; title: string }): Promise<Result<Page>>;
   // Explicitly `| undefined`: moving to the top level passes undefined on purpose,
@@ -120,6 +130,8 @@ interface Bridge {
   flush(): Promise<Result<null>>;
   openBody(input: { id: string }): Promise<Result<Uint8Array>>;
   updateBody(input: { id: string; update: Uint8Array }): Promise<Result<null>>;
+  /** Subscribe to pushed changes. Returns the unsubscribe. Not a request, so no Result. */
+  onChanged(callback: (change: WorkspaceChange) => void): () => void;
 }
 
 declare global {
@@ -138,6 +150,7 @@ async function unwrap<T>(promise: Promise<Result<T>>): Promise<T> {
 export const api = {
   tree: () => unwrap(window.knowtion.tree()),
   trash: () => unwrap(window.knowtion.trash()),
+  page: (id: string) => unwrap(window.knowtion.page({ id })),
   createPage: (input: { parentId?: string; title?: string } = {}) =>
     unwrap(window.knowtion.createPage(input)),
   renamePage: (id: string, title: string) => unwrap(window.knowtion.renamePage({ id, title })),
@@ -162,4 +175,5 @@ export const api = {
   openBody: (id: string) => unwrap(window.knowtion.openBody({ id })),
   updateBody: (id: string, update: Uint8Array) =>
     unwrap(window.knowtion.updateBody({ id, update })),
+  onChanged: (callback: (change: WorkspaceChange) => void) => window.knowtion.onChanged(callback),
 };

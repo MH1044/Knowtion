@@ -83,6 +83,26 @@ function keysFor(deviceId: Uint8Array): ReturnType<typeof generateDeviceKeys> {
 
 const titles = (pages: { title: string }[]) => pages.map((p) => p.title).sort();
 
+/** Two devices: separate application data, one shared log directory. */
+async function pair() {
+  const shared = await dataDir();
+  const logDir = join(shared, 'shared-log');
+  const openDevice = async (deviceId: Uint8Array, peerId: bigint) =>
+    WorkspaceHost.open({
+      dataDir: await dataDir(),
+      logDir,
+      workspaceId: WORKSPACE_ID,
+      deviceId,
+      peerId,
+      deviceKeys: keysFor(deviceId),
+      flushDelayMs: 0,
+      // The settle rule is exercised directly in the storage tests with a controlled
+      // clock. Here it would only make every assertion wait on real time.
+      settleMs: 0,
+    });
+  return { a: await openDevice(DEVICE_A, 1n), b: await openDevice(DEVICE_B, 2n), logDir };
+}
+
 describe('WorkspaceHost', () => {
   it('starts empty and creates pages', async () => {
     const host = await open(await dataDir());
@@ -446,26 +466,6 @@ describe('Notion import', () => {
 });
 
 describe('sync between two devices sharing a folder', () => {
-  /** Two devices: separate application data, one shared log directory. */
-  async function pair() {
-    const shared = await dataDir();
-    const logDir = join(shared, 'shared-log');
-    const openDevice = async (deviceId: Uint8Array, peerId: bigint) =>
-      WorkspaceHost.open({
-        dataDir: await dataDir(),
-        logDir,
-        workspaceId: WORKSPACE_ID,
-        deviceId,
-        peerId,
-        deviceKeys: keysFor(deviceId),
-        flushDelayMs: 0,
-        // The settle rule is exercised directly in the storage tests with a controlled
-        // clock. Here it would only make every assertion wait on real time.
-        settleMs: 0,
-      });
-    return { a: await openDevice(DEVICE_A, 1n), b: await openDevice(DEVICE_B, 2n), logDir };
-  }
-
   it('propagates a new page', async () => {
     const { a, b } = await pair();
     a.createPage({ title: 'From A' });
@@ -981,6 +981,87 @@ describe('a workspace that cannot save', () => {
     await host.flush();
     expect(host.writeFailure).toBeUndefined();
 
+    await host.close();
+  });
+});
+
+describe('change notification', () => {
+  it('reports each local intent once, naming the page', async () => {
+    const host = await open(await dataDir());
+    const seen: unknown[] = [];
+    const stop = host.onChanged((change) => seen.push(change));
+
+    const page = host.createPage({ title: 'Noted' });
+    host.renamePage(page.id, 'Renamed');
+    expect(seen).toEqual([
+      { origin: 'local', pages: [page.id], bodies: [] },
+      { origin: 'local', pages: [page.id], bodies: [] },
+    ]);
+
+    stop();
+    host.archivePage(page.id);
+    expect(seen, 'nothing after unsubscribing').toHaveLength(2);
+    await host.close();
+  });
+
+  it('reports a body edit as a changed body, not a changed page', async () => {
+    const host = await open(await dataDir());
+    const page = host.createPage({ title: 'Body' });
+    await host.openBody(page.id);
+    const seen: unknown[] = [];
+    host.onChanged((change) => seen.push(change));
+
+    const { LoroDoc } = await import('loro-crdt');
+    const edit = new LoroDoc();
+    edit.setPeerId(9n);
+    edit.getMap('doc').set('nodeName', 'doc');
+    edit.commit();
+    await host.applyBodyUpdate(page.id, edit.export({ mode: 'update' }));
+
+    expect(seen).toEqual([{ origin: 'local', pages: [], bodies: [page.id] }]);
+    await host.close();
+  });
+
+  it('reports a sync that merged something as one remote change, and a quiet cycle as none', async () => {
+    // The listener is a window that refreshes on every event. A folder polled every
+    // fifteen seconds must not become a refresh every fifteen seconds.
+    const { a, b } = await pair();
+    const seen: { origin: string; bodies: string[] }[] = [];
+    b.onChanged((change) => seen.push(change));
+
+    const page = a.createPage({ title: 'From A' });
+    await a.sync();
+    await b.sync();
+    expect(seen).toEqual([{ origin: 'remote', pages: [], bodies: [] }]);
+
+    await b.sync();
+    await b.sync();
+    expect(seen, 'quiet cycles are silent').toHaveLength(1);
+
+    // A remote body edit names the page whose body changed.
+    await a.openBody(page.id);
+    const { LoroDoc } = await import('loro-crdt');
+    const edit = new LoroDoc();
+    edit.setPeerId(9n);
+    edit.getMap('doc').set('nodeName', 'doc');
+    edit.commit();
+    await a.applyBodyUpdate(page.id, edit.export({ mode: 'update' }));
+    await a.sync();
+    await b.sync();
+    expect(seen).toHaveLength(2);
+    expect(at(seen, 1)).toEqual({ origin: 'remote', pages: [], bodies: [page.id] });
+
+    await a.close();
+    await b.close();
+  });
+
+  it('a listener that throws does not break the intent it was told about', async () => {
+    const host = await open(await dataDir());
+    host.onChanged(() => {
+      throw new Error('renderer went away');
+    });
+    expect(() => host.createPage({ title: 'Still created' })).not.toThrow();
+    expect(titles(host.tree())).toEqual(['Still created']);
     await host.close();
   });
 });

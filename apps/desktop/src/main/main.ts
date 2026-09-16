@@ -51,6 +51,8 @@ const isDevelopment = !app.isPackaged;
 app.setName('Knowtion');
 
 let host: WorkspaceHost | undefined;
+/** Stops forwarding the current host's changes; called before a host is replaced. */
+let detachHost: (() => void) | undefined;
 let syncTimer: NodeJS.Timeout | undefined;
 let currentLogDir = '';
 let lastSyncError: string | undefined;
@@ -79,6 +81,24 @@ function must<T>(value: T | null | undefined, what: string): T {
 /** IPC handlers below are only registered after `host` is opened in `whenReady`. */
 function mustHost(): WorkspaceHost {
   return must(host, 'workspace host');
+}
+
+/**
+ * Make an opened host the current one and forward its changes to every window.
+ *
+ * The one place `host` is assigned, so a host can never be current without the renderer
+ * hearing from it. The channel is the first push from main to renderer; the explicit
+ * channel list in preload.cjs still governs, since the renderer can only subscribe to the
+ * name the preload chose to expose.
+ */
+function attachHost(opened: WorkspaceHost): void {
+  detachHost?.();
+  host = opened;
+  detachHost = opened.onChanged((change) => {
+    for (const window of BrowserWindow.getAllWindows()) {
+      window.webContents.send('workspace:changed', change);
+    }
+  });
 }
 
 /**
@@ -204,6 +224,7 @@ function handle(channel: string, fn: (...args: never[]) => unknown): void {
 function registerHandlers(): void {
   handle('workspace:tree', () => mustHost().tree());
   handle('workspace:trash', () => mustHost().trash());
+  handle('workspace:page', (input: { id: string }) => mustHost().page(input.id as never));
   handle('workspace:create', (input: { parentId?: string; title?: string }) =>
     mustHost().createPage(input as never),
   );
@@ -494,7 +515,7 @@ function registerHandlers(): void {
         await writeSettings(dataDir, { syncFolder: folder });
         currentLogDir = folder;
         identity = nextIdentity;
-        host = opened;
+        attachHost(opened);
       } catch (error) {
         // The switch failed partway through. The user's previous workspace must not be
         // stranded until a restart: put back whatever this attempt changed, and reopen
@@ -505,15 +526,17 @@ function registerHandlers(): void {
         identity = previousIdentity;
         currentLogDir = previousLogDir;
         try {
-          host = await WorkspaceHost.open({
-            dataDir,
-            logDir: previousLogDir,
-            workspaceId: previousIdentity.workspaceId,
-            deviceId: previousIdentity.deviceId,
-            peerId: previousIdentity.peerId,
-            deviceKeys: previousIdentity.keys,
-            deviceLabel: previousIdentity.label,
-          });
+          attachHost(
+            await WorkspaceHost.open({
+              dataDir,
+              logDir: previousLogDir,
+              workspaceId: previousIdentity.workspaceId,
+              deviceId: previousIdentity.deviceId,
+              peerId: previousIdentity.peerId,
+              deviceKeys: previousIdentity.keys,
+              deviceLabel: previousIdentity.label,
+            }),
+          );
           scheduleSync();
           startWatching();
         } catch (reopenError) {
@@ -539,7 +562,7 @@ function registerHandlers(): void {
 
       return {
         ok: true,
-        value: { folder, joined: check.existingWorkspace, fingerprint: host.fingerprint },
+        value: { folder, joined: check.existingWorkspace, fingerprint: mustHost().fingerprint },
       };
     } catch (error) {
       return { ok: false, error: error instanceof Error ? error.message : String(error) };
@@ -687,16 +710,18 @@ async function rotateAwayFrom(deviceHex: string, phrase: string): Promise<void> 
 /** Open the workspace host with whatever keys this device holds. */
 async function openWorkspace(): Promise<void> {
   const dataDir = app.getPath('userData');
-  host = await WorkspaceHost.open({
-    dataDir,
-    ...(currentLogDir === '' ? {} : { logDir: currentLogDir }),
-    workspaceId: must(identity, 'identity').workspaceId,
-    deviceId: must(identity, 'identity').deviceId,
-    peerId: must(identity, 'identity').peerId,
-    deviceKeys: must(identity, 'identity').keys,
-    deviceLabel: must(identity, 'identity').label,
-    ...(workspaceKeys === undefined ? {} : { workspaceKeys }),
-  });
+  attachHost(
+    await WorkspaceHost.open({
+      dataDir,
+      ...(currentLogDir === '' ? {} : { logDir: currentLogDir }),
+      workspaceId: must(identity, 'identity').workspaceId,
+      deviceId: must(identity, 'identity').deviceId,
+      peerId: must(identity, 'identity').peerId,
+      deviceKeys: must(identity, 'identity').keys,
+      deviceLabel: must(identity, 'identity').label,
+      ...(workspaceKeys === undefined ? {} : { workspaceKeys }),
+    }),
+  );
   scheduleSync();
   startWatching();
 }
@@ -795,6 +820,8 @@ app.on('before-quit', (event) => {
   if (!host) return;
   event.preventDefault();
   const pending = host;
+  detachHost?.();
+  detachHost = undefined;
   host = undefined;
   void pending.close().finally(() => {
     app.quit();

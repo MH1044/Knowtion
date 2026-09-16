@@ -14,6 +14,7 @@ const call = (channel) => (payload) => ipcRenderer.invoke(channel, payload);
 contextBridge.exposeInMainWorld('knowtion', {
   tree: call('workspace:tree'),
   trash: call('workspace:trash'),
+  page: call('workspace:page'),
   createPage: call('workspace:create'),
   renamePage: call('workspace:rename'),
   movePage: call('workspace:move'),
@@ -35,4 +36,11 @@ contextBridge.exposeInMainWorld('knowtion', {
   flush: call('workspace:flush'),
   openBody: call('body:open'),
   updateBody: call('body:update'),
+  // The one channel that flows from main to renderer. The renderer gets the payload and
+  // nothing else: the IpcRendererEvent carries the sender and any transferred ports.
+  onChanged: (callback) => {
+    const listener = (_event, change) => callback(change);
+    ipcRenderer.on('workspace:changed', listener);
+    return () => ipcRenderer.removeListener('workspace:changed', listener);
+  },
 });
