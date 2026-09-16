@@ -261,6 +261,19 @@ function PageView({
   // than per keystroke, which also keeps one rename out of the log per edit session.
   const [title, setTitle] = useState(page.title);
 
+  // The title this component last saw from the engine. SyncPanel refreshes the tree in
+  // place without remounting PageView, so a rename arriving from another device shows
+  // up as a new page.title on an already-mounted component. Initialising state once and
+  // never looking again meant the stale local title was written straight back on the
+  // next blur, silently reverting the other device's rename. Adopt the new title unless
+  // the user has typed since the last one — their unsaved edit is a genuine conflict,
+  // and last writer wins is the right outcome for that, not for an untouched field.
+  const [seenTitle, setSeenTitle] = useState(page.title);
+  if (page.title !== seenTitle) {
+    setSeenTitle(page.title);
+    if (title === seenTitle) setTitle(page.title);
+  }
+
   return (
     <article className="page">
       <input
