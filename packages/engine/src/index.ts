@@ -17,3 +17,12 @@ export type { IdGen, Uuid } from './ids.js';
 
 export { deterministicRuntime, systemRuntime } from './runtime.js';
 export type { Clock, Random, Runtime } from './runtime.js';
+
+export {
+  JITTER_DIGITS,
+  ORDER_KEY_DIGITS,
+  compareOrderKeys,
+  isOrderKey,
+  orderKeyBetween,
+} from './order-key.js';
+export type { OrderKey } from './order-key.js';
