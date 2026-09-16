@@ -183,6 +183,12 @@ worthless.
 v0.1 and the sync and encryption halves of v0.2 are built and shipped. Windows is the
 only supported platform at v1.
 
+One characteristic is worth knowing before profiling anything. Merge time is flat in the
+number of divergent edits when those edits create and rename; what grows steeply is
+**concurrent reparenting**, because that is the highly-available move algorithm ADR-0002
+chose Loro for, at its stated cost. It is measured by `npm run gates` and is not a defect
+to chase. A realistic week of two-device divergence merges in a few hundred milliseconds.
+
 One gap is known and deliberate rather than forgotten:
 
 - **Only the hierarchy is compacted, not page bodies.** Bodies grow only when edited, so
