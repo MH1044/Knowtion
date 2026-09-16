@@ -61,6 +61,9 @@ export default tseslint.config(
       // Scratch worktrees created by tooling: the same source under a second path, so
       // linting them double-reports every finding. Other .claude content is tracked.
       '.claude/worktrees/**',
+      // Private working material beside the code, git-ignored and never published.
+      // It is not part of any tsconfig program, so the type-aware parser cannot lint it.
+      'private/**',
     ],
   },
   eslint.configs.recommended,

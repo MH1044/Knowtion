@@ -61,3 +61,8 @@ node_modules/electron/dist/
 # Terminal transcripts saved by tooling into the working directory. They are session
 # logs, not project files, and a `git add -A` sweeps them into a commit unnoticed.
 *-localsave*.txt
+
+# Private working material that lives beside the code but must never be published:
+# handoff notes, audit and debug history, personal test data, transcripts, scratch
+# tooling. Anything that is not for the public repo goes under here, nowhere else.
+/private/
