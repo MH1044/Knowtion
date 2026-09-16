@@ -10,7 +10,7 @@
 export { runSimulation, InvariantViolation } from './simulator.js';
 export type { SimulationOptions, SimulationResult } from './simulator.js';
 export { SimulatedDevice } from './device.js';
-export type { Action, DeviceOptions } from './device.js';
+export type { Action, DeviceOptions, PushOutcome } from './device.js';
 export { runConvergenceGate } from './convergence.js';
 export type { ConvergenceOptions, ConvergenceResult } from './convergence.js';
 export { VirtualClock, choose, seededRandom } from './deterministic.js';
