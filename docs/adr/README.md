@@ -14,18 +14,19 @@ An ADR records a decision that was **expensive to make and expensive to reverse*
 
 ## Index
 
-| ADR                                             | Decision                                                     | Status   |
-| ----------------------------------------------- | ------------------------------------------------------------ | -------- |
-| [0001](0001-application-shell.md)               | Electron shell, TypeScript engine, no Rust                   | Accepted |
-| [0002](0002-merge-model-and-crdt.md)            | CRDT merge model; Loro                                       | Accepted |
-| [0003](0003-editor.md)                          | ProseMirror + Tiptap; one document per page                  | Accepted |
-| [0004](0004-local-read-model.md)                | SQLite as a derived, rebuildable read model                  | Accepted |
-| [0005](0005-cloud-layout.md)                    | Single-writer, append-only packfiles; no CAS                 | Accepted |
-| [0006](0006-sync-transport.md)                  | Folder mode is the product                                   | Accepted |
-| [0007](0007-encryption.md)                      | Encrypted by default; OS keychain + recovery phrase          | Accepted |
-| [0008](0008-project-licence.md)                 | MIT                                                          | Accepted |
-| [0009](0009-loro-prosemirror-spike-result.md)   | Loro and ProseMirror bind correctly; four constraints follow | Accepted |
-| [0010](0010-per-document-pack-namespaces.md)    | Packs are namespaced by document, not only by device         | Accepted |
-| [0011](0011-node-sqlite-over-better-sqlite3.md) | Node's built-in SQLite rather than better-sqlite3            | Accepted |
-| [0012](0012-encryption-parameters.md)           | The encryption parameters ADR-0007 left open                 | Accepted |
-| [0013](0013-reading-snapshots.md)               | Snapshots are read, and re-anchor their device's chain       | Accepted |
+| ADR                                             | Decision                                                                   | Status   |
+| ----------------------------------------------- | -------------------------------------------------------------------------- | -------- |
+| [0001](0001-application-shell.md)               | Electron shell, TypeScript engine, no Rust                                 | Accepted |
+| [0002](0002-merge-model-and-crdt.md)            | CRDT merge model; Loro                                                     | Accepted |
+| [0003](0003-editor.md)                          | ProseMirror + Tiptap; one document per page                                | Accepted |
+| [0004](0004-local-read-model.md)                | SQLite as a derived, rebuildable read model                                | Accepted |
+| [0005](0005-cloud-layout.md)                    | Single-writer, append-only packfiles; no CAS                               | Accepted |
+| [0006](0006-sync-transport.md)                  | Folder mode is the product                                                 | Accepted |
+| [0007](0007-encryption.md)                      | Encrypted by default; OS keychain + recovery phrase                        | Accepted |
+| [0008](0008-project-licence.md)                 | MIT                                                                        | Accepted |
+| [0009](0009-loro-prosemirror-spike-result.md)   | Loro and ProseMirror bind correctly; four constraints follow               | Accepted |
+| [0010](0010-per-document-pack-namespaces.md)    | Packs are namespaced by document, not only by device                       | Accepted |
+| [0011](0011-node-sqlite-over-better-sqlite3.md) | Node's built-in SQLite rather than better-sqlite3                          | Accepted |
+| [0012](0012-encryption-parameters.md)           | The encryption parameters ADR-0007 left open                               | Accepted |
+| [0013](0013-reading-snapshots.md)               | Snapshots are read, and re-anchor their device's chain                     | Accepted |
+| [0014](0014-databases-on-the-tree.md)           | Databases live on the tree: schema on the database node, values on the row | Proposed |

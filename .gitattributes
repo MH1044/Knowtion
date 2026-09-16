@@ -9,6 +9,7 @@
 *.ksnap   binary
 *.kblob   binary
 *.cbor    binary
+*.loro    binary
 *.png     binary
 *.jpg     binary
 *.jpeg    binary
