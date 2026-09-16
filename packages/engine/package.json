@@ -18,6 +18,6 @@
   },
   "dependencies": {
     "@knowtion/format": "*",
-    "loro-crdt": "^1.16.0"
+    "loro-crdt": "1.16.0"
   }
 }
