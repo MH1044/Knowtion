@@ -13,4 +13,6 @@ export { SimulatedDevice } from './device.js';
 export type { Action, DeviceOptions, PushOutcome } from './device.js';
 export { runConvergenceGate } from './convergence.js';
 export type { ConvergenceOptions, ConvergenceResult } from './convergence.js';
+export { runCrashGate } from './crash.js';
+export type { CrashGateOptions, CrashGateResult, CrashKind } from './crash.js';
 export { VirtualClock, choose, seededRandom } from './deterministic.js';
