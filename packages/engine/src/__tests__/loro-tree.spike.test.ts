@@ -6,7 +6,7 @@
  * ever regresses here, the CRDT decision is invalid and we need to know immediately,
  * not from a user whose sidebar lost two subtrees.
  */
-import { LoroDoc } from 'loro-crdt';
+import { LoroDoc, LoroMap } from 'loro-crdt';
 import type { TreeID } from 'loro-crdt';
 import { describe, expect, it } from 'vitest';
 
@@ -310,5 +310,87 @@ describe('Loro deleted-node traversal — a trap every tree walker must handle',
 
     expect(nodeIds(bob)).toEqual([a.id]);
     expect(nodeIds(alice)).toEqual(nodeIds(bob));
+  });
+});
+
+describe('Loro mergeable map children — why nested property maps do not fork', () => {
+  /** Two devices holding the same node, each about to add a nested map under its data. */
+  function sharedNode() {
+    const a = device(1n);
+    const created = a.getTree('pages').createNode();
+    created.data.set('title', 'db');
+    a.commit();
+    const b = device(2n);
+    b.import(a.export({ mode: 'snapshot' }));
+    const onB = must(b.getTree('pages').getNodeByID(created.id), 'the node on B');
+    const exchange = () => {
+      const fromA = a.export({ mode: 'update' });
+      const fromB = b.export({ mode: 'update' });
+      a.import(fromB);
+      b.import(fromA);
+    };
+    return { a, b, onA: created, onB, exchange };
+  }
+
+  it('ensureMergeableMap converges when both devices create the same child offline', () => {
+    // v0.3 stores a row's property values in a nested map under the node's data. Two
+    // devices will lazily create that map for the same row while apart, and both of
+    // their edits must survive the merge — otherwise a property set on one laptop
+    // silently vanishes on the other.
+    const { onA, onB, exchange, a, b } = sharedNode();
+    onA.data.ensureMergeableMap('props').set('p1', 'from A');
+    a.commit();
+    onB.data.ensureMergeableMap('props').set('p2', 'from B');
+    b.commit();
+    exchange();
+
+    const expected = { title: 'db', props: { p1: 'from A', p2: 'from B' } };
+    expect(onA.data.toJSON()).toEqual(expected);
+    expect(onB.data.toJSON()).toEqual(expected);
+  });
+
+  it('setContainer FORKS in the same situation and loses one side for good', () => {
+    // The failure the rule "always ensureMergeable*, never setContainer" exists to
+    // prevent. Each device creates a distinct container under the same key; the merge
+    // keeps one and discards the other on BOTH devices, with no conflict reported.
+    const { onA, onB, exchange, a, b } = sharedNode();
+    onA.data.setContainer('props', new LoroMap()).set('p1', 'from A');
+    a.commit();
+    onB.data.setContainer('props', new LoroMap()).set('p2', 'from B');
+    b.commit();
+    exchange();
+
+    const merged = onA.data.toJSON() as { props: Record<string, string> };
+    expect(onB.data.toJSON()).toEqual(merged);
+    expect(Object.keys(merged.props)).toHaveLength(1);
+  });
+
+  it('deleting the parent key hides a mergeable child; ensuring it again resurfaces it', () => {
+    // Consequence for the engine: never delete the `db`, `props` or `order` keys
+    // themselves, only entries inside them. A "deleted" schema would come back the
+    // next time any device touched the key.
+    const { onA, onB, exchange, a, b } = sharedNode();
+    onA.data.ensureMergeableMap('db').ensureMergeableMap('views').set('v1', 'Table');
+    a.commit();
+    exchange();
+    expect(onB.data.toJSON()).toEqual({ title: 'db', db: { views: { v1: 'Table' } } });
+
+    onA.data.delete('db');
+    a.commit();
+    exchange();
+    expect(onB.data.toJSON()).toEqual({ title: 'db' });
+
+    onB.data.ensureMergeableMap('db');
+    b.commit();
+    exchange();
+    expect(onA.data.toJSON()).toEqual({ title: 'db', db: { views: { v1: 'Table' } } });
+  });
+
+  it('refuses to create a mergeable child where a scalar already sits', () => {
+    // Only reachable with corrupted or hostile data, but the engine must turn it into a
+    // reported error rather than an unhandled throw from inside the CRDT.
+    const { onA } = sharedNode();
+    onA.data.set('scalar', 1);
+    expect(() => onA.data.ensureMergeableMap('scalar')).toThrow(/mergeable/);
   });
 });
