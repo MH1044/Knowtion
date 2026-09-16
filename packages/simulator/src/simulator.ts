@@ -17,6 +17,7 @@
  *    fire here, and if it does, something is wrong that this code does not understand.
  */
 
+import type { Workspace } from '@knowtion/engine';
 import { checkDataLoss, type FaultProfile, FaultyStorage } from '@knowtion/sync';
 
 import { SimulatedDevice, type Action } from './device.js';
@@ -91,7 +92,7 @@ const DEFAULT_FAULTS: FaultProfile = {
 };
 
 /** Every live page as "title under parent", sorted: a comparable shape of the tree. */
-function shape(device: SimulatedDevice): string[] {
+export function shape(device: { workspace: Workspace }): string[] {
   return device.workspace
     .allPages()
     .map((page) => `${page.title}<-${page.parentId ?? 'ROOT'}`)
@@ -99,7 +100,7 @@ function shape(device: SimulatedDevice): string[] {
 }
 
 /** Walk every live node to its root; a cycle shows up as a node seen twice. */
-function hasCycle(device: SimulatedDevice): boolean {
+export function hasCycle(device: SimulatedDevice): boolean {
   const pages = device.workspace.allPages();
   const parentOf = new Map(pages.map((p) => [p.id, p.parentId]));
   for (const page of pages) {
