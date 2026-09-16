@@ -60,6 +60,9 @@ export default tseslint.config(
       'packages/format/fixtures/**',
       // Local tool configuration. Not project source.
       '.claude/**',
+      // Private working material beside the code, git-ignored and never published.
+      // It is not part of any tsconfig program, so the type-aware parser cannot lint it.
+      'private/**',
     ],
   },
   eslint.configs.recommended,

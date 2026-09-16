@@ -61,3 +61,6 @@ AGENTS.md
 
 # Logs that tools save into the working directory
 *-localsave*.txt
+
+# Private working material that is not part of the project
+/private/
