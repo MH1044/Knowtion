@@ -23,6 +23,8 @@ export type {
 export { DEFAULT_GRACE_MS, computeTrimFloor } from './trim-floor.js';
 export type { TrimFloor, TrimFloorInput } from './trim-floor.js';
 export type { Acknowledgement, RegistryRead } from './device-registry.js';
+export { CrashStorage, ProcessCrashedError } from './crash-storage.js';
+export type { CrashMode, CrashStorageOptions } from './crash-storage.js';
 export { FaultyStorage, QuotaExceededError, UnreadableError } from './faulty-storage.js';
 export type { FaultProfile, FaultyStorageOptions } from './faulty-storage.js';
 export { MemoryStorage } from './memory-storage.js';
