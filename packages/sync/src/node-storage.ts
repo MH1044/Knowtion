@@ -21,10 +21,20 @@ import {
   stat,
   writeFile,
 } from 'node:fs/promises';
+import type { FileHandle } from 'node:fs/promises';
 import { dirname, join, posix, resolve, sep } from 'node:path';
 
 import { isSubPath } from './paths.js';
 import type { StorageObject, StoragePath, StoragePort } from './storage-port.js';
+
+/**
+ * How many colliding temporary names to step past before giving up.
+ *
+ * A collision needs another writer with the same pid and counter for the same path,
+ * so one retry is almost always enough; the bound only stops a pathological directory
+ * from turning into an infinite loop.
+ */
+const TEMPORARY_NAME_ATTEMPTS = 8;
 
 export interface SettlePolicy {
   /** How long a file must look unchanged before it is trusted. */
@@ -107,14 +117,8 @@ export class NodeStorage implements StoragePort {
     await mkdir(dirname(full), { recursive: true });
     if (!this.#canHardLink) return this.#writeDirectly(full, bytes);
 
-    // Unique per call, not a fixed `.tmp`: a second process sharing this device identity
-    // would otherwise clobber our in-flight temporary. (`putOwn` still has that hazard.)
-    const temporary = `${full}.${String(process.pid)}-${String(this.#tempCounter++)}.tmp`;
+    const { handle, temporary } = await this.#openTemporary(full);
     try {
-      const handle = await open(
-        temporary,
-        constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL,
-      );
       try {
         await handle.writeFile(bytes);
         // The whole point. Without it the bytes may still be in the page cache when the
@@ -147,6 +151,33 @@ export class NodeStorage implements StoragePort {
       // client is told to ignore them — but leaving them to accumulate is untidy.
       await rm(temporary, { force: true }).catch(() => undefined);
     }
+  }
+
+  /**
+   * Create a temporary beside the target that no one else has open.
+   *
+   * The name is unique per call rather than a fixed `.tmp`, so a second process sharing
+   * this device identity cannot clobber an in-flight write (`putOwn` still has that
+   * hazard). It is not unique across adapter instances, though: main.ts constructs
+   * several NodeStorage objects in one process, each with its own counter, so two of
+   * them can pick `<path>.<pid>-0.tmp` for the same path — and a crash leaves the loser's
+   * file on disk. `O_EXCL` turns that into EEXIST, which used to escape as a failed
+   * publish. A name that is taken is simply not ours; try the next one and leave it be.
+   */
+  async #openTemporary(full: string): Promise<{ handle: FileHandle; temporary: string }> {
+    for (let attempt = 0; attempt < TEMPORARY_NAME_ATTEMPTS; attempt++) {
+      const temporary = `${full}.${String(process.pid)}-${String(this.#tempCounter++)}.tmp`;
+      try {
+        const handle = await open(
+          temporary,
+          constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL,
+        );
+        return { handle, temporary };
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
+      }
+    }
+    throw new Error(`could not find a free temporary name beside ${full}`);
   }
 
   /**

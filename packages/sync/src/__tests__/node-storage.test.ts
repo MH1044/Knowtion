@@ -11,7 +11,7 @@
  * Runs on whatever `os.tmpdir()` is: NTFS on Windows, ext4 or APFS elsewhere. All of them
  * hard-link. Filesystems that cannot are covered by node-storage.fallback.test.ts.
  */
-import { mkdtemp, readdir, rm, stat, truncate, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readdir, rm, stat, truncate, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { LoroDoc } from 'loro-crdt';
@@ -115,6 +115,23 @@ describe('NodeStorage publishes a pack atomically', () => {
     const stored = text(await s.get(PACK));
     expect([text(a), text(b)]).toContain(stored);
     expect(await files(dir)).toEqual([PACK]);
+  });
+
+  it('a temporary left behind by another writer does not block publishing', async () => {
+    // The temporary name is `<path>.<pid>-<counter>.tmp`, and the counter is per
+    // adapter instance. main.ts constructs several NodeStorage instances in one process,
+    // so two of them can pick the same name for the same path; and a crash leaves the
+    // loser's temporary on disk. Neither may turn into a failed publish.
+    const dir = await root('leftover');
+    const s = new NodeStorage(dir);
+    const leftover = `${PACK}.${String(process.pid)}-0.tmp`;
+    await mkdir(join(dir, 'd', 'aa'), { recursive: true });
+    await writeFile(join(dir, ...leftover.split('/')), 'abandoned mid-write');
+
+    expect(await s.putIfAbsent(PACK, bytes('published anyway'))).toBe(true);
+    expect(text(await s.get(PACK))).toBe('published anyway');
+    // The stranger's temporary is not ours to delete; it is simply not in the way.
+    expect(await files(dir)).toEqual([PACK, leftover]);
   });
 
   it('never lists an orphaned temporary, and later puts are unaffected by it', async () => {
