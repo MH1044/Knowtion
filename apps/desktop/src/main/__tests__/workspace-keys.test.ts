@@ -144,7 +144,11 @@ describe('granting an epoch through wrap files', () => {
     expect(unwrapKeyFromRecoveryPhrase(must(recovery, 'recovery'), phrase, WORKSPACE).key).toEqual(
       key.key,
     );
-  });
+    // Deliberately at the shipped Argon2id cost rather than a reduced one: this is the
+    // only place the real ~800ms derivation runs end to end. Two of those plus two device
+    // wraps overrun vitest's 5s default on a loaded machine, so the timeout is explicit
+    // rather than the test being made cheaper and quietly stopping testing the cost.
+  }, 30_000);
 
   it('is idempotent, so it can run on every sync without accumulating', async () => {
     // Two devices may approve the same joiner at once. Losing that race is harmless
