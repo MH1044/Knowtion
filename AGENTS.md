@@ -25,6 +25,13 @@ agents exactly as they do to humans.
   tests). It's a safety net, not a merge gate: if it goes red after a push, the very
   next commit should fix or revert it, not leave main broken.
 
+## Release gates
+
+`npm run gates` runs the v0.2 milestone gates — the numbers the release is defined by,
+too slow to sit in `npm run verify`. Run it before cutting a release, and when changing
+anything on the merge or storage path. A scaled-down version of each gate runs in the
+normal suite so a gross regression still surfaces on every push.
+
 ## Format and ADR changes
 
 Anything touching the on-disk or on-cloud format still needs an ADR, a FORMAT.md
