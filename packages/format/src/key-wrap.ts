@@ -368,10 +368,7 @@ function readParams(fields: Record<string, unknown>): KdfParams {
 
 function expectBytes(value: unknown, length: number, field: string): Uint8Array {
   if (!(value instanceof Uint8Array) || value.length !== length) {
-    throw new KeyWrapError(
-      'MALFORMED',
-      `key wrap field ${field} must be ${String(length)} bytes`,
-    );
+    throw new KeyWrapError('MALFORMED', `key wrap field ${field} must be ${String(length)} bytes`);
   }
   return value;
 }
