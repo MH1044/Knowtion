@@ -221,6 +221,25 @@ describe('importing a whole export', () => {
     expect(importNotionEntries(entries).report.brokenLinks).toEqual([]);
   });
 
+  it('resolves a link to a block within a page in the archive', () => {
+    // Notion links to a block as `Page <hex>.html#<block hex>`. The fragment used to
+    // hide the extension from the id pattern, so a valid link to a page that was right
+    // there in the export was reported as pointing outside it.
+    const entries = [
+      entry(
+        `Export-abc/Home ${ID.home}.html`,
+        page(
+          'Home',
+          ID.home,
+          `<p><a href="Child%20${ID.child}.html#block-1a2b3c4d5e6f70718293a4b5c6d7e8f9">go</a>` +
+            `<a href="Child%20${ID.child}.html?v=1">go</a></p>`,
+        ),
+      ),
+      entry(`Export-abc/Child ${ID.child}.html`, page('Child', ID.child, '<p>x</p>')),
+    ];
+    expect(importNotionEntries(entries).report.brokenLinks).toEqual([]);
+  });
+
   it('reports a link whose target is not in the archive', () => {
     // Notion truncates deeply nested paths on Windows, and those links are genuinely
     // unrecoverable. The user needs a list, not a month of finding them one at a time.

@@ -124,13 +124,27 @@ export function importNotionEntries(entries: ZipEntry[]): NotionImport {
  * Windows, and the resulting links genuinely cannot be recovered — the user needs a
  * list, not the experience of finding them one at a time over the following month.
  */
+/**
+ * The file an internal link points at.
+ *
+ * A link to a block within a page carries the block as a fragment — `Page <hex>.html#
+ * <block hex>` — and a query string is possible too. Neither is part of the filename,
+ * and left in place they hide the extension from ID_SUFFIX, so a perfectly good link
+ * to a page in the archive was reported as pointing outside it. Stripped before
+ * decoding: a percent-encoded `#` in a filename is a character, not a fragment.
+ */
+function linkedFileName(href: string): string {
+  const path = href.replace(/[#?].*$/, '');
+  return decodeHref(path).split('/').pop() ?? '';
+}
+
 function resolveLinks(pages: ImportedPage[], report: ImportReport): void {
   const byId = new Set(pages.map((p) => p.notionId));
   const seen = new Set<string>();
 
   for (const page of pages) {
     for (const href of page.links) {
-      const target = splitNotionName(decodeHref(href).split('/').pop() ?? '');
+      const target = splitNotionName(linkedFileName(href));
       if (target.id !== undefined && byId.has(target.id)) continue;
 
       const key = `${page.notionId}:${href}`;
