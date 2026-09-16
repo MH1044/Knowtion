@@ -9,7 +9,7 @@
  */
 
 import { mkdir } from 'node:fs/promises';
-import { join, resolve, sep } from 'node:path';
+import { join, resolve } from 'node:path';
 
 import { LoroDoc } from 'loro-crdt';
 import {
@@ -39,6 +39,7 @@ import {
   checkDataLoss,
   computeTrimFloor,
   detectEvicted,
+  isSubPath,
   listDocumentPacks,
   type PackCrypto,
 } from '@knowtion/sync';
@@ -101,12 +102,12 @@ export interface WorkspaceHostOptions {
 function assertSeparateRoots(dataDir: string, logDir: string): void {
   const data = resolve(dataDir);
   const log = resolve(logDir);
-  if (log === data || log.startsWith(data + sep)) {
+  if (isSubPath(data, log)) {
     // dataDir/log is the default and is fine: only the database file itself must stay
     // out of the synced tree, and it lives directly in dataDir.
     return;
   }
-  if (data === log || data.startsWith(log + sep)) {
+  if (isSubPath(log, data)) {
     throw new Error(
       `refusing to run: the application data directory (${data}) is inside the sync ` +
         `folder (${log}). The search index would be copied by your cloud client while ` +

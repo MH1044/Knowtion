@@ -10,7 +10,9 @@
  */
 
 import { copyFile, mkdir, readdir, stat } from 'node:fs/promises';
-import { dirname, join, relative, resolve, sep } from 'node:path';
+import { dirname, join, relative, resolve } from 'node:path';
+
+import { isSubPath } from '@knowtion/sync';
 
 export type FolderCheck = { ok: true; existingWorkspace: boolean } | { ok: false; reason: string };
 
@@ -21,10 +23,9 @@ export type FolderCheck = { ok: true; existingWorkspace: boolean } | { ok: false
  * @param folder the directory the user picked
  */
 export async function checkSyncFolder(dataDir: string, folder: string): Promise<FolderCheck> {
-  const data = resolve(dataDir);
   const target = resolve(folder);
 
-  if (data === target || data.startsWith(target + sep)) {
+  if (isSubPath(target, dataDir)) {
     return {
       ok: false,
       reason:

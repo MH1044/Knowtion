@@ -23,6 +23,7 @@ import {
 } from 'node:fs/promises';
 import { dirname, join, posix, resolve, sep } from 'node:path';
 
+import { isSubPath } from './paths.js';
 import type { StorageObject, StoragePath, StoragePort } from './storage-port.js';
 
 export interface SettlePolicy {
@@ -77,7 +78,7 @@ export class NodeStorage implements StoragePort {
   /** Resolve a storage path, refusing anything that escapes the root. */
   #resolve(path: StoragePath): string {
     const full = resolve(this.#root, path.split('/').join(sep));
-    if (full !== this.#root && !full.startsWith(this.#root + sep)) {
+    if (!isSubPath(this.#root, full)) {
       throw new Error(`path escapes the storage root: ${path}`);
     }
     return full;

@@ -28,6 +28,7 @@ export type { FaultProfile, FaultyStorageOptions } from './faulty-storage.js';
 export { MemoryStorage } from './memory-storage.js';
 export type { MemoryStorageOptions } from './memory-storage.js';
 export { NodeStorage } from './node-storage.js';
+export { isSubPath } from './paths.js';
 export {
   PackStore,
   TREE_DOCUMENT_ID,
