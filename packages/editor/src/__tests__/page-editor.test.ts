@@ -71,6 +71,14 @@ describe('schema', () => {
     expect(at(doc.content.content, 0).attrs.level).toBe(2);
   });
 
+  it('keeps the start number of a pasted ordered list, including zero', () => {
+    // Number("0") is falsy, so a naive `|| 1` fallback renumbered lists that start at 0.
+    expect(at(parseHtml('<ol start="0"><li>a</li></ol>').content.content, 0).attrs.order).toBe(0);
+    expect(at(parseHtml('<ol start="7"><li>a</li></ol>').content.content, 0).attrs.order).toBe(7);
+    expect(at(parseHtml('<ol><li>a</li></ol>').content.content, 0).attrs.order).toBe(1);
+    expect(at(parseHtml('<ol start="x"><li>a</li></ol>').content.content, 0).attrs.order).toBe(1);
+  });
+
   it('folds heading levels deeper than three rather than dropping the block', () => {
     // Word and Docs emit h4 to h6. Dropping them would lose the user's structure.
     const doc = parseHtml('<h5>Deep</h5>');

@@ -65,7 +65,12 @@ const orderedList: NodeSpec = {
   parseDOM: [
     {
       tag: 'ol',
-      getAttrs: (node) => ({ order: Number(node.getAttribute('start')) || 1 }),
+      getAttrs: (node) => {
+        // `start="0"` is valid HTML and parses to 0, which is falsy — so a `|| 1`
+        // fallback would silently renumber the list. Check for absence explicitly.
+        const start = Number.parseInt(node.getAttribute('start') ?? '', 10);
+        return { order: Number.isNaN(start) ? 1 : start };
+      },
     },
   ],
   toDOM: (node): DOMOutputSpec =>
