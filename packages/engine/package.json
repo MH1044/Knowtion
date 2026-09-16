@@ -11,6 +11,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./query-cases": {
+      "types": "./dist/query-cases.d.ts",
+      "default": "./dist/query-cases.js"
     }
   },
   "scripts": {

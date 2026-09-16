@@ -88,3 +88,12 @@ export type {
   TextOp,
   ViewSpec,
 } from './query.js';
+
+export {
+  compareRows,
+  evaluateQuery,
+  groupKeyOf,
+  matchesFilter,
+  orderGroupKeys,
+} from './evaluate.js';
+export type { EvaluatedQuery, QueryGroup, QueryRow } from './evaluate.js';
