@@ -133,6 +133,24 @@ export interface SyncStatus {
   halted?: string;
 }
 
+/**
+ * Something the renderer should know about.
+ *
+ * Pushed rather than polled: the host is the one place that knows the moment a local
+ * intent or a merged pack changed anything, and a UI over many rows cannot afford to ask
+ * on a timer whether it did.
+ */
+export interface WorkspaceChange {
+  origin: 'local' | 'remote';
+  /**
+   * Pages whose data changed. Empty on a remote change, where the merge does not say
+   * which pages it touched: a listener must treat empty as "possibly any".
+   */
+  pages: NodeId[];
+  /** Pages whose body document changed. Always exact. */
+  bodies: NodeId[];
+}
+
 /** One open page body: its document and the store that persists it. */
 interface OpenBody {
   doc: LoroDoc;
@@ -181,6 +199,7 @@ export class WorkspaceHost {
   /** Set when another device has forgotten us and our packs are gone from the folder. */
   #evicted = false;
   readonly #options: WorkspaceHostOptions;
+  readonly #listeners = new Set<(change: WorkspaceChange) => void>();
   #pendingFlush: NodeJS.Timeout | undefined;
   /**
    * Serialises writes.
@@ -289,6 +308,27 @@ export class WorkspaceHost {
     this.#index.projectPages(this.#workspace.allPages());
   }
 
+  // ---- change notification ------------------------------------------------
+
+  /** Be told when the workspace changes, from here or from another device. */
+  onChanged(listener: (change: WorkspaceChange) => void): () => void {
+    this.#listeners.add(listener);
+    return () => {
+      this.#listeners.delete(listener);
+    };
+  }
+
+  #changed(change: WorkspaceChange): void {
+    for (const listener of this.#listeners) {
+      try {
+        listener(change);
+      } catch (error) {
+        // A listener is a renderer's window. Its failure must never fail a write.
+        console.error('[knowtion] change listener failed:', error);
+      }
+    }
+  }
+
   search(query: string, limit = 30): SearchHit[] {
     return this.#index.search(query, { limit });
   }
@@ -317,6 +357,7 @@ export class WorkspaceHost {
     const page = this.#workspace.createPage(input);
     this.#reindexPages();
     this.#scheduleFlush();
+    this.#changed({ origin: 'local', pages: [page.id], bodies: [] });
     return page;
   }
 
@@ -324,6 +365,7 @@ export class WorkspaceHost {
     const page = this.#workspace.renamePage(id, title);
     this.#reindexPages();
     this.#scheduleFlush();
+    this.#changed({ origin: 'local', pages: [page.id], bodies: [] });
     return page;
   }
 
@@ -331,6 +373,7 @@ export class WorkspaceHost {
     const page = this.#workspace.movePage(id, parentId);
     this.#reindexPages();
     this.#scheduleFlush();
+    this.#changed({ origin: 'local', pages: [page.id], bodies: [] });
     return page;
   }
 
@@ -338,6 +381,7 @@ export class WorkspaceHost {
     const page = this.#workspace.archivePage(id);
     this.#reindexPages();
     this.#scheduleFlush();
+    this.#changed({ origin: 'local', pages: [page.id], bodies: [] });
     return page;
   }
 
@@ -345,6 +389,7 @@ export class WorkspaceHost {
     const page = this.#workspace.restorePage(id);
     this.#reindexPages();
     this.#scheduleFlush();
+    this.#changed({ origin: 'local', pages: [page.id], bodies: [] });
     return page;
   }
 
@@ -352,6 +397,7 @@ export class WorkspaceHost {
     this.#workspace.deletePage(id);
     this.#reindexPages();
     this.#scheduleFlush();
+    this.#changed({ origin: 'local', pages: [id], bodies: [] });
   }
 
   /** Flatten a page's document and hand the text to the index. */
@@ -485,6 +531,7 @@ export class WorkspaceHost {
     body.dirty = true;
     this.#indexBody(id, body.doc);
     this.#scheduleFlush();
+    this.#changed({ origin: 'local', pages: [], bodies: [id] });
   }
 
   // ---- import ------------------------------------------------------------
@@ -541,6 +588,10 @@ export class WorkspaceHost {
     }
 
     await this.flush();
+    // One event for the whole import, not one per page: a ten-thousand-page archive
+    // must not send the renderer ten thousand refreshes.
+    const created = [...nodeByPath.values()];
+    this.#changed({ origin: 'local', pages: created, bodies: created });
     return report;
   }
 
@@ -612,6 +663,11 @@ export class WorkspaceHost {
     if (tree.applied > 0) this.#reindexPages();
 
     const bodiesUpdated = await this.#syncBodies();
+    if (tree.applied > 0 || tree.adopted > 0 || bodiesUpdated.length > 0) {
+      // Never on a quiet cycle: a listener refreshes on every event, and a folder that
+      // is polled every fifteen seconds must not produce a refresh every fifteen seconds.
+      this.#changed({ origin: 'remote', pages: [], bodies: bodiesUpdated });
+    }
     await this.#writeAck();
     await this.#compact();
 
@@ -622,7 +678,7 @@ export class WorkspaceHost {
 
     return {
       treePacksApplied: tree.applied,
-      bodiesUpdated,
+      bodiesUpdated: bodiesUpdated.length,
       rejected: tree.rejected.length,
       ...(this.#evicted ? { evicted: true } : {}),
     };
@@ -639,13 +695,13 @@ export class WorkspaceHost {
    * actually changed rather than by the size of the workspace. Pairing a new device is
    * the exception, and is a one-time cost by definition.
    */
-  async #syncBodies(): Promise<number> {
+  async #syncBodies(): Promise<NodeId[]> {
     const byDocument = await listDocumentPacks(this.#storage);
     const pageByDocument = new Map(
       this.#workspace.allPages().map((page) => [page.uuid.replace(/-/g, ''), page]),
     );
 
-    let updated = 0;
+    const updated: NodeId[] = [];
     for (const [documentHex, paths] of byDocument) {
       if (documentHex === TREE_DOCUMENT_HEX) continue;
       if (paths.every((path) => this.#indexedPacks.has(path))) continue;
@@ -680,7 +736,7 @@ export class WorkspaceHost {
       }
 
       for (const path of paths) this.#indexedPacks.add(path);
-      updated += 1;
+      updated.push(page.id);
     }
     return updated;
   }

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 
 import { api, type ImportReport, type KeyStatus, type Page, type PageNode } from './api.js';
+import { useWorkspaceChanges } from './changes.js';
 import { RecoverySetup } from './RecoverySetup.js';
 import { PageBody } from './PageBody.js';
 import { PageTree } from './PageTree.js';
@@ -55,6 +56,12 @@ export function App(): React.JSX.Element {
     // then would only produce an error the user can do nothing about.
     if (keyStatus?.needsSetup === false) void refresh();
   }, [keyStatus, refresh]);
+
+  // Another device's work, merged in the background, used to sit unseen until the next
+  // click. The main process now says when something changed; the same gate applies.
+  useWorkspaceChanges(() => {
+    if (keyStatus?.needsSetup === false) void refresh();
+  });
 
   /** Run an intent, then reload. Errors surface rather than failing silently. */
   const run = useCallback(
