@@ -49,7 +49,7 @@ export interface PageNode extends Page {
 
 /** Thrown when an operation would produce an impossible tree. */
 export class WorkspaceError extends Error {
-  readonly code: 'NOT_FOUND' | 'WOULD_CYCLE' | 'ARCHIVED';
+  readonly code: 'NOT_FOUND' | 'WOULD_CYCLE' | 'ARCHIVED' | 'INVALID_VALUE';
 
   constructor(code: WorkspaceError['code'], message: string) {
     super(message);

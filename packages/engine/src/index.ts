@@ -26,3 +26,33 @@ export {
   orderKeyBetween,
 } from './order-key.js';
 export type { OrderKey } from './order-key.js';
+
+export {
+  OPTION_COLOURS,
+  PROPERTY_TYPES,
+  addDays,
+  canonicalRowJson,
+  compareCodepoints,
+  decodePropertyValue,
+  encodePropertyValue,
+  foldText,
+  isCalendarDate,
+  isEmptyValue,
+  isOptionColour,
+  isPropertyType,
+  isZoneName,
+  localDateOf,
+  toWellFormedText,
+} from './properties.js';
+export type {
+  CalendarDate,
+  DateTimeValue,
+  OptionColour,
+  OptionId,
+  PropertyDef,
+  PropertyId,
+  PropertyType,
+  PropertyValue,
+  SelectOption,
+  ViewId,
+} from './properties.js';
