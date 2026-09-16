@@ -377,6 +377,10 @@ encoded into the CRDT and cannot be changed without a migration we cannot run.
 simultaneously false in the editor, which only ever loads one page's block subtree while
 databases render from the derived read model. One data model, two access patterns.
 
+A database is a page whose direct children are its rows. Its schema lives in that page's
+own node data under the key `db`; a row's values live in the row's node data under
+`props`, and its position in each view under `order`. See 10.1 and ADR-0014.
+
 **Formulas store source text**, plus a pinned grammar_version. Never the parsed tree. A
 stored tree makes every parser fix a migration, and permanently locks the parser choice.
 Old grammars stay in the binary forever so old formulas keep their original meaning.
@@ -395,9 +399,23 @@ cost is that cross-workspace deduplication becomes impossible, permanently.
 fractional index keys with per-client random jitter, keyed on the pair of view id and
 row id — never on the row alone, or dragging in one view silently reorders another.
 
+The key for a row in a view is stored on the row, at `order[viewId]`. Keys use the
+alphabet `0-9A-Za-z`, whose ASCII order is its digit order, so a byte-wise comparison in
+any language or in SQLite's BINARY collation agrees with the intended order. A key MUST
+be ASCII, MUST NOT end in `0`, and MUST be compared byte-wise, never with a locale-aware
+comparison. Within a view, rows sort by the view's sorts, then keyed rows before unkeyed,
+then by key, then by `createdAt`, then by node id. Jitter MUST come from the injected
+random source. Rows created without a key sort after every keyed row in creation order,
+which is why creating or importing rows writes no order operations.
+
 **Dates.** Two distinct property types. A Date is a zoneless calendar date. A DateTime
 is an instant plus an IANA timezone. Collapsing them renders every date a day early for
 users west of UTC.
+
+A Date is stored as the string `YYYY-MM-DD` and validated by calendar arithmetic alone. A
+DateTime is stored as `{ ms, zone }`: milliseconds since the Unix epoch and an IANA zone
+name. A writer MUST check the zone's syntax only; whether a zone is _known_ depends on the
+writer's ICU data, and a value valid on one device MUST NOT be invalid on another.
 
 **Rich text** is stored as typed runs and marks, never as an HTML string. Mark keys are
 namespaced, for example comment:alice rather than comment, so that adding multi-user
@@ -407,6 +425,69 @@ comments later is not a migration across every document in every user's cloud fo
 view type — live in the CRDT. Ephemera — scroll position, collapsed sections, sidebar
 width, column pixel widths — live in local state only. Column widths dragged at 60fps
 into an append-only log is a common way a sync log becomes permanently bloated.
+
+A view's CRDT fields are `name`, `type`, `filter`, `sorts`, `groupBy`, `columns`,
+`hidden` and `createdAt`, each its own key so concurrent edits to different aspects of
+one view both survive. `filter` is a single value `{ v, expr }` carrying the query
+grammar's version; a reader that meets a version above its own MUST ignore the filter
+and say so rather than guess, and MUST NOT rewrite it. A view's effective column order is
+its stored `columns` followed by every live property missing from it; `hidden` is the
+only way a property leaves a view, so a concurrently defined property can never be
+hidden by a lost array write.
+
+### 10.1 Database schema and values
+
+Applies to the page hierarchy document. Every map named here that more than one device
+may create lazily MUST be created as a mergeable child (Loro's `ensureMergeable*`), never
+with `setContainer`: two devices creating a plain child under the same key while apart
+produce two containers, and the merge keeps one and silently discards the other's
+contents on both sides. A writer MUST NOT delete the `db`, `props` or `order` keys
+themselves, only entries inside them — deleting the key hides a mergeable child, and the
+next device to ensure it brings the old state back.
+
+On the database page's node data:
+
+    db.createdAt   number
+    db.props       propertyId → { name, type, createdAt }
+    db.options     "propertyId:optionId" → { name, color? }
+    db.views       viewId → { name, type, filter?, sorts, groupBy?, columns, hidden, createdAt }
+
+Property types are `text`, `number`, `checkbox`, `select`, `multi-select`, `date`,
+`datetime` and `url`. Options belong to a `select` or `multi-select` property and are
+keyed by the pair so two devices renaming different options both survive.
+
+On a row's node data:
+
+    props          propertyId → value
+    order          viewId → order key
+
+Values are stored untagged and decoded through the parent database's schema:
+
+| type         | stored value                           |
+| ------------ | -------------------------------------- |
+| text, url    | string; an empty string clears the key |
+| number       | finite number                          |
+| checkbox     | boolean                                |
+| select       | option id                              |
+| multi-select | array of option ids                    |
+| date         | `YYYY-MM-DD`                           |
+| datetime     | `{ ms, zone }`                         |
+
+Readers MUST ignore unknown keys, unknown property and view ids, option ids no longer
+defined, and values whose shape does not match the property's current type, and MUST NOT
+rewrite or delete any of them. This is what makes changing a property's type reversible: a
+value of the old shape is invisible until the type changes back, and is never lost. A
+`multi-select` value is a whole array replaced on write; a per-option map is the
+upgrade path, distinguishable on read, and is a reading-rule addition rather than a
+migration.
+
+**Identifiers inside the CRDT.** Property, option and view ids are UUIDv7 in canonical
+lowercase hyphenated text. Section 2's rule that identifiers are stored as their sixteen
+raw bytes governs the envelope and object names; inside CRDT maps they are text.
+
+None of this changes the envelope. Format version remains 0 and the v0 fixtures stay
+valid. The data-model encodings above are pinned by
+`packages/engine/fixtures/v0/database.loro`.
 
 **Sidecar records** use CBOR. Decoders MUST reject **proto**, constructor and prototype
 as keys, and MUST preserve unknown fields byte-for-byte rather than dropping them on
