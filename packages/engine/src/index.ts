@@ -56,3 +56,35 @@ export type {
   SelectOption,
   ViewId,
 } from './properties.js';
+
+export {
+  BUILTIN_FIELDS,
+  GROUPABLE_TYPES,
+  MAX_FILTER_DEPTH,
+  MAX_FILTER_LEAVES,
+  OPS_BY_TYPE,
+  QUERY_SPEC_VERSION,
+  SORTABLE_TYPES,
+  filterLeaves,
+  parseFilter,
+  parseStoredFilter,
+  resolveDates,
+  sanitiseSpec,
+  stripProperty,
+  validateSpec,
+} from './query.js';
+export type {
+  BuiltinField,
+  DateOp,
+  DateOperand,
+  Filter,
+  FilterLeaf,
+  FilterOp,
+  NumberOp,
+  QueryContext,
+  QueryProblem,
+  Sort,
+  StoredFilter,
+  TextOp,
+  ViewSpec,
+} from './query.js';
