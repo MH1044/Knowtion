@@ -1,0 +1,579 @@
+{
+  "ctx": {
+    "nowMs": 1758000000000,
+    "timeZone": "UTC"
+  },
+  "pages": [
+    {
+      "id": "0@1",
+      "uuid": "018bcfe5-6801-734b-98a0-fd4e06b96a51",
+      "title": "Notes",
+      "createdAt": 1700000000000,
+      "updatedAt": 1700000000000
+    },
+    {
+      "id": "144@1",
+      "parentId": "10@1",
+      "uuid": "018bcfe5-6836-708d-be41-2119ff9e851e",
+      "title": "Abandoned idea",
+      "createdAt": 1700000000053,
+      "updatedAt": 1700000000053,
+      "archivedAt": 1700000000055,
+      "properties": {},
+      "orderKeys": {}
+    },
+    {
+      "id": "10@1",
+      "uuid": "018bcfe5-6805-7341-aeb8-ae978d6b2adf",
+      "title": "Projects",
+      "createdAt": 1700000000004,
+      "updatedAt": 1700000000049,
+      "database": {
+        "createdAt": 1700000000006,
+        "properties": [
+          {
+            "id": "018bcfe5-6809-73fe-9128-305a7a7ab637",
+            "name": "Summary",
+            "type": "text",
+            "createdAt": 1700000000010,
+            "options": []
+          },
+          {
+            "id": "018bcfe5-680c-7023-bce6-a512f135eb07",
+            "name": "Estimate",
+            "type": "number",
+            "createdAt": 1700000000013,
+            "options": []
+          },
+          {
+            "id": "018bcfe5-680f-73ee-a060-3d6e482d2e23",
+            "name": "Shipped",
+            "type": "checkbox",
+            "createdAt": 1700000000016,
+            "options": []
+          },
+          {
+            "id": "018bcfe5-6812-7254-a65c-00e2b46fd521",
+            "name": "Status",
+            "type": "select",
+            "createdAt": 1700000000019,
+            "options": [
+              {
+                "id": "018bcfe5-6814-7328-a6b6-019c4dee380d",
+                "name": "Todo"
+              },
+              {
+                "id": "018bcfe5-6815-7089-85a6-61ac75834ef9",
+                "name": "Doing",
+                "color": "blue"
+              },
+              {
+                "id": "018bcfe5-6816-73ee-b90f-de301d388c52",
+                "name": "Done",
+                "color": "green"
+              }
+            ]
+          },
+          {
+            "id": "018bcfe5-6818-70b0-894e-e52f34f2cd61",
+            "name": "Tags",
+            "type": "multi-select",
+            "createdAt": 1700000000025,
+            "options": [
+              {
+                "id": "018bcfe5-681a-7129-8a42-af7dbac07867",
+                "name": "infra"
+              },
+              {
+                "id": "018bcfe5-681b-7071-8e14-3198f4785fbc",
+                "name": "ui"
+              }
+            ]
+          },
+          {
+            "id": "018bcfe5-681d-70df-8c4a-4ec77c64325f",
+            "name": "Due",
+            "type": "date",
+            "createdAt": 1700000000030,
+            "options": []
+          },
+          {
+            "id": "018bcfe5-6820-71d5-8438-92bf2574f3a3",
+            "name": "Reviewed",
+            "type": "datetime",
+            "createdAt": 1700000000033,
+            "options": []
+          },
+          {
+            "id": "018bcfe5-6823-72d8-8e0f-1557071effd2",
+            "name": "Link",
+            "type": "url",
+            "createdAt": 1700000000036,
+            "options": []
+          }
+        ],
+        "views": [
+          {
+            "id": "018bcfe5-6807-73d9-bd2a-d88e26012a42",
+            "name": "Open work",
+            "type": "table",
+            "filter": {
+              "v": 1,
+              "expr": {
+                "kind": "and",
+                "clauses": [
+                  {
+                    "kind": "leaf",
+                    "property": "018bcfe5-6812-7254-a65c-00e2b46fd521",
+                    "op": "optionIsNot",
+                    "value": "018bcfe5-6816-73ee-b90f-de301d388c52"
+                  },
+                  {
+                    "kind": "or",
+                    "clauses": [
+                      {
+                        "kind": "leaf",
+                        "property": "018bcfe5-681d-70df-8c4a-4ec77c64325f",
+                        "op": "isEmpty"
+                      },
+                      {
+                        "kind": "leaf",
+                        "property": "018bcfe5-681d-70df-8c4a-4ec77c64325f",
+                        "op": "onOrAfter",
+                        "value": {
+                          "kind": "relative",
+                          "days": -30
+                        }
+                      }
+                    ]
+                  }
+                ]
+              }
+            },
+            "sorts": [
+              {
+                "field": "018bcfe5-680c-7023-bce6-a512f135eb07",
+                "direction": "desc"
+              },
+              {
+                "field": "title",
+                "direction": "asc"
+              }
+            ],
+            "columns": [
+              "018bcfe5-6809-73fe-9128-305a7a7ab637",
+              "018bcfe5-680c-7023-bce6-a512f135eb07",
+              "018bcfe5-680f-73ee-a060-3d6e482d2e23",
+              "018bcfe5-6812-7254-a65c-00e2b46fd521",
+              "018bcfe5-6818-70b0-894e-e52f34f2cd61",
+              "018bcfe5-681d-70df-8c4a-4ec77c64325f",
+              "018bcfe5-6820-71d5-8438-92bf2574f3a3",
+              "018bcfe5-6823-72d8-8e0f-1557071effd2"
+            ],
+            "hidden": [
+              "018bcfe5-6823-72d8-8e0f-1557071effd2"
+            ],
+            "createdAt": 1700000000006
+          },
+          {
+            "id": "018bcfe5-682f-7084-933a-4fb1f1396d18",
+            "name": "By status",
+            "type": "board",
+            "sorts": [],
+            "groupBy": "018bcfe5-6812-7254-a65c-00e2b46fd521",
+            "columns": [
+              "018bcfe5-6809-73fe-9128-305a7a7ab637",
+              "018bcfe5-680c-7023-bce6-a512f135eb07",
+              "018bcfe5-680f-73ee-a060-3d6e482d2e23",
+              "018bcfe5-6812-7254-a65c-00e2b46fd521",
+              "018bcfe5-6818-70b0-894e-e52f34f2cd61",
+              "018bcfe5-681d-70df-8c4a-4ec77c64325f",
+              "018bcfe5-6820-71d5-8438-92bf2574f3a3",
+              "018bcfe5-6823-72d8-8e0f-1557071effd2"
+            ],
+            "hidden": [],
+            "createdAt": 1700000000048
+          }
+        ]
+      }
+    },
+    {
+      "id": "114@1",
+      "parentId": "10@1",
+      "uuid": "018bcfe5-682d-73ea-83b3-d3ecf09a797b",
+      "title": "Importer",
+      "createdAt": 1700000000044,
+      "updatedAt": 1700000000050,
+      "properties": {},
+      "orderKeys": {
+        "018bcfe5-682f-7084-933a-4fb1f1396d18": "a0UG"
+      }
+    },
+    {
+      "id": "80@1",
+      "parentId": "10@1",
+      "uuid": "018bcfe5-6827-705e-b9b1-4145f4d12b99",
+      "title": "Crash gate",
+      "createdAt": 1700000000038,
+      "updatedAt": 1700000000052,
+      "properties": {
+        "018bcfe5-6809-73fe-9128-305a7a7ab637": {
+          "type": "text",
+          "value": "Torn writes and recovery"
+        },
+        "018bcfe5-680c-7023-bce6-a512f135eb07": {
+          "type": "number",
+          "value": 3.5
+        },
+        "018bcfe5-680f-73ee-a060-3d6e482d2e23": {
+          "type": "checkbox",
+          "value": true
+        },
+        "018bcfe5-6812-7254-a65c-00e2b46fd521": {
+          "type": "select",
+          "value": "018bcfe5-6816-73ee-b90f-de301d388c52"
+        },
+        "018bcfe5-6818-70b0-894e-e52f34f2cd61": {
+          "type": "multi-select",
+          "value": [
+            "018bcfe5-681a-7129-8a42-af7dbac07867"
+          ]
+        },
+        "018bcfe5-681d-70df-8c4a-4ec77c64325f": {
+          "type": "date",
+          "value": "2026-09-10"
+        },
+        "018bcfe5-6820-71d5-8438-92bf2574f3a3": {
+          "type": "datetime",
+          "value": {
+            "ms": 1757500000000,
+            "zone": "Europe/London"
+          }
+        },
+        "018bcfe5-6823-72d8-8e0f-1557071effd2": {
+          "type": "url",
+          "value": "https://example.test/gate"
+        }
+      },
+      "orderKeys": {
+        "018bcfe5-682f-7084-933a-4fb1f1396d18": "a3Aw"
+      }
+    },
+    {
+      "id": "5@1",
+      "parentId": "0@1",
+      "uuid": "018bcfe5-6803-7379-a667-bbd3966eb15b",
+      "title": "Scratch",
+      "createdAt": 1700000000002,
+      "updatedAt": 1700000000002
+    },
+    {
+      "id": "94@1",
+      "parentId": "10@1",
+      "uuid": "018bcfe5-6829-73ce-96b8-298b9ee6e6d8",
+      "title": "Table view",
+      "createdAt": 1700000000040,
+      "updatedAt": 1700000000051,
+      "properties": {
+        "018bcfe5-6809-73fe-9128-305a7a7ab637": {
+          "type": "text",
+          "value": "Typed cells, schema editor"
+        },
+        "018bcfe5-680c-7023-bce6-a512f135eb07": {
+          "type": "number",
+          "value": -2
+        },
+        "018bcfe5-6812-7254-a65c-00e2b46fd521": {
+          "type": "select",
+          "value": "018bcfe5-6815-7089-85a6-61ac75834ef9"
+        },
+        "018bcfe5-6818-70b0-894e-e52f34f2cd61": {
+          "type": "multi-select",
+          "value": [
+            "018bcfe5-681a-7129-8a42-af7dbac07867",
+            "018bcfe5-681b-7071-8e14-3198f4785fbc"
+          ]
+        },
+        "018bcfe5-681d-70df-8c4a-4ec77c64325f": {
+          "type": "date",
+          "value": "2026-09-17"
+        }
+      },
+      "orderKeys": {
+        "018bcfe5-682f-7084-933a-4fb1f1396d18": "a1hy"
+      }
+    },
+    {
+      "id": "105@1",
+      "parentId": "10@1",
+      "uuid": "018bcfe5-682b-71b6-b5bd-307ab76eb37d",
+      "title": "Board view",
+      "createdAt": 1700000000042,
+      "updatedAt": 1700000000042,
+      "properties": {
+        "018bcfe5-680f-73ee-a060-3d6e482d2e23": {
+          "type": "checkbox",
+          "value": false
+        },
+        "018bcfe5-6812-7254-a65c-00e2b46fd521": {
+          "type": "select",
+          "value": "018bcfe5-6814-7328-a6b6-019c4dee380d"
+        }
+      },
+      "orderKeys": {
+        "018bcfe5-682f-7084-933a-4fb1f1396d18": "a2LP"
+      }
+    }
+  ],
+  "trash": [
+    "Abandoned idea"
+  ],
+  "tree": [
+    {
+      "id": "0@1",
+      "uuid": "018bcfe5-6801-734b-98a0-fd4e06b96a51",
+      "title": "Notes",
+      "createdAt": 1700000000000,
+      "updatedAt": 1700000000000,
+      "children": [
+        {
+          "id": "5@1",
+          "parentId": "0@1",
+          "uuid": "018bcfe5-6803-7379-a667-bbd3966eb15b",
+          "title": "Scratch",
+          "createdAt": 1700000000002,
+          "updatedAt": 1700000000002,
+          "children": []
+        }
+      ]
+    },
+    {
+      "id": "10@1",
+      "uuid": "018bcfe5-6805-7341-aeb8-ae978d6b2adf",
+      "title": "Projects",
+      "createdAt": 1700000000004,
+      "updatedAt": 1700000000049,
+      "database": {
+        "createdAt": 1700000000006,
+        "properties": [
+          {
+            "id": "018bcfe5-6809-73fe-9128-305a7a7ab637",
+            "name": "Summary",
+            "type": "text",
+            "createdAt": 1700000000010,
+            "options": []
+          },
+          {
+            "id": "018bcfe5-680c-7023-bce6-a512f135eb07",
+            "name": "Estimate",
+            "type": "number",
+            "createdAt": 1700000000013,
+            "options": []
+          },
+          {
+            "id": "018bcfe5-680f-73ee-a060-3d6e482d2e23",
+            "name": "Shipped",
+            "type": "checkbox",
+            "createdAt": 1700000000016,
+            "options": []
+          },
+          {
+            "id": "018bcfe5-6812-7254-a65c-00e2b46fd521",
+            "name": "Status",
+            "type": "select",
+            "createdAt": 1700000000019,
+            "options": [
+              {
+                "id": "018bcfe5-6814-7328-a6b6-019c4dee380d",
+                "name": "Todo"
+              },
+              {
+                "id": "018bcfe5-6815-7089-85a6-61ac75834ef9",
+                "name": "Doing",
+                "color": "blue"
+              },
+              {
+                "id": "018bcfe5-6816-73ee-b90f-de301d388c52",
+                "name": "Done",
+                "color": "green"
+              }
+            ]
+          },
+          {
+            "id": "018bcfe5-6818-70b0-894e-e52f34f2cd61",
+            "name": "Tags",
+            "type": "multi-select",
+            "createdAt": 1700000000025,
+            "options": [
+              {
+                "id": "018bcfe5-681a-7129-8a42-af7dbac07867",
+                "name": "infra"
+              },
+              {
+                "id": "018bcfe5-681b-7071-8e14-3198f4785fbc",
+                "name": "ui"
+              }
+            ]
+          },
+          {
+            "id": "018bcfe5-681d-70df-8c4a-4ec77c64325f",
+            "name": "Due",
+            "type": "date",
+            "createdAt": 1700000000030,
+            "options": []
+          },
+          {
+            "id": "018bcfe5-6820-71d5-8438-92bf2574f3a3",
+            "name": "Reviewed",
+            "type": "datetime",
+            "createdAt": 1700000000033,
+            "options": []
+          },
+          {
+            "id": "018bcfe5-6823-72d8-8e0f-1557071effd2",
+            "name": "Link",
+            "type": "url",
+            "createdAt": 1700000000036,
+            "options": []
+          }
+        ],
+        "views": [
+          {
+            "id": "018bcfe5-6807-73d9-bd2a-d88e26012a42",
+            "name": "Open work",
+            "type": "table",
+            "filter": {
+              "v": 1,
+              "expr": {
+                "kind": "and",
+                "clauses": [
+                  {
+                    "kind": "leaf",
+                    "property": "018bcfe5-6812-7254-a65c-00e2b46fd521",
+                    "op": "optionIsNot",
+                    "value": "018bcfe5-6816-73ee-b90f-de301d388c52"
+                  },
+                  {
+                    "kind": "or",
+                    "clauses": [
+                      {
+                        "kind": "leaf",
+                        "property": "018bcfe5-681d-70df-8c4a-4ec77c64325f",
+                        "op": "isEmpty"
+                      },
+                      {
+                        "kind": "leaf",
+                        "property": "018bcfe5-681d-70df-8c4a-4ec77c64325f",
+                        "op": "onOrAfter",
+                        "value": {
+                          "kind": "relative",
+                          "days": -30
+                        }
+                      }
+                    ]
+                  }
+                ]
+              }
+            },
+            "sorts": [
+              {
+                "field": "018bcfe5-680c-7023-bce6-a512f135eb07",
+                "direction": "desc"
+              },
+              {
+                "field": "title",
+                "direction": "asc"
+              }
+            ],
+            "columns": [
+              "018bcfe5-6809-73fe-9128-305a7a7ab637",
+              "018bcfe5-680c-7023-bce6-a512f135eb07",
+              "018bcfe5-680f-73ee-a060-3d6e482d2e23",
+              "018bcfe5-6812-7254-a65c-00e2b46fd521",
+              "018bcfe5-6818-70b0-894e-e52f34f2cd61",
+              "018bcfe5-681d-70df-8c4a-4ec77c64325f",
+              "018bcfe5-6820-71d5-8438-92bf2574f3a3",
+              "018bcfe5-6823-72d8-8e0f-1557071effd2"
+            ],
+            "hidden": [
+              "018bcfe5-6823-72d8-8e0f-1557071effd2"
+            ],
+            "createdAt": 1700000000006
+          },
+          {
+            "id": "018bcfe5-682f-7084-933a-4fb1f1396d18",
+            "name": "By status",
+            "type": "board",
+            "sorts": [],
+            "groupBy": "018bcfe5-6812-7254-a65c-00e2b46fd521",
+            "columns": [
+              "018bcfe5-6809-73fe-9128-305a7a7ab637",
+              "018bcfe5-680c-7023-bce6-a512f135eb07",
+              "018bcfe5-680f-73ee-a060-3d6e482d2e23",
+              "018bcfe5-6812-7254-a65c-00e2b46fd521",
+              "018bcfe5-6818-70b0-894e-e52f34f2cd61",
+              "018bcfe5-681d-70df-8c4a-4ec77c64325f",
+              "018bcfe5-6820-71d5-8438-92bf2574f3a3",
+              "018bcfe5-6823-72d8-8e0f-1557071effd2"
+            ],
+            "hidden": [],
+            "createdAt": 1700000000048
+          }
+        ]
+      },
+      "children": [],
+      "rowCount": 4
+    }
+  ],
+  "boardOrder": [
+    "Importer",
+    "Table view",
+    "Board view",
+    "Crash gate"
+  ],
+  "queries": {
+    "018bcfe5-6807-73d9-bd2a-d88e26012a42": {
+      "rows": [
+        "Table view",
+        "Board view",
+        "Importer"
+      ],
+      "warnings": []
+    },
+    "018bcfe5-682f-7084-933a-4fb1f1396d18": {
+      "rows": [
+        "Importer",
+        "Table view",
+        "Board view",
+        "Crash gate"
+      ],
+      "groups": [
+        [
+          "018bcfe5-6814-7328-a6b6-019c4dee380d",
+          [
+            "Board view"
+          ]
+        ],
+        [
+          "018bcfe5-6815-7089-85a6-61ac75834ef9",
+          [
+            "Table view"
+          ]
+        ],
+        [
+          "018bcfe5-6816-73ee-b90f-de301d388c52",
+          [
+            "Crash gate"
+          ]
+        ],
+        [
+          null,
+          [
+            "Importer"
+          ]
+        ]
+      ],
+      "warnings": []
+    }
+  }
+}

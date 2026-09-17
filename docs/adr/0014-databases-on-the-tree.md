@@ -1,6 +1,6 @@
 # ADR-0014: Databases live on the tree — schema on the database node, values on the row node
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-09-16
 - **Amends:** FORMAT.md section 10 (frozen data-model decisions)
 

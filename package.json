@@ -26,7 +26,7 @@
     "licences": "node scripts/check-licences.mjs",
     "verify": "npm run typecheck && npm run lint && npm run licences && npm run test",
     "licences:report": "node scripts/write-third-party.mjs",
-    "fixtures": "npm run build && node packages/format/scripts/make-fixtures.mjs",
+    "fixtures": "npm run build && node packages/format/scripts/make-fixtures.mjs && node packages/engine/scripts/make-fixtures.mjs",
     "gates": "npm run build && node scripts/gates.mjs",
     "start": "npm run build && npm run start -w @knowtion/desktop",
     "app": "npm run start -w @knowtion/desktop"
