@@ -5,6 +5,7 @@ import { useWorkspaceChanges } from './changes.js';
 import { DatabaseView } from './database/DatabaseView.js';
 import { RowProperties } from './database/RowProperties.js';
 import { RecoverySetup } from './RecoverySetup.js';
+import { Settings } from './Settings.js';
 import { PageBody } from './PageBody.js';
 import { PageTree } from './PageTree.js';
 import { Search } from './Search.js';
@@ -187,6 +188,7 @@ export function App(): React.JSX.Element {
           >
             {importing ? 'Importing…' : 'Import from Notion'}
           </button>
+          <Settings />
         </footer>
       </aside>
 

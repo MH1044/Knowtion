@@ -4,6 +4,10 @@
  * Retyping never converts a value. The engine hides values of the old shape until the
  * type changes back, so this says so where the choice is made rather than letting a
  * person discover it as a column that went blank.
+ *
+ * Anything passed as children is drawn below the list. That is how the column show-and-
+ * hide checkboxes get here when someone has asked for them in this panel: they belong to
+ * a view rather than to the schema, so this component stays unaware of views.
  */
 import { useState } from 'react';
 
@@ -24,10 +28,12 @@ export function SchemaEditor({
   databaseId,
   schema,
   run,
+  children,
 }: {
   databaseId: string;
   schema: DatabaseSchema;
   run: (action: () => Promise<unknown>) => Promise<void>;
+  children?: React.ReactNode;
 }): React.JSX.Element {
   const [newName, setNewName] = useState('');
   const [newType, setNewType] = useState<PropertyType>('text');
@@ -169,6 +175,7 @@ export function SchemaEditor({
         Changing a property&apos;s type hides its values until the type is changed back. Nothing is
         converted, and nothing is lost.
       </p>
+      {children}
     </section>
   );
 }
