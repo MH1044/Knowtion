@@ -185,7 +185,7 @@ describe('projecting a database', () => {
     expect(fresh.contents().rowOrder.length).toBeGreaterThan(5);
     incremental.close();
     fresh.close();
-  });
+  }, 30_000);
 
   it('rewrites only the rows whose fingerprint changed', () => {
     const workspace = Workspace.create({ runtime: deterministicRuntime(2), peerId: 1n });

@@ -91,7 +91,9 @@ describe(`queries over ${String(ROWS)} rows`, () => {
     const ms = performance.now() - started;
     expect(stats.rowsRewritten).toBe(ROWS + 1);
     console.log(`  full projection ${ms.toFixed(0)}ms`);
-    expect(ms).toBeLessThan(6_000);
+    // Measured at 3.6s alone. A full verify runs this beside every other worker, so the
+    // budget is a regression tripwire, not a target.
+    expect(ms).toBeLessThan(15_000);
   }, 60_000);
 
   it('re-projects after one cell edit by rewriting one row', () => {
