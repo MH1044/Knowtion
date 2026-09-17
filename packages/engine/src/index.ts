@@ -12,6 +12,21 @@ export type { WorkspaceOptions } from './workspace.js';
 export { WorkspaceError } from './types.js';
 export type { NodeId, Page, PageMeta, PageNode } from './types.js';
 
+export {
+  DB_KEY,
+  DB_OPTIONS_KEY,
+  DB_PROPS_KEY,
+  DB_VIEWS_KEY,
+  ROW_ORDER_KEY,
+  ROW_PROPS_KEY,
+  decodeDatabaseSchema,
+  optionKey,
+} from './database.js';
+export type { DatabaseSchema } from './database.js';
+
+export { VIEW_TYPES, decodeView, isViewType, viewSpecOf } from './views.js';
+export type { ViewDef, ViewType } from './views.js';
+
 export { bytesToUuid, createIdGen, uuidToBytes, uuidTimestamp } from './ids.js';
 export type { IdGen, Uuid } from './ids.js';
 

@@ -7,11 +7,30 @@
  * the first pixel. The tree document is the only thing allowed at startup (ADR-0002).
  */
 
-import { LoroDoc, type LoroTreeNode } from 'loro-crdt';
+import { LoroDoc, type LoroMap, type LoroTreeNode } from 'loro-crdt';
 
+import {
+  DB_KEY,
+  DB_OPTIONS_KEY,
+  DB_PROPS_KEY,
+  DB_VIEWS_KEY,
+  decodeDatabaseSchema,
+  optionKey,
+  type DatabaseSchema,
+} from './database.js';
 import { createIdGen, type IdGen } from './ids.js';
+import type {
+  OptionColour,
+  OptionId,
+  PropertyDef,
+  PropertyId,
+  PropertyType,
+  SelectOption,
+} from './properties.js';
+import { stripProperty } from './query.js';
 import type { Runtime } from './runtime.js';
 import { WorkspaceError, type NodeId, type Page, type PageNode } from './types.js';
+import type { ViewDef } from './views.js';
 
 const TREE_KEY = 'pages';
 const UNTITLED = 'Untitled';
@@ -73,6 +92,7 @@ export class Workspace {
   #toPage(node: LoroTreeNode): Page {
     const data = node.data.toJSON() as Record<string, unknown>;
     const parent = node.parent();
+    const database = decodeDatabaseSchema(data[DB_KEY]);
     return {
       id: node.id,
       // A deleted parent means this node is detached, not that it is a root. Loro
@@ -89,6 +109,7 @@ export class Workspace {
       createdAt: (data.createdAt as number | undefined) ?? 0,
       updatedAt: (data.updatedAt as number | undefined) ?? 0,
       ...(typeof data.archivedAt === 'number' ? { archivedAt: data.archivedAt } : {}),
+      ...(database === undefined ? {} : { database }),
     };
   }
 
@@ -231,6 +252,298 @@ export class Workspace {
       throw new WorkspaceError('ARCHIVED', `page ${id} must be archived before deletion`);
     }
     this.#tree.delete(id);
+    this.#doc.commit();
+  }
+
+  // ---- databases -----------------------------------------------------------
+
+  /**
+   * The `db` map on a page's node, or undefined when the page is not a database.
+   *
+   * Presence of the key is what makes a page a database. It is read through the same
+   * JSON the rest of `#toPage` uses rather than through container handles, so the
+   * possibly-absent convention holds here too.
+   */
+  #databaseMap(node: LoroTreeNode): LoroMap | undefined {
+    const raw = node.data.get(DB_KEY);
+    if (raw === undefined || raw === null) return undefined;
+    return this.#ensureMap(node.data, DB_KEY);
+  }
+
+  /**
+   * A mergeable child map, the only way a nested map is ever created under node data.
+   *
+   * `setContainer` would fork: two devices creating the same child while apart would
+   * produce two containers and the merge would keep one, losing the other's writes on
+   * both sides. Loro refuses to make a mergeable child where a scalar already sits,
+   * which only corrupted data can produce; that becomes a reported error here.
+   */
+  #ensureMap(parent: LoroMap, key: string): LoroMap {
+    try {
+      return parent.ensureMergeableMap(key);
+    } catch (cause) {
+      throw new WorkspaceError(
+        'INVALID_SCHEMA',
+        `node data holds a non-map value under ${key}: ${String(cause)}`,
+      );
+    }
+  }
+
+  #databaseNode(id: NodeId): { node: LoroTreeNode; db: LoroMap; schema: DatabaseSchema } {
+    const node = this.#node(id);
+    const db = this.#databaseMap(node);
+    const schema = db === undefined ? undefined : decodeDatabaseSchema(db.toJSON());
+    if (db === undefined || schema === undefined) {
+      throw new WorkspaceError('NOT_A_DATABASE', `page ${id} is not a database`);
+    }
+    return { node, db, schema };
+  }
+
+  #touch(node: LoroTreeNode): void {
+    node.data.set('updatedAt', this.#runtime.clock.now());
+  }
+
+  #property(schema: DatabaseSchema, propertyId: PropertyId): PropertyDef {
+    const property = schema.properties.find((p) => p.id === propertyId);
+    if (property === undefined) {
+      throw new WorkspaceError('UNKNOWN_PROPERTY', `no property ${propertyId} in this database`);
+    }
+    return property;
+  }
+
+  /** True when the page is a database. */
+  isDatabase(id: NodeId): boolean {
+    return this.#databaseMap(this.#node(id)) !== undefined;
+  }
+
+  /** The database's schema. Throws NOT_A_DATABASE for an ordinary page. */
+  database(id: NodeId): DatabaseSchema {
+    return this.#databaseNode(id).schema;
+  }
+
+  /**
+   * Make a page a database, with one default table view. Idempotent.
+   *
+   * Existing children become its rows; nothing about them changes. Two devices converting
+   * the same page while apart each create a default view, and both views survive — a
+   * database with two "Table" views is a nuisance, not a loss.
+   */
+  convertToDatabase(id: NodeId): DatabaseSchema {
+    const node = this.#node(id);
+    const now = this.#runtime.clock.now();
+    const db = this.#ensureMap(node.data, DB_KEY);
+    if (typeof db.get('createdAt') !== 'number') db.set('createdAt', now);
+    this.#ensureMap(db, DB_PROPS_KEY);
+    this.#ensureMap(db, DB_OPTIONS_KEY);
+    const views = this.#ensureMap(db, DB_VIEWS_KEY);
+    if (Object.keys(views.toJSON() as Record<string, unknown>).length === 0) {
+      this.#writeView(views, this.#ids.next(), { name: 'Table', type: 'table' }, now);
+    }
+    this.#touch(node);
+    this.#doc.commit();
+    return this.#databaseNode(id).schema;
+  }
+
+  #writeView(
+    views: LoroMap,
+    viewId: string,
+    input: { name: string; type: ViewDef['type']; groupBy?: PropertyId },
+    now: number,
+  ): void {
+    const view = this.#ensureMap(views, viewId);
+    view.set('name', input.name);
+    view.set('type', input.type);
+    view.set('sorts', []);
+    view.set('columns', []);
+    view.set('hidden', []);
+    if (input.groupBy !== undefined) view.set('groupBy', input.groupBy);
+    view.set('createdAt', now);
+  }
+
+  /**
+   * Add a property. Options may only be given for a select or multi-select property.
+   *
+   * Nothing is written to any view: the effective column order of a view already
+   * includes every live property missing from its stored order, so a property defined
+   * on another device can never be hidden by a lost array write.
+   */
+  defineProperty(
+    databaseId: NodeId,
+    input: { name: string; type: PropertyType; options?: { name: string; color?: OptionColour }[] },
+  ): PropertyDef {
+    const { node, db } = this.#databaseNode(databaseId);
+    if (input.name.trim() === '') {
+      throw new WorkspaceError('INVALID_SCHEMA', 'a property needs a name');
+    }
+    const selectable = input.type === 'select' || input.type === 'multi-select';
+    if (input.options !== undefined && input.options.length > 0 && !selectable) {
+      throw new WorkspaceError('INVALID_SCHEMA', `a ${input.type} property has no options`);
+    }
+    const propertyId = this.#ids.next();
+    const now = this.#runtime.clock.now();
+    const property = this.#ensureMap(this.#ensureMap(db, DB_PROPS_KEY), propertyId);
+    property.set('name', input.name);
+    property.set('type', input.type);
+    property.set('createdAt', now);
+    const options = this.#ensureMap(db, DB_OPTIONS_KEY);
+    for (const option of input.options ?? []) {
+      this.#writeOption(options, propertyId, this.#ids.next(), option);
+    }
+    this.#touch(node);
+    this.#doc.commit();
+    return this.#property(this.#databaseNode(databaseId).schema, propertyId);
+  }
+
+  #writeOption(
+    options: LoroMap,
+    propertyId: PropertyId,
+    optionId: OptionId,
+    input: { name: string; color?: OptionColour | undefined },
+  ): void {
+    const option = this.#ensureMap(options, optionKey(propertyId, optionId));
+    option.set('name', input.name);
+    if (input.color !== undefined) option.set('color', input.color);
+  }
+
+  /**
+   * Rename or retype a property.
+   *
+   * Retyping never touches a value. Values of the old shape become invisible until the
+   * type changes back, which is what makes a mistaken retype reversible.
+   */
+  updateProperty(
+    databaseId: NodeId,
+    propertyId: PropertyId,
+    patch: { name?: string; type?: PropertyType },
+  ): PropertyDef {
+    const { node, db, schema } = this.#databaseNode(databaseId);
+    this.#property(schema, propertyId);
+    if (patch.name?.trim() === '') {
+      throw new WorkspaceError('INVALID_SCHEMA', 'a property needs a name');
+    }
+    const property = this.#ensureMap(this.#ensureMap(db, DB_PROPS_KEY), propertyId);
+    if (patch.name !== undefined) property.set('name', patch.name);
+    if (patch.type !== undefined) property.set('type', patch.type);
+    this.#touch(node);
+    this.#doc.commit();
+    return this.#property(this.#databaseNode(databaseId).schema, propertyId);
+  }
+
+  /**
+   * Remove a property from the schema, and every reference to it from every view.
+   *
+   * Row values are left where they are: ignored on read, invisible, and cheap. Deleting
+   * them would cost a write per row and gain nothing a reader could see.
+   */
+  removeProperty(databaseId: NodeId, propertyId: PropertyId): void {
+    const { node, db, schema } = this.#databaseNode(databaseId);
+    const property = this.#property(schema, propertyId);
+    this.#ensureMap(db, DB_PROPS_KEY).delete(propertyId);
+    const options = this.#ensureMap(db, DB_OPTIONS_KEY);
+    for (const option of property.options) options.delete(optionKey(propertyId, option.id));
+
+    const views = this.#ensureMap(db, DB_VIEWS_KEY);
+    for (const view of schema.views) {
+      const stored = this.#ensureMap(views, view.id);
+      stored.set(
+        'columns',
+        view.columns.filter((c) => c !== propertyId),
+      );
+      stored.set(
+        'hidden',
+        view.hidden.filter((c) => c !== propertyId),
+      );
+      if (view.sorts.some((s) => s.field === propertyId)) {
+        stored.set(
+          'sorts',
+          view.sorts.filter((s) => s.field !== propertyId),
+        );
+      }
+      if (view.groupBy === propertyId) stored.delete('groupBy');
+      if (view.filter !== undefined) {
+        const expr = stripProperty(view.filter.expr, propertyId);
+        if (expr === undefined) stored.delete('filter');
+        else if (expr !== view.filter.expr) stored.set('filter', { v: view.filter.v, expr });
+      }
+    }
+    this.#touch(node);
+    this.#doc.commit();
+  }
+
+  #selectProperty(schema: DatabaseSchema, propertyId: PropertyId): PropertyDef {
+    const property = this.#property(schema, propertyId);
+    if (property.type !== 'select' && property.type !== 'multi-select') {
+      throw new WorkspaceError('INVALID_SCHEMA', `property "${property.name}" has no options`);
+    }
+    return property;
+  }
+
+  addOption(
+    databaseId: NodeId,
+    propertyId: PropertyId,
+    input: { name: string; color?: OptionColour },
+  ): SelectOption {
+    const { node, db, schema } = this.#databaseNode(databaseId);
+    this.#selectProperty(schema, propertyId);
+    if (input.name.trim() === '')
+      throw new WorkspaceError('INVALID_SCHEMA', 'an option needs a name');
+    const optionId = this.#ids.next();
+    this.#writeOption(this.#ensureMap(db, DB_OPTIONS_KEY), propertyId, optionId, input);
+    this.#touch(node);
+    this.#doc.commit();
+    const option = this.#selectProperty(
+      this.#databaseNode(databaseId).schema,
+      propertyId,
+    ).options.find((o) => o.id === optionId);
+    if (option === undefined)
+      throw new WorkspaceError('INVALID_SCHEMA', 'the option was not written');
+    return option;
+  }
+
+  updateOption(
+    databaseId: NodeId,
+    propertyId: PropertyId,
+    optionId: OptionId,
+    patch: { name?: string; color?: OptionColour | null },
+  ): SelectOption {
+    const { node, db, schema } = this.#databaseNode(databaseId);
+    const property = this.#selectProperty(schema, propertyId);
+    if (!property.options.some((o) => o.id === optionId)) {
+      throw new WorkspaceError('INVALID_SCHEMA', `no option ${optionId} on "${property.name}"`);
+    }
+    if (patch.name?.trim() === '') {
+      throw new WorkspaceError('INVALID_SCHEMA', 'an option needs a name');
+    }
+    const option = this.#ensureMap(
+      this.#ensureMap(db, DB_OPTIONS_KEY),
+      optionKey(propertyId, optionId),
+    );
+    if (patch.name !== undefined) option.set('name', patch.name);
+    if (patch.color === null) option.delete('color');
+    else if (patch.color !== undefined) option.set('color', patch.color);
+    this.#touch(node);
+    this.#doc.commit();
+    const updated = this.#selectProperty(
+      this.#databaseNode(databaseId).schema,
+      propertyId,
+    ).options.find((o) => o.id === optionId);
+    if (updated === undefined)
+      throw new WorkspaceError('INVALID_SCHEMA', 'the option was not written');
+    return updated;
+  }
+
+  /**
+   * Remove an option. Rows holding it keep the id in the log and read as empty (or, for
+   * multi-select, without it); adding the option back would make them visible again.
+   */
+  removeOption(databaseId: NodeId, propertyId: PropertyId, optionId: OptionId): void {
+    const { node, db, schema } = this.#databaseNode(databaseId);
+    const property = this.#selectProperty(schema, propertyId);
+    if (!property.options.some((o) => o.id === optionId)) {
+      throw new WorkspaceError('INVALID_SCHEMA', `no option ${optionId} on "${property.name}"`);
+    }
+    this.#ensureMap(db, DB_OPTIONS_KEY).delete(optionKey(propertyId, optionId));
+    this.#touch(node);
     this.#doc.commit();
   }
 
