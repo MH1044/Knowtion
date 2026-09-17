@@ -145,3 +145,6 @@ export interface ViewQuery {
   limit?: number;
   offset?: number;
 }
+
+/** The filter spec version the renderer writes. Mirrors the engine; the drift test checks it. */
+export const QUERY_SPEC_VERSION = 1;

@@ -9,27 +9,29 @@
  * engine and plain strings here, so the check is assignability engine → mirror, the
  * direction a payload crosses IPC.
  */
-import { describe, expectTypeOf, it } from 'vitest';
+import { describe, expect, expectTypeOf, it } from 'vitest';
 
-import type {
-  DatabaseSchema,
-  DateOperand,
-  Filter,
-  FilterLeaf,
-  OptionColour,
-  PropertyDef,
-  PropertyType,
-  PropertyValue,
-  RowPosition,
-  SelectOption,
-  Sort,
-  StoredFilter,
-  ViewDef,
-  ViewType,
+import {
+  QUERY_SPEC_VERSION,
+  type DatabaseSchema,
+  type DateOperand,
+  type Filter,
+  type FilterLeaf,
+  type OptionColour,
+  type PropertyDef,
+  type PropertyType,
+  type PropertyValue,
+  type RowPosition,
+  type SelectOption,
+  type Sort,
+  type StoredFilter,
+  type ViewDef,
+  type ViewType,
 } from '@knowtion/engine';
 import type { QueryResult, RowView } from '@knowtion/readmodel';
 
 import type * as Mirror from '../../shared/db-types.js';
+import { QUERY_SPEC_VERSION as MIRROR_QUERY_SPEC_VERSION } from '../../shared/db-types.js';
 import type { ViewQuery } from '../workspace-host.js';
 
 describe('renderer database types mirror the engine', () => {
@@ -61,5 +63,9 @@ describe('renderer database types mirror the engine', () => {
     expectTypeOf<keyof Mirror.QueryResult>().toEqualTypeOf<keyof QueryResult>();
     expectTypeOf<Mirror.PropertyValue['type']>().toEqualTypeOf<PropertyValue['type']>();
     expectTypeOf<Mirror.FilterLeaf['op']>().toEqualTypeOf<FilterLeaf['op']>();
+  });
+
+  it('and the filter spec version the renderer writes is the one the engine reads', () => {
+    expect(MIRROR_QUERY_SPEC_VERSION).toBe(QUERY_SPEC_VERSION);
   });
 });

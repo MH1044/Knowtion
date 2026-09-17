@@ -9,13 +9,22 @@
  */
 import { useCallback, useEffect, useState } from 'react';
 
-import { api, type Page, type QueryResult, type ViewDef, type ViewOverrides } from '../api.js';
+import { api, type Page, type QueryResult, type ViewDef } from '../api.js';
 import { useWorkspaceChanges } from '../changes.js';
+import { FilterEditor } from './FilterEditor.js';
 import { SchemaEditor } from './SchemaEditor.js';
+import { GroupEditor, SortEditor } from './SortGroupEditor.js';
 import { TableView } from './TableView.js';
 import { ViewToolbar } from './ViewToolbar.js';
 
 const PAGE_SIZE = 200;
+
+/** How many of filter, sorts and grouping a view has set, for the toolbar badge. */
+function activeCount(view: ViewDef): number {
+  return (
+    (view.filter === undefined ? 0 : 1) + view.sorts.length + (view.groupBy === undefined ? 0 : 1)
+  );
+}
 
 function rememberedView(databaseId: string): string | undefined {
   try {
@@ -43,12 +52,6 @@ export interface DatabaseViewProps {
     result: QueryResult;
     refetch: () => void;
   }) => React.JSX.Element | null;
-  /** Extra toolbar controls, such as filter and sort editors. */
-  toolbarExtras?: (input: {
-    view: ViewDef;
-    overrides: ViewOverrides;
-    setOverrides: (overrides: ViewOverrides) => void;
-  }) => React.ReactNode;
 }
 
 export function DatabaseView({
@@ -56,7 +59,6 @@ export function DatabaseView({
   run,
   onOpenRow,
   renderView,
-  toolbarExtras,
 }: DatabaseViewProps): React.JSX.Element | null {
   const schema = page.database;
   const databaseId = page.id;
@@ -64,7 +66,7 @@ export function DatabaseView({
   const [result, setResult] = useState<QueryResult>();
   const [limit, setLimit] = useState(PAGE_SIZE);
   const [showSchema, setShowSchema] = useState(false);
-  const [overrides, setOverrides] = useState<ViewOverrides>({});
+  const [showControls, setShowControls] = useState(false);
   const [tick, setTick] = useState(0);
   const refetch = useCallback(() => {
     setTick((t) => t + 1);
@@ -77,7 +79,7 @@ export function DatabaseView({
     if (viewId === undefined) return;
     let cancelled = false;
     api
-      .dbQuery({ databaseId, viewId, limit, overrides })
+      .dbQuery({ databaseId, viewId, limit })
       .then((next) => {
         if (!cancelled) setResult(next);
       })
@@ -87,7 +89,7 @@ export function DatabaseView({
     return () => {
       cancelled = true;
     };
-  }, [databaseId, viewId, limit, overrides, tick]);
+  }, [databaseId, viewId, limit, tick]);
 
   useWorkspaceChanges((change) => {
     const shown = new Set(result?.rows.map((r) => r.id) ?? []);
@@ -116,7 +118,6 @@ export function DatabaseView({
         onSelectView={(id) => {
           setActiveViewId(id);
           rememberView(databaseId, id);
-          setOverrides({});
           setLimit(PAGE_SIZE);
         }}
         onNewView={(input) => {
@@ -135,8 +136,44 @@ export function DatabaseView({
         }}
         warnings={result?.warnings.map((w) => w.path) ?? []}
       >
-        {toolbarExtras?.({ view, overrides, setOverrides })}
+        <button
+          type="button"
+          aria-pressed={showControls}
+          onClick={() => {
+            setShowControls((v) => !v);
+          }}
+        >
+          Filter &amp; sort
+          {activeCount(view) > 0 ? ` (${String(activeCount(view))})` : ''}
+        </button>
       </ViewToolbar>
+      {showControls && (
+        <div className="view-controls">
+          <FilterEditor
+            properties={schema.properties}
+            filter={view.filter}
+            onChange={(filter) => {
+              void run(() => api.dbUpdateView(databaseId, view.id, { filter }));
+            }}
+          />
+          <SortEditor
+            properties={schema.properties}
+            sorts={view.sorts}
+            onChange={(sorts) => {
+              void run(() => api.dbUpdateView(databaseId, view.id, { sorts }));
+            }}
+          />
+          {view.type === 'table' && (
+            <GroupEditor
+              properties={schema.properties}
+              groupBy={view.groupBy}
+              onChange={(groupBy) => {
+                void run(() => api.dbUpdateView(databaseId, view.id, { groupBy }));
+              }}
+            />
+          )}
+        </div>
+      )}
       {showSchema && <SchemaEditor databaseId={databaseId} schema={schema} run={run} />}
       {result === undefined ? (
         <p className="placeholder">Loading…</p>
@@ -146,6 +183,7 @@ export function DatabaseView({
             properties={schema.properties}
             view={view}
             rows={result.rows}
+            groups={result.groups}
             total={result.total}
             onCommit={commit}
             onRename={(rowId, title) => void run(() => api.renamePage(rowId, title))}
