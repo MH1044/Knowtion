@@ -29,4 +29,4 @@ An ADR records a decision that was **expensive to make and expensive to reverse*
 | [0011](0011-node-sqlite-over-better-sqlite3.md) | Node's built-in SQLite rather than better-sqlite3                          | Accepted |
 | [0012](0012-encryption-parameters.md)           | The encryption parameters ADR-0007 left open                               | Accepted |
 | [0013](0013-reading-snapshots.md)               | Snapshots are read, and re-anchor their device's chain                     | Accepted |
-| [0014](0014-databases-on-the-tree.md)           | Databases live on the tree: schema on the database node, values on the row | Proposed |
+| [0014](0014-databases-on-the-tree.md)           | Databases live on the tree: schema on the database node, values on the row | Accepted |
