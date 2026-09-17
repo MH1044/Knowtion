@@ -17,9 +17,11 @@ import type { DatabaseSync } from 'node:sqlite';
 
 import {
   foldText,
+  isEmptyValue,
   localDateOf,
   type Page,
   type PropertyDef,
+  type PropertyId,
   type PropertyValue,
   type ViewDef,
 } from '@knowtion/engine';
@@ -169,6 +171,16 @@ export function writeRowProjection(db: DatabaseSync, page: Page): void {
   );
 
   for (const [propertyId, value] of Object.entries(page.properties ?? {})) {
+    // The engine never stores an empty value, but the emptiness rule is the evaluator's
+    // and the table must agree with it whatever it is handed: no row means empty.
+    if (
+      isEmptyValue(
+        { id: propertyId as PropertyId, name: '', type: value.type, createdAt: 0, options: [] },
+        value,
+      )
+    ) {
+      continue;
+    }
     const columns = columnsOf(value);
     insertValue.run(
       page.id,
