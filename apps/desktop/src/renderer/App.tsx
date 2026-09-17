@@ -235,6 +235,14 @@ export function App(): React.JSX.Element {
  * without their filters — and the user is far better served by being told which,
  * immediately, than by discovering it themselves over the following month.
  */
+/** "3 pages and 1 database", or just the pages when the export had none. */
+function importedCounts(report: ImportReport): string {
+  const pages = `${String(report.pagesImported)} ${report.pagesImported === 1 ? 'page' : 'pages'}`;
+  const count = report.databases.length;
+  if (count === 0) return pages;
+  return `${pages} and ${String(count)} ${count === 1 ? 'database' : 'databases'}`;
+}
+
 function ImportSummary({
   report,
   onDismiss,
@@ -245,7 +253,7 @@ function ImportSummary({
   return (
     <div className="import-summary">
       <div className="import-summary-head">
-        <strong>Imported {report.pagesImported} pages</strong>
+        <strong>Imported {importedCounts(report)}</strong>
         <button type="button" onClick={onDismiss}>
           Dismiss
         </button>
