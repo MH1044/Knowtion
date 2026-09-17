@@ -5,6 +5,7 @@
  */
 
 export { MATCH_END, MATCH_START, ReadModel } from './read-model.js';
-export type { SearchHit, SearchOptions } from './read-model.js';
+export type { ProjectionStats, SearchHit, SearchOptions } from './read-model.js';
+export type { ProjectionContents } from './projection.js';
 export { segmentForIndex } from './segmenter.js';
 export { DDL, DROP_DDL, INDEX_VERSION, SCHEMA_VERSION } from './schema.js';

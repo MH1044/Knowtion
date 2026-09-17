@@ -10,6 +10,13 @@ import { DatabaseSync } from 'node:sqlite';
 
 import { canonicalRowJson, type Page } from '@knowtion/engine';
 
+import {
+  collectOrphans,
+  readContents,
+  writeDatabaseDefinitions,
+  writeRowProjection,
+  type ProjectionContents,
+} from './projection.js';
 import { DDL, DROP_DDL, INDEX_VERSION, SCHEMA_VERSION } from './schema.js';
 import { segmentForIndex } from './segmenter.js';
 
@@ -41,6 +48,13 @@ export interface SearchOptions {
   limit?: number;
   /** Include pages in the trash. Off by default: deleted things should stay out of sight. */
   includeArchived?: boolean;
+}
+
+/** What a projection did, so a test can prove the unchanged rows were left alone. */
+export interface ProjectionStats {
+  pages: number;
+  /** Pages whose property values, membership and order keys were rewritten. */
+  rowsRewritten: number;
 }
 
 export class ReadModel {
@@ -119,16 +133,28 @@ export class ReadModel {
   /**
    * Replace the whole page set.
    *
-   * A full replace rather than a diff because the hierarchy is small — it is the one
-   * document always held in memory — and correctness is worth more here than cleverness.
-   * Page bodies are preserved, since they are projected separately and on demand.
+   * The page table is fully replaced rather than diffed because the hierarchy is small —
+   * it is the one document always held in memory — and correctness is worth more here
+   * than cleverness. Page bodies are preserved, since they are projected separately and
+   * on demand. Database definitions are small and fully replaced too.
+   *
+   * Property values are the exception. A page's values, membership and order keys are
+   * rewritten only when its canonical fingerprint changed. That fingerprint is a pure
+   * function of the Page, and so is what gets written from it, which is what keeps an
+   * incrementally maintained store identical to one rebuilt from scratch: a fresh store
+   * has no fingerprints, so every page takes the write path.
    */
-  projectPages(pages: Page[]): void {
-    const keepBodies = new Map<string, string>(
-      (this.#db.prepare('select id, body from page').all() as { id: string; body: string }[]).map(
-        (row) => [row.id, row.body],
-      ),
+  projectPages(pages: Page[]): ProjectionStats {
+    const keep = new Map<string, { body: string; rowJson: string }>(
+      (
+        this.#db.prepare('select id, body, row_json as rowJson from page').all() as {
+          id: string;
+          body: string;
+          rowJson: string;
+        }[]
+      ).map((row) => [row.id, { body: row.body, rowJson: row.rowJson }]),
     );
+    let rowsRewritten = 0;
 
     this.#transaction(() => {
       this.#db.exec('delete from page');
@@ -144,7 +170,9 @@ export class ReadModel {
       );
 
       for (const page of pages) {
-        const body = keepBodies.get(page.id) ?? '';
+        const previous = keep.get(page.id);
+        const body = previous?.body ?? '';
+        const rowJson = canonicalRowJson(page.properties, page.orderKeys);
         const result = insertPage.run(
           page.id,
           page.uuid,
@@ -155,11 +183,85 @@ export class ReadModel {
           page.createdAt,
           page.updatedAt,
           page.database === undefined ? 0 : 1,
-          canonicalRowJson(page.properties, page.orderKeys),
+          rowJson,
         );
         insertDoc.run(result.lastInsertRowid, segmentForIndex(page.title), segmentForIndex(body));
+        if (page.database !== undefined) writeDatabaseDefinitions(this.#db, page);
+        if (previous?.rowJson !== rowJson) {
+          writeRowProjection(this.#db, page);
+          rowsRewritten += 1;
+        }
       }
+      collectOrphans(this.#db);
     });
+    return { pages: pages.length, rowsRewritten };
+  }
+
+  /**
+   * Project one page in place, for the hot path: a cell edit, a rename, a new row.
+   *
+   * Not for a page whose parent changed, whose database schema changed shape, or that
+   * was deleted — those are structural and go through `projectPages`, which also collects
+   * what a structural change orphans. Given the same Page, this leaves the store exactly
+   * as `projectPages` would have, which the projection tests assert.
+   */
+  upsertPage(page: Page): void {
+    this.#transaction(() => {
+      const rowJson = canonicalRowJson(page.properties, page.orderKeys);
+      const existing = this.#db
+        .prepare('select rowid, row_json as rowJson from page where id = ?')
+        .get(page.id) as { rowid: number; rowJson: string } | undefined;
+      if (existing === undefined) {
+        const result = this.#db
+          .prepare(
+            `insert into page(id, uuid, parent_id, title, body, archived_at, created_at, updated_at,
+                              is_database, row_json)
+             values (?, ?, ?, ?, '', ?, ?, ?, ?, ?)`,
+          )
+          .run(
+            page.id,
+            page.uuid,
+            page.parentId ?? null,
+            page.title,
+            page.archivedAt ?? null,
+            page.createdAt,
+            page.updatedAt,
+            page.database === undefined ? 0 : 1,
+            rowJson,
+          );
+        this.#db
+          .prepare('insert into search_doc(rowid, title, body) values (?, ?, ?)')
+          .run(result.lastInsertRowid, segmentForIndex(page.title), '');
+      } else {
+        this.#db
+          .prepare(
+            `update page set uuid = ?, parent_id = ?, title = ?, archived_at = ?, created_at = ?,
+                             updated_at = ?, is_database = ?, row_json = ?
+              where rowid = ?`,
+          )
+          .run(
+            page.uuid,
+            page.parentId ?? null,
+            page.title,
+            page.archivedAt ?? null,
+            page.createdAt,
+            page.updatedAt,
+            page.database === undefined ? 0 : 1,
+            rowJson,
+            existing.rowid,
+          );
+        this.#db
+          .prepare('update search_doc set title = ? where rowid = ?')
+          .run(segmentForIndex(page.title), existing.rowid);
+      }
+      writeDatabaseDefinitions(this.#db, page);
+      if (existing?.rowJson !== rowJson) writeRowProjection(this.#db, page);
+    });
+  }
+
+  /** Everything projected, for verifying that a rebuild matches. */
+  contents(): ProjectionContents {
+    return readContents(this.#db);
   }
 
   /**
