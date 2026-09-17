@@ -255,6 +255,32 @@ function ImportSummary({
         </p>
       ))}
 
+      {report.databases.length > 0 && (
+        <details open>
+          <summary>
+            {report.databases.length} databases; property types were inferred from their values
+          </summary>
+          <ul>
+            {report.databases.map((db, index) => (
+              <li key={`${db.title}:${String(index)}`}>
+                <span className="from">{db.title}</span> — {db.rows} rows;{' '}
+                {db.properties
+                  .map(
+                    (p) =>
+                      `${p.name}: ${p.type}${p.options > 0 ? ` (${String(p.options)} options)` : ''}`,
+                  )
+                  .join(', ')}
+                {db.notes.map((note) => (
+                  <p key={note} className="muted">
+                    {note}
+                  </p>
+                ))}
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
+
       {report.brokenLinks.length > 0 && (
         <details open>
           <summary>{report.brokenLinks.length} links could not be resolved</summary>

@@ -57,6 +57,13 @@ export interface SearchHit {
 
 export interface ImportReport {
   pagesImported: number;
+  /** Databases found beside the pages, with the type inferred for each property. */
+  databases: {
+    title: string;
+    rows: number;
+    properties: { name: string; type: string; options: number }[];
+    notes: string[];
+  }[];
   brokenLinks: { fromTitle: string; href: string; reason: string }[];
   skipped: { path: string; reason: string }[];
   warnings: string[];
