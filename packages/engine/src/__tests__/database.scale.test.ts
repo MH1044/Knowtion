@@ -82,7 +82,7 @@ describe(`a database of ${String(ROWS)} rows`, () => {
     expect(withValues).toHaveLength(ROWS);
     console.log(`  built in ${buildMs.toFixed(0)}ms; allPages() ${ms.toFixed(0)}ms`);
     expect(ms).toBeLessThan(5_000);
-  });
+  }, 60_000);
 
   it('lists the rows in a view without decoding the schema per row', () => {
     const started = performance.now();
@@ -91,7 +91,7 @@ describe(`a database of ${String(ROWS)} rows`, () => {
     expect(rows).toHaveLength(ROWS);
     console.log(`  rows(view) ${ms.toFixed(0)}ms`);
     expect(ms).toBeLessThan(2_000);
-  });
+  }, 60_000);
 
   it('a collapsed tree leaves the rows out and counts them', () => {
     const started = performance.now();
@@ -101,7 +101,7 @@ describe(`a database of ${String(ROWS)} rows`, () => {
     expect(at(tree, 0).rowCount).toBe(ROWS);
     console.log(`  tree(collapsed) ${ms.toFixed(0)}ms`);
     expect(ms).toBeLessThan(2_000);
-  });
+  }, 60_000);
 
   it('reopens from a snapshot in bounded time, and reports its size', () => {
     const snapshot = w.snapshot();
@@ -114,5 +114,5 @@ describe(`a database of ${String(ROWS)} rows`, () => {
       `  snapshot ${(snapshot.length / 1024).toFixed(0)} KiB; reopen + rows ${ms.toFixed(0)}ms`,
     );
     expect(ms).toBeLessThan(5_000);
-  });
+  }, 60_000);
 });

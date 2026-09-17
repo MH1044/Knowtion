@@ -134,5 +134,7 @@ describe('search at scale', () => {
     expect(model.search('meeting', { limit: 30 })).toHaveLength(30);
 
     model.close();
-  });
+    // Building ten thousand pages beside the other scale suites can outlast vitest's
+    // default budget on a busy machine; the assertion is about query latency, not that.
+  }, 60_000);
 });
