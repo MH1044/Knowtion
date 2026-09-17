@@ -1005,3 +1005,58 @@ input:focus-visible {
 button.danger {
   color: var(--danger);
 }
+
+.view-controls {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px 24px;
+  padding: 12px 24px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-raised);
+  font-size: 13px;
+}
+
+.view-controls ul {
+  list-style: none;
+  margin: 0 0 6px;
+  padding: 0;
+}
+
+.filter-clause,
+.sort-clause,
+.date-operand {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 4px;
+}
+
+.filter-join,
+.group-editor {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  margin-bottom: 6px;
+}
+
+.db-note {
+  color: var(--muted);
+  font-size: 12px;
+  margin: 6px 0 0;
+}
+
+.db-table .group-row th {
+  position: static;
+  background: var(--bg-raised);
+  color: var(--text);
+  padding: 8px;
+  font-weight: 600;
+}
+
+.group-count {
+  color: var(--muted);
+  font-weight: 400;
+  margin-left: 6px;
+}
