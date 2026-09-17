@@ -17,7 +17,16 @@ import { useCallback, useEffect, useState } from 'react';
 import { MAX_QUERY_ROWS } from '../../shared/db-types.js';
 import { api, type Page, type QueryResult, type ViewDef } from '../api.js';
 import { useWorkspaceChanges } from '../changes.js';
+import {
+  COLUMN_TOGGLES_KEY,
+  COLUMN_TOGGLE_PLACES,
+  rememberView,
+  rememberedView,
+  usePreference,
+  type ColumnTogglePlace,
+} from '../preferences.js';
 import { BoardView } from './BoardView.js';
+import { ColumnEditor } from './ColumnEditor.js';
 import { positionForDrop } from './dnd.js';
 import { FilterEditor } from './FilterEditor.js';
 import { clampPage, offsetOf, pageCount } from './paging.js';
@@ -32,22 +41,6 @@ function activeCount(view: ViewDef): number {
   return (
     (view.filter === undefined ? 0 : 1) + view.sorts.length + (view.groupBy === undefined ? 0 : 1)
   );
-}
-
-function rememberedView(databaseId: string): string | undefined {
-  try {
-    return localStorage.getItem(`knowtion.view.${databaseId}`) ?? undefined;
-  } catch {
-    return undefined;
-  }
-}
-
-function rememberView(databaseId: string, viewId: string): void {
-  try {
-    localStorage.setItem(`knowtion.view.${databaseId}`, viewId);
-  } catch {
-    // Ephemera. Losing it costs a click.
-  }
 }
 
 export interface DatabaseViewProps {
@@ -73,6 +66,11 @@ export function DatabaseView({
   const [pageIndex, setPageIndex] = useState(0);
   const [showSchema, setShowSchema] = useState(false);
   const [showControls, setShowControls] = useState(false);
+  const [columnToggles] = usePreference<ColumnTogglePlace>(
+    COLUMN_TOGGLES_KEY,
+    COLUMN_TOGGLE_PLACES,
+    'view',
+  );
   const [tick, setTick] = useState(0);
   const refetch = useCallback(() => {
     setTick((t) => t + 1);
@@ -140,6 +138,17 @@ export function DatabaseView({
   // A grouped spec buckets in memory and returns every matching row, so there is nothing
   // to page through and no pager to show.
   const paged = result !== undefined && result.groups === undefined;
+
+  // Built once and placed wherever the reader asked for it, so both homes stay in step.
+  const columnEditor = (
+    <ColumnEditor
+      properties={schema.properties}
+      view={view}
+      onChange={(hidden) => {
+        void run(() => api.dbUpdateView(databaseId, view.id, { hidden }));
+      }}
+    />
+  );
 
   /**
    * Create a row, and follow it. An unsorted view puts a new row last, which may be on a
@@ -220,9 +229,14 @@ export function DatabaseView({
               }}
             />
           )}
+          {columnToggles === 'view' && columnEditor}
         </div>
       )}
-      {showSchema && <SchemaEditor databaseId={databaseId} schema={schema} run={run} />}
+      {showSchema && (
+        <SchemaEditor databaseId={databaseId} schema={schema} run={run}>
+          {columnToggles === 'properties' && columnEditor}
+        </SchemaEditor>
+      )}
       {result === undefined ? (
         <p className="placeholder">Loading…</p>
       ) : view.type === 'board' && result.groups !== undefined ? (
