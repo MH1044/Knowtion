@@ -5,3 +5,4 @@ THIRD_PARTY.md
 packages/format/fixtures/
 packages/engine/fixtures/
 .claude/worktrees/
+coverage/
