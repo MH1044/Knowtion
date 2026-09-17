@@ -7,4 +7,4 @@
 export { MATCH_END, MATCH_START, ReadModel } from './read-model.js';
 export type { SearchHit, SearchOptions } from './read-model.js';
 export { segmentForIndex } from './segmenter.js';
-export { INDEX_VERSION, SCHEMA_VERSION } from './schema.js';
+export { DDL, DROP_DDL, INDEX_VERSION, SCHEMA_VERSION } from './schema.js';
