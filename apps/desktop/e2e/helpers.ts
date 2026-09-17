@@ -15,6 +15,7 @@ import {
   _electron as electron,
   expect,
   type ElectronApplication,
+  type Locator,
   type Page,
 } from '@playwright/test';
 
@@ -90,4 +91,48 @@ export async function findPacks(root: string): Promise<string[]> {
   };
   await walk(root);
   return out;
+}
+
+/**
+ * Drag `source` onto `list`, dropping at the height `clientY` names.
+ *
+ * The drag is driven by dispatching the events rather than by moving a mouse.
+ * Playwright's own drag support drives real input through Chromium's drag interception,
+ * which is unproven under Electron; the application's drag hook reads only the data
+ * transfer, the pointer's height and the geometry of the rows it is over, so dispatching
+ * reaches every line of it. What this does NOT cover is the browser's own drag
+ * machinery — that a real mouse gesture produces these events at all is still only
+ * verified by a person.
+ *
+ * Each step waits for the class the hook paints before sending the next. That is a
+ * synchronisation point as much as a check: the hook reads which row is being dragged and
+ * where it would land from React state captured at render, so React must commit between
+ * the events or the drop is silently ignored.
+ */
+export async function dragOnto(
+  window: Page,
+  source: Locator,
+  list: Locator,
+  clientY: number,
+): Promise<void> {
+  const dataTransfer = await window.evaluateHandle(() => new DataTransfer());
+  try {
+    await source.dispatchEvent('dragstart', { dataTransfer });
+    await window.locator('.dragging').first().waitFor();
+
+    await list.dispatchEvent('dragover', { dataTransfer, clientY });
+    await window.locator('.drop-before, .drop-after, .drop-target, .drop-end').first().waitFor();
+
+    await list.dispatchEvent('drop', { dataTransfer });
+    await source.dispatchEvent('dragend', { dataTransfer });
+  } finally {
+    await dataTransfer.dispose();
+  }
+}
+
+/** A point just inside the top of an element, which drops above whatever is there. */
+export async function topEdgeOf(target: Locator): Promise<number> {
+  const box = await target.boundingBox();
+  if (box === null) throw new Error('the drop target is not on screen');
+  return box.y + 2;
 }
