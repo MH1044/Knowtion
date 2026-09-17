@@ -146,13 +146,19 @@ describe('content encryption', () => {
     ['one byte over a chunk', CONTENT_CHUNK_SIZE + 1],
     ['exactly two chunks', CONTENT_CHUNK_SIZE * 2],
     ['two chunks and a remainder', CONTENT_CHUNK_SIZE * 2 + 7],
-  ])('round-trips a payload of %s', (_label, size) => {
-    // The chunk-boundary arithmetic is recovered from length alone at read time, so
-    // every boundary case has to be pinned or a reader could split a stream wrongly.
-    const plaintext = pattern(size);
-    const sealed = encryptPayload(KEY, plaintext, binding());
-    expect(decryptPayload(KEY, sealed, binding())).toEqual(plaintext);
-  });
+  ])(
+    'round-trips a payload of %s',
+    (_label, size) => {
+      // The chunk-boundary arithmetic is recovered from length alone at read time, so
+      // every boundary case has to be pinned or a reader could split a stream wrongly.
+      const plaintext = pattern(size);
+      const sealed = encryptPayload(KEY, plaintext, binding());
+      expect(decryptPayload(KEY, sealed, binding())).toEqual(plaintext);
+      // Half a megabyte through pure-JS XChaCha20 under V8 coverage instrumentation on a
+      // loaded machine has exceeded the 5s default; this is a correctness test, not a budget.
+    },
+    30_000,
+  );
 
   it('round-trips any payload size', () => {
     fc.assert(
