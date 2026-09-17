@@ -10,7 +10,7 @@ export { Workspace } from './workspace.js';
 export type { WorkspaceOptions } from './workspace.js';
 
 export { WorkspaceError } from './types.js';
-export type { NodeId, Page, PageMeta, PageNode } from './types.js';
+export type { NodeId, Page, PageMeta, PageNode, RowPosition } from './types.js';
 
 export {
   DB_KEY,
@@ -20,6 +20,7 @@ export {
   ROW_ORDER_KEY,
   ROW_PROPS_KEY,
   decodeDatabaseSchema,
+  decodeRowOrder,
   decodeRowValues,
   optionKey,
 } from './database.js';

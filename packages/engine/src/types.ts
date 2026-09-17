@@ -14,7 +14,8 @@
 import type { TreeID } from 'loro-crdt';
 import type { DatabaseSchema } from './database.js';
 import type { Uuid } from './ids.js';
-import type { PropertyId, PropertyValue } from './properties.js';
+import type { OrderKey } from './order-key.js';
+import type { PropertyId, PropertyValue, ViewId } from './properties.js';
 
 /**
  * Identifies a node in the page hierarchy.
@@ -45,6 +46,11 @@ export interface PageMeta {
    * reads as absent until the property's type comes back.
    */
   properties?: Record<PropertyId, PropertyValue>;
+  /**
+   * Present when this page is a row: its manual position in each of the parent's views
+   * that has one, keyed by view. A view with no key sorts the row after every keyed row.
+   */
+  orderKeys?: Record<ViewId, OrderKey>;
 }
 
 export interface Page extends PageMeta {
@@ -55,7 +61,16 @@ export interface Page extends PageMeta {
 /** A page plus its subtree, as the sidebar needs it. */
 export interface PageNode extends Page {
   children: PageNode[];
+  /** Live rows under a database whose children were left out of the tree. */
+  rowCount?: number;
 }
+
+/** Where a row lands when it is reordered within a view. One anchor is enough. */
+export type RowPosition =
+  | { kind: 'first' }
+  | { kind: 'last' }
+  | { kind: 'before'; row: NodeId }
+  | { kind: 'after'; row: NodeId };
 
 /** Thrown when an operation would produce an impossible tree. */
 export class WorkspaceError extends Error {
