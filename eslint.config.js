@@ -28,6 +28,19 @@ const noAmbientNonDeterminism = [
       'simulator can replay failures deterministically.',
   },
   {
+    selector: "CallExpression > MemberExpression[object.name='Date'][property.name='parse']",
+    message:
+      'Date.parse() is banned in packages/. Its grammar is implementation-defined and a ' +
+      "zoneless day becomes an instant in the machine's zone (FORMAT.md section 10). " +
+      'Parse the text yourself and keep a calendar date a string.',
+  },
+  {
+    selector: "NewExpression[callee.name='Date'][arguments.0.type=/^(Literal|TemplateLiteral)$/]",
+    message:
+      'new Date(<text>) is banned in packages/ for the same reason as Date.parse(): a ' +
+      'calendar date is a string, not an instant. Parse it yourself.',
+  },
+  {
     selector: "CallExpression > MemberExpression[object.name='Math'][property.name='random']",
     message:
       'Math.random() is banned in packages/. Inject a seeded Random so the simulator ' +

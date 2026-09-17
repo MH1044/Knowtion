@@ -37,8 +37,19 @@ export interface BrokenLink {
   reason: 'target missing from export' | 'target outside the export';
 }
 
+export interface ImportedDatabaseSummary {
+  title: string;
+  rows: number;
+  /** Every property with the type inferred for it, so the decision is visible. */
+  properties: { name: string; type: string; options: number }[];
+  /** Assumptions made for this database (time zone, date ranges). */
+  notes: string[];
+}
+
 export interface ImportReport {
   pagesImported: number;
+  /** Databases found as CSV beside the pages, with what was inferred about each. */
+  databases: ImportedDatabaseSummary[];
   /**
    * Links that pointed at something not present in the archive.
    *
