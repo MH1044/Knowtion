@@ -92,7 +92,7 @@ describe(`queries over ${String(ROWS)} rows`, () => {
     expect(stats.rowsRewritten).toBe(ROWS + 1);
     console.log(`  full projection ${ms.toFixed(0)}ms`);
     expect(ms).toBeLessThan(6_000);
-  });
+  }, 60_000);
 
   it('re-projects after one cell edit by rewriting one row', () => {
     const row = at(w.rows(db.id), 5_000);
@@ -111,7 +111,7 @@ describe(`queries over ${String(ROWS)} rows`, () => {
     const upsertStarted = performance.now();
     model.upsertPage(w.getPage(row.id));
     console.log(`  upsertPage ${(performance.now() - upsertStarted).toFixed(0)}ms`);
-  });
+  }, 60_000);
 
   it('filters, sorts and groups the whole table within budget, and agrees with the evaluator', () => {
     w.updateView(db.id, table.id, {
@@ -155,7 +155,7 @@ describe(`queries over ${String(ROWS)} rows`, () => {
     expect(result.groups?.map((g) => [g.key, g.rows.length])).toEqual(
       evaluated.groups?.map((g) => [g.key, g.rows.length]),
     );
-  });
+  }, 60_000);
 
   it('pages a plain table query cheaply', () => {
     const started = performance.now();
@@ -169,5 +169,5 @@ describe(`queries over ${String(ROWS)} rows`, () => {
     expect(page.total).toBe(ROWS);
     expect(ms).toBeLessThan(750);
     model.close();
-  });
+  }, 60_000);
 });
