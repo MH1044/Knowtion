@@ -8,8 +8,27 @@
 
 import { DatabaseSync } from 'node:sqlite';
 
-import { canonicalRowJson, type Page } from '@knowtion/engine';
+import {
+  canonicalRowJson,
+  foldText,
+  groupKeyOf,
+  orderGroupKeys,
+  resolveDates,
+  sanitiseSpec,
+  viewSpecOf,
+  type DatabaseSchema,
+  type OptionId,
+  type Page,
+  type PropertyDef,
+  type PropertyId,
+  type PropertyValue,
+  type QueryContext,
+  type QueryProblem,
+  type ViewDef,
+  type ViewSpec,
+} from '@knowtion/engine';
 
+import { compileQuery } from './compile.js';
 import {
   collectOrphans,
   readContents,
@@ -47,6 +66,35 @@ export interface SearchHit {
 export interface SearchOptions {
   limit?: number;
   /** Include pages in the trash. Off by default: deleted things should stay out of sight. */
+  includeArchived?: boolean;
+}
+
+/** One row of a view, as the table renders it. Nothing here needs a document opened. */
+export interface RowView {
+  id: string;
+  uuid: string;
+  title: string;
+  createdAt: number;
+  updatedAt: number;
+  values: Record<PropertyId, PropertyValue>;
+  /** The row's manual position in the queried view, when it has one. */
+  orderKey?: string;
+}
+
+export interface QueryResult {
+  rows: RowView[];
+  /** Rows matching the filter, before any limit. */
+  total: number;
+  /** What sanitising dropped from the spec. Never silent: FORMAT.md section 3's rule. */
+  warnings: QueryProblem[];
+  /** Present when the spec groups. Every option gets a bucket, empty or not; null last. */
+  groups?: { key: OptionId | null; rows: RowView[] }[];
+}
+
+export interface QueryOptions {
+  /** Ignored when grouping: a board fetches every row and buckets in memory. */
+  limit?: number;
+  offset?: number;
   includeArchived?: boolean;
 }
 
@@ -161,9 +209,9 @@ export class ReadModel {
       this.#db.exec('delete from search_doc');
 
       const insertPage = this.#db.prepare(
-        `insert into page(id, uuid, parent_id, title, body, archived_at, created_at, updated_at,
-                          is_database, row_json)
-         values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `insert into page(id, uuid, parent_id, title, title_fold, body, archived_at, created_at,
+                          updated_at, is_database, row_json)
+         values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       );
       const insertDoc = this.#db.prepare(
         'insert into search_doc(rowid, title, body) values (?, ?, ?)',
@@ -178,6 +226,7 @@ export class ReadModel {
           page.uuid,
           page.parentId ?? null,
           page.title,
+          foldText(page.title),
           body,
           page.archivedAt ?? null,
           page.createdAt,
@@ -214,15 +263,16 @@ export class ReadModel {
       if (existing === undefined) {
         const result = this.#db
           .prepare(
-            `insert into page(id, uuid, parent_id, title, body, archived_at, created_at, updated_at,
-                              is_database, row_json)
-             values (?, ?, ?, ?, '', ?, ?, ?, ?, ?)`,
+            `insert into page(id, uuid, parent_id, title, title_fold, body, archived_at, created_at,
+                              updated_at, is_database, row_json)
+             values (?, ?, ?, ?, ?, '', ?, ?, ?, ?, ?)`,
           )
           .run(
             page.id,
             page.uuid,
             page.parentId ?? null,
             page.title,
+            foldText(page.title),
             page.archivedAt ?? null,
             page.createdAt,
             page.updatedAt,
@@ -235,14 +285,15 @@ export class ReadModel {
       } else {
         this.#db
           .prepare(
-            `update page set uuid = ?, parent_id = ?, title = ?, archived_at = ?, created_at = ?,
-                             updated_at = ?, is_database = ?, row_json = ?
+            `update page set uuid = ?, parent_id = ?, title = ?, title_fold = ?, archived_at = ?,
+                             created_at = ?, updated_at = ?, is_database = ?, row_json = ?
               where rowid = ?`,
           )
           .run(
             page.uuid,
             page.parentId ?? null,
             page.title,
+            foldText(page.title),
             page.archivedAt ?? null,
             page.createdAt,
             page.updatedAt,
@@ -262,6 +313,111 @@ export class ReadModel {
   /** Everything projected, for verifying that a rebuild matches. */
   contents(): ProjectionContents {
     return readContents(this.#db);
+  }
+
+  // ---- databases -----------------------------------------------------------
+
+  /** A database's schema as projected, or undefined when the page is not one. */
+  databaseSchema(databaseId: string): DatabaseSchema | undefined {
+    const page = this.#db
+      .prepare('select is_database as isDatabase from page where id = ?')
+      .get(databaseId) as { isDatabase: number } | undefined;
+    if (page?.isDatabase !== 1) return undefined;
+    const properties = (
+      this.#db
+        .prepare(
+          'select def_json as defJson from property_def where database_id = ? order by position',
+        )
+        .all(databaseId) as { defJson: string }[]
+    ).map((row) => JSON.parse(row.defJson) as PropertyDef);
+    const views = (
+      this.#db
+        .prepare(
+          'select view_json as viewJson from view_def where database_id = ? order by position',
+        )
+        .all(databaseId) as { viewJson: string }[]
+    ).map((row) => JSON.parse(row.viewJson) as ViewDef);
+    return { createdAt: 0, properties, views };
+  }
+
+  /**
+   * Run a view's spec over a database's rows, in SQL.
+   *
+   * The spec is sanitised and its relative dates resolved first, exactly as the engine's
+   * evaluator does, so both interpreters run the same query. Values come from the row's
+   * stored fingerprint rather than a second statement, so no document is ever opened.
+   */
+  query(
+    databaseId: string,
+    spec: ViewSpec,
+    ctx: QueryContext,
+    options: QueryOptions = {},
+    viewId?: string,
+  ): QueryResult {
+    const schema = this.databaseSchema(databaseId);
+    if (schema === undefined) throw new Error(`page ${databaseId} is not a database`);
+    const { spec: clean, warnings } = sanitiseSpec(schema.properties, spec);
+    const resolved: ViewSpec = {
+      ...clean,
+      ...(clean.filter === undefined
+        ? {}
+        : { filter: { v: clean.filter.v, expr: resolveDates(clean.filter.expr, ctx) } }),
+    };
+    const grouped = resolved.groupBy !== undefined;
+    const compiled = compileQuery({
+      databaseId,
+      ...(viewId === undefined ? {} : { viewId }),
+      defs: schema.properties,
+      spec: resolved,
+      includeArchived: options.includeArchived === true,
+      ...(grouped || options.limit === undefined ? {} : { limit: options.limit }),
+      ...(grouped || options.offset === undefined ? {} : { offset: options.offset }),
+    });
+
+    const raw = this.#db.prepare(compiled.sql).all(...compiled.params) as {
+      id: string;
+      uuid: string;
+      title: string;
+      createdAt: number;
+      updatedAt: number;
+      rowJson: string;
+      orderKey: string | null;
+      groupKey: string | null;
+    }[];
+    const rows = raw.map((row) => ({
+      row: toRowView(row),
+      groupKey: row.groupKey as OptionId | null,
+    }));
+    const total = (
+      this.#db.prepare(compiled.countSql).get(...compiled.countParams) as { total: number }
+    ).total;
+
+    const result: QueryResult = { rows: rows.map((r) => r.row), total, warnings };
+    if (resolved.groupBy !== undefined) {
+      const def = schema.properties.find((p) => p.id === resolved.groupBy);
+      if (def !== undefined) {
+        // Bucketed in memory with the engine's own ordering, so a board here and a board
+        // in the evaluator show the same columns in the same order.
+        const keys = rows.map((r) => groupKeyOf(def, r.row.values[def.id]));
+        result.groups = orderGroupKeys(def, keys).map((key) => ({
+          key,
+          rows: rows.filter((r, i) => keys[i] === key).map((r) => r.row),
+        }));
+      }
+    }
+    return result;
+  }
+
+  /** Run a stored view. */
+  queryView(
+    databaseId: string,
+    viewId: string,
+    ctx: QueryContext,
+    options: QueryOptions = {},
+  ): QueryResult {
+    const view = this.databaseSchema(databaseId)?.views.find((v) => v.id === viewId);
+    if (view === undefined) throw new Error(`no view ${viewId} on database ${databaseId}`);
+    return this.query(databaseId, viewSpecOf(view), ctx, options, viewId);
   }
 
   /**
@@ -341,6 +497,27 @@ export class ReadModel {
       throw error;
     }
   }
+}
+
+function toRowView(row: {
+  id: string;
+  uuid: string;
+  title: string;
+  createdAt: number;
+  updatedAt: number;
+  rowJson: string;
+  orderKey: string | null;
+}): RowView {
+  const parsed = JSON.parse(row.rowJson) as { p?: Record<PropertyId, PropertyValue> };
+  return {
+    id: row.id,
+    uuid: row.uuid,
+    title: row.title,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+    values: parsed.p ?? {},
+    ...(row.orderKey === null ? {} : { orderKey: row.orderKey }),
+  };
 }
 
 /**
