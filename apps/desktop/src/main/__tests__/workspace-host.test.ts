@@ -994,8 +994,8 @@ describe('change notification', () => {
     const page = host.createPage({ title: 'Noted' });
     host.renamePage(page.id, 'Renamed');
     expect(seen).toEqual([
-      { origin: 'local', pages: [page.id], bodies: [] },
-      { origin: 'local', pages: [page.id], bodies: [] },
+      { origin: 'local', pages: [page.id], bodies: [], databases: [] },
+      { origin: 'local', pages: [page.id], bodies: [], databases: [] },
     ]);
 
     stop();
@@ -1018,7 +1018,7 @@ describe('change notification', () => {
     edit.commit();
     await host.applyBodyUpdate(page.id, edit.export({ mode: 'update' }));
 
-    expect(seen).toEqual([{ origin: 'local', pages: [], bodies: [page.id] }]);
+    expect(seen).toEqual([{ origin: 'local', pages: [], bodies: [page.id], databases: [] }]);
     await host.close();
   });
 
@@ -1032,7 +1032,7 @@ describe('change notification', () => {
     const page = a.createPage({ title: 'From A' });
     await a.sync();
     await b.sync();
-    expect(seen).toEqual([{ origin: 'remote', pages: [], bodies: [] }]);
+    expect(seen).toEqual([{ origin: 'remote', pages: [], bodies: [], databases: [] }]);
 
     await b.sync();
     await b.sync();
@@ -1049,7 +1049,7 @@ describe('change notification', () => {
     await a.sync();
     await b.sync();
     expect(seen).toHaveLength(2);
-    expect(at(seen, 1)).toEqual({ origin: 'remote', pages: [], bodies: [page.id] });
+    expect(at(seen, 1)).toEqual({ origin: 'remote', pages: [], bodies: [page.id], databases: [] });
 
     await a.close();
     await b.close();
@@ -1063,5 +1063,332 @@ describe('change notification', () => {
     expect(() => host.createPage({ title: 'Still created' })).not.toThrow();
     expect(titles(host.tree())).toEqual(['Still created']);
     await host.close();
+  });
+});
+
+describe('databases', () => {
+  const ctx = { limit: 100 };
+
+  it('converts a page, and its existing children come back as rows of the table', async () => {
+    const host = await open(await dataDir());
+    const parent = host.createPage({ title: 'Projects' });
+    const child = host.createPage({ parentId: parent.id, title: 'Knowtion' });
+    const schema = host.convertToDatabase(parent.id);
+    expect(schema.views).toHaveLength(1);
+    const view = at(schema.views, 0);
+
+    const result = host.queryView({ databaseId: parent.id, viewId: view.id, ...ctx });
+    expect(result.rows.map((r) => r.id)).toEqual([child.id]);
+    // The sidebar no longer lists rows as children; it counts them.
+    expect(at(host.tree(), 0).children).toEqual([]);
+    expect(at(host.tree(), 0).rowCount).toBe(1);
+    expect(host.databaseSchema(parent.id)?.views).toHaveLength(1);
+    expect(host.databaseSchema(child.id)).toBeUndefined();
+    await host.close();
+  });
+
+  it('defines every type, sets a value of each, and reads them back typed from the table', async () => {
+    const host = await open(await dataDir());
+    const db = host.createPage({ title: 'Everything' });
+    host.convertToDatabase(db.id);
+    const text = host.defineProperty(db.id, { name: 'Text', type: 'text' });
+    const number = host.defineProperty(db.id, { name: 'Number', type: 'number' });
+    const done = host.defineProperty(db.id, { name: 'Done', type: 'checkbox' });
+    const status = host.defineProperty(db.id, {
+      name: 'Status',
+      type: 'select',
+      options: [{ name: 'Todo' }, { name: 'Done' }],
+    });
+    const tags = host.defineProperty(db.id, {
+      name: 'Tags',
+      type: 'multi-select',
+      options: [{ name: 'A' }, { name: 'B' }],
+    });
+    const due = host.defineProperty(db.id, { name: 'Due', type: 'date' });
+    const when = host.defineProperty(db.id, { name: 'At', type: 'datetime' });
+    const link = host.defineProperty(db.id, { name: 'Link', type: 'url' });
+    const todo = at(status.options, 0).id;
+    const tagB = at(tags.options, 1).id;
+
+    const row = host.createRow(db.id, { title: 'Flour' });
+    host.setPropertyValue(row.id, text.id, { type: 'text', value: 'Buy flour' });
+    host.setPropertyValue(row.id, number.id, { type: 'number', value: 2 });
+    host.setPropertyValue(row.id, done.id, { type: 'checkbox', value: true });
+    host.setPropertyValue(row.id, status.id, { type: 'select', value: todo });
+    host.setPropertyValue(row.id, tags.id, { type: 'multi-select', value: [tagB] });
+    host.setPropertyValue(row.id, due.id, { type: 'date', value: '2026-09-17' as never });
+    host.setPropertyValue(row.id, when.id, {
+      type: 'datetime',
+      value: { ms: 1_700_000_000_000, zone: 'UTC' },
+    });
+    host.setPropertyValue(row.id, link.id, { type: 'url', value: 'https://example.test' });
+
+    const view = at(host.databaseSchema(db.id)?.views ?? [], 0);
+    const result = host.queryView({ databaseId: db.id, viewId: view.id, ...ctx });
+    expect(result.rows).toHaveLength(1);
+    expect(at(result.rows, 0).values).toEqual(host.page(row.id).properties);
+    expect(at(result.rows, 0).values[status.id]).toEqual({ type: 'select', value: todo });
+    expect(at(result.rows, 0).values[when.id]).toEqual({
+      type: 'datetime',
+      value: { ms: 1_700_000_000_000, zone: 'UTC' },
+    });
+    await host.close();
+  });
+
+  it('refuses a value of the wrong type and leaves the row unchanged', async () => {
+    const host = await open(await dataDir());
+    const db = host.createPage({ title: 'Tasks' });
+    host.convertToDatabase(db.id);
+    const number = host.defineProperty(db.id, { name: 'N', type: 'number' });
+    const row = host.createRow(db.id, {
+      values: { [number.id]: { type: 'number', value: 1 } },
+    });
+    expect(() =>
+      host.setPropertyValue(row.id, number.id, { type: 'text', value: 'x' } as never),
+    ).toThrowError(/does not fit/);
+    expect(host.page(row.id).properties).toEqual({ [number.id]: { type: 'number', value: 1 } });
+    // And clearing with null empties the cell.
+    host.setPropertyValue(row.id, number.id, null);
+    expect(host.page(row.id).properties).toEqual({});
+    await host.close();
+  });
+
+  it('a rename keeps values; removing a property drops them from the table but not the page', async () => {
+    const host = await open(await dataDir());
+    const db = host.createPage({ title: 'Tasks' });
+    host.convertToDatabase(db.id);
+    const n = host.defineProperty(db.id, { name: 'N', type: 'number' });
+    const row = host.createRow(db.id, { values: { [n.id]: { type: 'number', value: 7 } } });
+    host.updateProperty(db.id, n.id, { name: 'Renamed' });
+    const view = at(host.databaseSchema(db.id)?.views ?? [], 0);
+    expect(
+      at(host.queryView({ databaseId: db.id, viewId: view.id, ...ctx }).rows, 0).values,
+    ).toEqual({
+      [n.id]: { type: 'number', value: 7 },
+    });
+
+    host.removeProperty(db.id, n.id);
+    expect(
+      at(host.queryView({ databaseId: db.id, viewId: view.id, ...ctx }).rows, 0).values,
+    ).toEqual({});
+    expect(host.page(row.id).title).toBe('Untitled');
+    await host.close();
+  });
+
+  it('a filter saved on the view narrows the table; an override narrows without writing', async () => {
+    const dir = await dataDir();
+    const host = await open(dir);
+    const db = host.createPage({ title: 'Tasks' });
+    host.convertToDatabase(db.id);
+    const done = host.defineProperty(db.id, { name: 'Done', type: 'checkbox' });
+    const a = host.createRow(db.id, {
+      title: 'a',
+      values: { [done.id]: { type: 'checkbox', value: true } },
+    });
+    host.createRow(db.id, { title: 'b' });
+    await host.flush();
+    const view = at(host.databaseSchema(db.id)?.views ?? [], 0);
+    const filter = {
+      v: 1,
+      expr: { kind: 'leaf' as const, property: done.id, op: 'is' as const, value: true },
+    };
+
+    const before = (await readdir(join(dir, 'log'), { recursive: true })).filter((f) =>
+      f.endsWith('.kpack'),
+    ).length;
+    const previewed = host.queryView({
+      databaseId: db.id,
+      viewId: view.id,
+      overrides: { filter },
+      ...ctx,
+    });
+    expect(previewed.rows.map((r) => r.id)).toEqual([a.id]);
+    await host.flush();
+    const after = (await readdir(join(dir, 'log'), { recursive: true })).filter((f) =>
+      f.endsWith('.kpack'),
+    ).length;
+    expect(after, 'a preview writes nothing').toBe(before);
+
+    host.updateView(db.id, view.id, { filter });
+    expect(
+      host.queryView({ databaseId: db.id, viewId: view.id, ...ctx }).rows.map((r) => r.id),
+    ).toEqual([a.id]);
+    await host.close();
+  });
+
+  it('new rows append; a reorder moves one row in one view and not another', async () => {
+    const host = await open(await dataDir());
+    const db = host.createPage({ title: 'Tasks' });
+    host.convertToDatabase(db.id);
+    const [a, b, c] = ['a', 'b', 'c'].map((title) => host.createRow(db.id, { title }));
+    if (a === undefined || b === undefined || c === undefined) throw new Error('three rows');
+    const table = at(host.databaseSchema(db.id)?.views ?? [], 0);
+    const second = host.createView(db.id, { name: 'Second', type: 'table' });
+    const order = (viewId: string) =>
+      host
+        .queryView({ databaseId: db.id, viewId: viewId as never, ...ctx })
+        .rows.map((r) => r.title)
+        .join('');
+    expect(order(table.id)).toBe('abc');
+
+    host.setRowOrder(c.id, table.id, { kind: 'before', row: a.id });
+    expect(order(table.id)).toBe('cab');
+    expect(order(second.id)).toBe('abc');
+    await host.close();
+  });
+
+  it('a board groups by a select property and a card move changes the group and the order', async () => {
+    const host = await open(await dataDir());
+    const db = host.createPage({ title: 'Tasks' });
+    host.convertToDatabase(db.id);
+    const status = host.defineProperty(db.id, {
+      name: 'Status',
+      type: 'select',
+      options: [{ name: 'Todo' }, { name: 'Done' }],
+    });
+    const [todo, finished] = status.options.map((o) => o.id);
+    if (todo === undefined || finished === undefined) throw new Error('two options');
+    const a = host.createRow(db.id, {
+      title: 'a',
+      values: { [status.id]: { type: 'select', value: todo } },
+    });
+    const b = host.createRow(db.id, {
+      title: 'b',
+      values: { [status.id]: { type: 'select', value: todo } },
+    });
+    const board = host.createView(db.id, { name: 'Board', type: 'board', groupBy: status.id });
+
+    const groups = () =>
+      host
+        .queryView({ databaseId: db.id, viewId: board.id, ...ctx })
+        .groups?.map((g) => [g.key, g.rows.map((r) => r.title)]);
+    expect(groups()).toEqual([
+      [todo, ['a', 'b']],
+      [finished, []],
+      [null, []],
+    ]);
+    host.moveCard(b.id, board.id, finished, { kind: 'first' });
+    expect(groups()).toEqual([
+      [todo, ['a']],
+      [finished, ['b']],
+      [null, []],
+    ]);
+    expect(host.page(a.id).properties).toEqual({ [status.id]: { type: 'select', value: todo } });
+    await host.close();
+  });
+
+  it('schema, values and order survive a restart', async () => {
+    const dir = await dataDir();
+    const first = await open(dir);
+    const db = first.createPage({ title: 'Tasks' });
+    first.convertToDatabase(db.id);
+    const n = first.defineProperty(db.id, { name: 'N', type: 'number' });
+    const [a, b] = [1, 2].map((v) =>
+      first.createRow(db.id, {
+        title: `r${String(v)}`,
+        values: { [n.id]: { type: 'number', value: v } },
+      }),
+    );
+    if (a === undefined || b === undefined) throw new Error('two rows');
+    const view = at(first.databaseSchema(db.id)?.views ?? [], 0);
+    first.setRowOrder(b.id, view.id, { kind: 'first' });
+    await first.close();
+
+    const second = await open(dir);
+    expect(second.databaseSchema(db.id)?.properties.map((p) => p.name)).toEqual(['N']);
+    const rows = second.queryView({ databaseId: db.id, viewId: view.id, ...ctx }).rows;
+    expect(rows.map((r) => r.title)).toEqual(['r2', 'r1']);
+    expect(at(rows, 0).values).toEqual({ [n.id]: { type: 'number', value: 2 } });
+    await second.close();
+  });
+
+  it('two devices setting different properties of one row both survive a sync', async () => {
+    const { a, b } = await pair();
+    const db = a.createPage({ title: 'Shared' });
+    a.convertToDatabase(db.id);
+    const text = a.defineProperty(db.id, { name: 'T', type: 'text' });
+    const num = a.defineProperty(db.id, { name: 'N', type: 'number' });
+    const row = a.createRow(db.id, { title: 'row' });
+    await a.sync();
+    await b.sync();
+
+    a.setPropertyValue(row.id, text.id, { type: 'text', value: 'from A' });
+    b.setPropertyValue(row.id, num.id, { type: 'number', value: 7 });
+    await a.sync();
+    await b.sync();
+    await a.sync();
+
+    const expected = {
+      [text.id]: { type: 'text', value: 'from A' },
+      [num.id]: { type: 'number', value: 7 },
+    };
+    const view = at(a.databaseSchema(db.id)?.views ?? [], 0);
+    expect(at(a.queryView({ databaseId: db.id, viewId: view.id, ...ctx }).rows, 0).values).toEqual(
+      expected,
+    );
+    expect(at(b.queryView({ databaseId: db.id, viewId: view.id, ...ctx }).rows, 0).values).toEqual(
+      expected,
+    );
+    await a.close();
+    await b.close();
+  });
+
+  it('names the database in the change a row edit produces', async () => {
+    const host = await open(await dataDir());
+    const db = host.createPage({ title: 'Tasks' });
+    host.convertToDatabase(db.id);
+    const n = host.defineProperty(db.id, { name: 'N', type: 'number' });
+    const row = host.createRow(db.id);
+    const seen: { databases: string[]; pages: string[] }[] = [];
+    host.onChanged((change) => seen.push(change));
+    host.setPropertyValue(row.id, n.id, { type: 'number', value: 1 });
+    host.renamePage(row.id, 'renamed');
+    host.defineProperty(db.id, { name: 'M', type: 'text' });
+    expect(seen.map((c) => c.databases)).toEqual([[db.id], [db.id], [db.id]]);
+    expect(at(seen, 2).pages).toEqual([db.id]);
+    await host.close();
+  });
+
+  it('deleting a whole database on one device does not halt the other', async () => {
+    // The breaker counts a database and its rows as one unit. Twenty rows in a
+    // two-page workspace used to be 91% of the pages, and a permanent halt on device B.
+    const { a, b } = await pair();
+    a.createPage({ title: 'Kept' });
+    const db = a.createPage({ title: 'Tasks' });
+    a.convertToDatabase(db.id);
+    for (let i = 0; i < 20; i++) a.createRow(db.id, { title: `r${String(i)}` });
+    await a.sync();
+    await b.sync();
+    expect(b.tree()).toHaveLength(2);
+
+    a.archivePage(db.id);
+    a.deletePage(db.id);
+    await a.sync();
+    const status = await b.sync();
+    expect(status.halted).toBeUndefined();
+    expect(titles(b.tree())).toEqual(['Kept']);
+    await a.close();
+    await b.close();
+  });
+
+  it('re-indexes page bodies when the index was rebuilt, so search survives a schema bump', async () => {
+    const dir = await dataDir();
+    const first = await open(dir);
+    const page = first.createPage({ title: 'Recipes' });
+    await first.openBody(page.id);
+    const { LoroDoc } = await import('loro-crdt');
+    const edit = new LoroDoc();
+    edit.setPeerId(9n);
+    edit.getMap('doc').set('nodeName', 'doc');
+    edit.getMap('doc').set('text', 'sourdough starter instructions');
+    edit.commit();
+    await first.applyBodyUpdate(page.id, edit.export({ mode: 'update' }));
+    await first.close();
+
+    // Throw the index away, as a version bump would.
+    await rm(join(dir, 'index.db'), { force: true });
+    const second = await open(dir);
+    expect(second.search('sourdough').map((h) => h.title)).toEqual(['Recipes']);
+    await second.close();
   });
 });

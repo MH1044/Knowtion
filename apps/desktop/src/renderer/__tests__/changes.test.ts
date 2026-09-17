@@ -14,11 +14,13 @@ const local = (pages: string[], bodies: string[] = []): WorkspaceChange => ({
   origin: 'local',
   pages,
   bodies,
+  databases: [],
 });
 const remote = (pages: string[] = [], bodies: string[] = []): WorkspaceChange => ({
   origin: 'remote',
   pages,
   bodies,
+  databases: [],
 });
 
 describe('mergeChanges', () => {
@@ -27,6 +29,7 @@ describe('mergeChanges', () => {
       origin: 'local',
       pages: ['a', 'b'],
       bodies: ['x', 'y'],
+      databases: [],
     });
   });
 

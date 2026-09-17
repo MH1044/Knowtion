@@ -29,6 +29,7 @@ export function mergeChanges(changes: readonly WorkspaceChange[]): WorkspaceChan
     origin: changes.some((c) => c.origin === 'remote') ? 'remote' : 'local',
     pages: anyPage ? [] : [...new Set(changes.flatMap((c) => c.pages))],
     bodies: [...new Set(changes.flatMap((c) => c.bodies))],
+    databases: anyPage ? [] : [...new Set(changes.flatMap((c) => c.databases))],
   };
 }
 
