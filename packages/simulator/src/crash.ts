@@ -77,6 +77,13 @@ const EDITS: Action[] = [
   'movePage',
   'archivePage',
   'deletePage',
+  'convertToDatabase',
+  'addProperty',
+  'setValue',
+  'setValue',
+  'addOption',
+  'moveRow',
+  'setViewSpec',
 ];
 
 const VICTIM_HEX = 'a0'.repeat(16);
@@ -452,13 +459,17 @@ export async function runCrashGate(options: CrashGateOptions): Promise<CrashGate
 
       // 8. Projector equivalence, sampled with the reader above.
       if (sampled) {
-        victim.reproject();
+        victim.reproject(random);
         const rebuilt = victim.rebuildIndex();
-        const incremental = victim.indexPages;
+        const incremental = victim.indexContents;
         rebuilt.close();
         result.projectorChecks += 1;
-        if (JSON.stringify(rebuilt.pages) !== JSON.stringify(incremental)) {
+        if (JSON.stringify(rebuilt.contents) !== JSON.stringify(incremental)) {
           fail(`${tag} after recovery the incremental index differs from a fresh rebuild`);
+        }
+        const disagreement = victim.checkQueries();
+        if (disagreement !== undefined) {
+          fail(`${tag} after recovery the query interpreters disagree on ${disagreement}`);
         }
       }
 

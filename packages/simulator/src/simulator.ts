@@ -11,16 +11,19 @@
  *
  * 1. No device's tree contains a cycle. Concurrent reparenting is the failure that
  *    makes two subtrees vanish from a sidebar at once (ADR-0002).
- * 2. A read model rebuilt from scratch matches the one maintained step by step. This is
- *    projector drift, which surfaces months later as a wrong value on one machine only.
+ * 2. A read model rebuilt from scratch matches the one maintained step by step, on every
+ *    table. This is projector drift, which surfaces months later as a wrong value on one
+ *    machine only.
  * 3. No transition destroys nearly everything. Joplin's circuit breaker: it should never
  *    fire here, and if it does, something is wrong that this code does not understand.
+ * 4. Every view of every database answers the same through SQL over the index as through
+ *    the engine's evaluator over the live workspace (ADR-0014's twin interpreters).
  */
 
 import type { Workspace } from '@knowtion/engine';
 import { checkDataLoss, type FaultProfile, FaultyStorage } from '@knowtion/sync';
 
-import { SimulatedDevice, type Action } from './device.js';
+import { SimulatedDevice, canonicalProperties, type Action } from './device.js';
 import { VirtualClock, choose, seededRandom } from './deterministic.js';
 
 /** Unwraps a lookup the caller knows must have succeeded (e.g. a non-empty array). */
@@ -44,6 +47,16 @@ const ACTIONS: Action[] = [
   'archivePage',
   'deletePage',
   'editBody',
+  'convertToDatabase',
+  'addProperty',
+  'removeProperty',
+  'setValue',
+  'setValue',
+  'clearValue',
+  'addOption',
+  'removeOption',
+  'moveRow',
+  'setViewSpec',
 ];
 
 export interface SimulationOptions {
@@ -91,11 +104,14 @@ const DEFAULT_FAULTS: FaultProfile = {
   duplicateChance: 0.05,
 };
 
-/** Every live page as "title under parent", sorted: a comparable shape of the tree. */
+/**
+ * Every live page as "title under parent", with its property values, order keys and
+ * schema when it has any, sorted: a comparable shape of the workspace.
+ */
 export function shape(device: { workspace: Workspace }): string[] {
   return device.workspace
     .allPages()
-    .map((page) => `${page.title}<-${page.parentId ?? 'ROOT'}`)
+    .map((page) => `${page.title}<-${page.parentId ?? 'ROOT'}${canonicalProperties(page)}`)
     .sort();
 }
 
@@ -182,15 +198,19 @@ export async function runSimulation(options: SimulationOptions): Promise<Simulat
 
     if (hasCycle(device)) fail(`${device.name} has a cycle in its page tree`);
 
-    device.reproject();
+    device.reproject(random);
     const rebuilt = device.rebuildIndex();
-    const incremental = device.indexPages;
+    const incremental = device.indexContents;
     rebuilt.close();
-    if (JSON.stringify(rebuilt.pages) !== JSON.stringify(incremental)) {
+    if (JSON.stringify(rebuilt.contents) !== JSON.stringify(incremental)) {
       fail(
         `${device.name}: a read model rebuilt from scratch does not match the one ` +
           'maintained incrementally',
       );
+    }
+    const disagreement = device.checkQueries();
+    if (disagreement !== undefined) {
+      fail(`${device.name}: the SQL and engine query interpreters disagree on ${disagreement}`);
     }
 
     storage.tick();
