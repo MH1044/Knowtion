@@ -77,7 +77,9 @@ describe('rebuild equivalence', () => {
     rebuilt.projectPages(workspace.allPages());
     for (const [id, text] of bodies) rebuilt.setPageBody(id, text);
 
-    expect(rebuilt.pages()).toEqual(incremental.pages());
+    // Every projected table, not only the page rows: the property tables are where
+    // incremental and rebuilt could quietly part ways.
+    expect(rebuilt.contents()).toEqual(incremental.contents());
 
     // And the indexes agree, not merely the tables.
     for (const term of ['searchable', 'Renamed', 'Page', 'body']) {
