@@ -118,6 +118,7 @@ export function ViewToolbar({
           <button
             type="button"
             className="add-tab"
+            aria-label="New view"
             title="New view"
             onClick={() => {
               setAddingView(true);
