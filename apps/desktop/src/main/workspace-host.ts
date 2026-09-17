@@ -16,13 +16,27 @@ import {
   Workspace,
   systemRuntime,
   uuidToBytes,
+  type DatabaseSchema,
   type NodeId,
+  type OptionColour,
+  type OptionId,
   type Page,
   type PageNode,
+  type PropertyDef,
+  type PropertyId,
+  type PropertyType,
+  type PropertyValue,
+  type RowPosition,
+  type SelectOption,
+  type Sort,
+  type StoredFilter,
+  type ViewDef,
+  type ViewId,
+  type ViewType,
 } from '@knowtion/engine';
 import { loroDocFromJson, plainTextFromJson } from '@knowtion/editor/headless';
 import { importNotionArchive, type ImportReport } from '@knowtion/importers';
-import { ReadModel, type SearchHit } from '@knowtion/readmodel';
+import { ReadModel, type QueryResult, type SearchHit } from '@knowtion/readmodel';
 import {
   deviceFingerprint,
   toHex,
@@ -149,7 +163,26 @@ export interface WorkspaceChange {
   pages: NodeId[];
   /** Pages whose body document changed. Always exact. */
   bodies: NodeId[];
+  /** Databases whose schema or rows changed, so a table view knows to refetch. */
+  databases: NodeId[];
 }
+
+/** A view query as the renderer asks for it: a stored view, with unsaved edits laid over. */
+export interface ViewQuery {
+  databaseId: NodeId;
+  viewId: ViewId;
+  /** Filter, sorts or grouping the toolbar is previewing before saving them. */
+  overrides?: {
+    filter?: StoredFilter | null;
+    sorts?: Sort[];
+    groupBy?: PropertyId | null;
+  };
+  limit?: number;
+  offset?: number;
+}
+
+/** Rows a single query may carry across IPC. The renderer pages past it. */
+const MAX_QUERY_ROWS = 500;
 
 /** One open page body: its document and the store that persists it. */
 interface OpenBody {
@@ -299,13 +332,50 @@ export class WorkspaceHost {
       );
     }
 
+    // Read BEFORE projecting: this is "the store was rebuilt", which projecting hides.
+    const rebuilt = host.#index.isEmpty;
     host.#reindexPages();
+    if (rebuilt) {
+      // A schema bump drops the index and its body text with it. Bodies are otherwise only
+      // re-indexed by a sync cycle, which a local-only workspace never runs — so without
+      // this a v0.2 install upgrading would lose body search for good.
+      try {
+        await host.#syncBodies();
+      } catch (error) {
+        console.error(
+          `[knowtion] could not re-index page bodies after a rebuild: ${String(error)}`,
+        );
+      }
+    }
     return host;
   }
 
-  /** Re-project the hierarchy. Cheap: it is the one document always held in memory. */
+  /**
+   * Re-project the hierarchy: the structural path.
+   *
+   * The whole tree, every time. Right for anything that changes shape — a move, an
+   * archive, a schema change — and far too slow for a cell edit at ten thousand rows,
+   * which takes `#reindexPage` instead.
+   */
   #reindexPages(): void {
     this.#index.projectPages(this.#workspace.allPages());
+  }
+
+  /** Re-project one page in place: the hot path for a value edit, a rename, a new row. */
+  #reindexPage(id: NodeId): void {
+    this.#index.upsertPage(this.#workspace.getPage(id));
+  }
+
+  /**
+   * Pages that count towards the circuit breaker: a database and its rows are one unit.
+   *
+   * Rows make bulk deletion routine — one twenty-row database archived and deleted is
+   * twenty-one pages gone — and a guard tuned for pages would halt the other device
+   * forever over a tidy-up. Counting units keeps the guard for what it was built for,
+   * a merge that removes most of what a person sees in the sidebar.
+   */
+  #unitCount(): number {
+    return this.#workspace.allPages().filter((page) => page.properties === undefined).length;
   }
 
   // ---- change notification ------------------------------------------------
@@ -339,8 +409,9 @@ export class WorkspaceHost {
 
   // ---- queries -----------------------------------------------------------
 
+  /** The sidebar's tree. Rows stay out of it and are counted; a table shows them. */
   tree(): PageNode[] {
-    return this.#workspace.tree();
+    return this.#workspace.tree({ collapseDatabases: true });
   }
 
   trash(): Page[] {
@@ -357,15 +428,25 @@ export class WorkspaceHost {
     const page = this.#workspace.createPage(input);
     this.#reindexPages();
     this.#scheduleFlush();
-    this.#changed({ origin: 'local', pages: [page.id], bodies: [] });
+    this.#changed({
+      origin: 'local',
+      pages: [page.id],
+      bodies: [],
+      databases: this.#databaseOf(page),
+    });
     return page;
   }
 
   renamePage(id: NodeId, title: string): Page {
     const page = this.#workspace.renamePage(id, title);
-    this.#reindexPages();
+    this.#reindexPage(page.id);
     this.#scheduleFlush();
-    this.#changed({ origin: 'local', pages: [page.id], bodies: [] });
+    this.#changed({
+      origin: 'local',
+      pages: [page.id],
+      bodies: [],
+      databases: this.#databaseOf(page),
+    });
     return page;
   }
 
@@ -373,7 +454,7 @@ export class WorkspaceHost {
     const page = this.#workspace.movePage(id, parentId);
     this.#reindexPages();
     this.#scheduleFlush();
-    this.#changed({ origin: 'local', pages: [page.id], bodies: [] });
+    this.#changed({ origin: 'local', pages: [page.id], bodies: [], databases: [] });
     return page;
   }
 
@@ -381,7 +462,12 @@ export class WorkspaceHost {
     const page = this.#workspace.archivePage(id);
     this.#reindexPages();
     this.#scheduleFlush();
-    this.#changed({ origin: 'local', pages: [page.id], bodies: [] });
+    this.#changed({
+      origin: 'local',
+      pages: [page.id],
+      bodies: [],
+      databases: this.#databaseOf(page),
+    });
     return page;
   }
 
@@ -389,15 +475,233 @@ export class WorkspaceHost {
     const page = this.#workspace.restorePage(id);
     this.#reindexPages();
     this.#scheduleFlush();
-    this.#changed({ origin: 'local', pages: [page.id], bodies: [] });
+    this.#changed({
+      origin: 'local',
+      pages: [page.id],
+      bodies: [],
+      databases: this.#databaseOf(page),
+    });
     return page;
   }
 
   deletePage(id: NodeId): void {
+    const databases = this.#databaseOf(this.#workspace.getPage(id));
     this.#workspace.deletePage(id);
     this.#reindexPages();
     this.#scheduleFlush();
-    this.#changed({ origin: 'local', pages: [id], bodies: [] });
+    this.#changed({ origin: 'local', pages: [id], bodies: [], databases });
+  }
+
+  /** The database a page belongs to as a row, if any, for change notifications. */
+  #databaseOf(page: Page): NodeId[] {
+    return page.properties !== undefined && page.parentId !== undefined ? [page.parentId] : [];
+  }
+
+  // ---- databases -----------------------------------------------------------
+
+  /** Every one of these: engine → index → flush → tell the renderer, like the intents above. */
+  #afterSchemaChange(databaseId: NodeId): void {
+    this.#reindexPages();
+    this.#scheduleFlush();
+    this.#changed({ origin: 'local', pages: [databaseId], bodies: [], databases: [databaseId] });
+  }
+
+  #afterRowChange(row: Page): void {
+    this.#reindexPage(row.id);
+    this.#scheduleFlush();
+    this.#changed({
+      origin: 'local',
+      pages: [row.id],
+      bodies: [],
+      databases: this.#databaseOf(row),
+    });
+  }
+
+  databaseSchema(id: NodeId): DatabaseSchema | undefined {
+    return this.#workspace.getPage(id).database;
+  }
+
+  convertToDatabase(id: NodeId): DatabaseSchema {
+    const schema = this.#workspace.convertToDatabase(id);
+    this.#afterSchemaChange(id);
+    return schema;
+  }
+
+  defineProperty(
+    databaseId: NodeId,
+    input: { name: string; type: PropertyType; options?: { name: string; color?: OptionColour }[] },
+  ): PropertyDef {
+    const property = this.#workspace.defineProperty(databaseId, input);
+    this.#afterSchemaChange(databaseId);
+    return property;
+  }
+
+  updateProperty(
+    databaseId: NodeId,
+    propertyId: PropertyId,
+    patch: { name?: string; type?: PropertyType },
+  ): PropertyDef {
+    const property = this.#workspace.updateProperty(databaseId, propertyId, patch);
+    this.#afterSchemaChange(databaseId);
+    return property;
+  }
+
+  removeProperty(databaseId: NodeId, propertyId: PropertyId): void {
+    this.#workspace.removeProperty(databaseId, propertyId);
+    this.#afterSchemaChange(databaseId);
+  }
+
+  addOption(
+    databaseId: NodeId,
+    propertyId: PropertyId,
+    input: { name: string; color?: OptionColour },
+  ): SelectOption {
+    const option = this.#workspace.addOption(databaseId, propertyId, input);
+    this.#afterSchemaChange(databaseId);
+    return option;
+  }
+
+  updateOption(
+    databaseId: NodeId,
+    propertyId: PropertyId,
+    optionId: OptionId,
+    patch: { name?: string; color?: OptionColour | null },
+  ): SelectOption {
+    const option = this.#workspace.updateOption(databaseId, propertyId, optionId, patch);
+    this.#afterSchemaChange(databaseId);
+    return option;
+  }
+
+  removeOption(databaseId: NodeId, propertyId: PropertyId, optionId: OptionId): void {
+    this.#workspace.removeOption(databaseId, propertyId, optionId);
+    this.#afterSchemaChange(databaseId);
+  }
+
+  createRow(
+    databaseId: NodeId,
+    input: { title?: string; values?: Record<PropertyId, PropertyValue> } = {},
+  ): Page {
+    const row = this.#workspace.createRow(databaseId, input);
+    this.#afterRowChange(row);
+    return row;
+  }
+
+  /** Set a cell, or clear it with null. `null` rather than undefined: it crosses IPC. */
+  setPropertyValue(rowId: NodeId, propertyId: PropertyId, value: PropertyValue | null): Page {
+    const row =
+      value === null
+        ? this.#workspace.clearPropertyValue(rowId, propertyId)
+        : this.#workspace.setPropertyValue(rowId, propertyId, value);
+    this.#afterRowChange(row);
+    return row;
+  }
+
+  createView(
+    databaseId: NodeId,
+    input: { name: string; type: ViewType; groupBy?: PropertyId },
+  ): ViewDef {
+    const view = this.#workspace.createView(databaseId, input);
+    this.#afterSchemaChange(databaseId);
+    return view;
+  }
+
+  updateView(
+    databaseId: NodeId,
+    viewId: ViewId,
+    patch: {
+      name?: string;
+      type?: ViewType;
+      filter?: StoredFilter | null;
+      sorts?: Sort[];
+      groupBy?: PropertyId | null;
+      columns?: PropertyId[];
+      hidden?: PropertyId[];
+    },
+  ): ViewDef {
+    const view = this.#workspace.updateView(databaseId, viewId, patch);
+    this.#afterSchemaChange(databaseId);
+    return view;
+  }
+
+  removeView(databaseId: NodeId, viewId: ViewId): void {
+    this.#workspace.removeView(databaseId, viewId);
+    this.#afterSchemaChange(databaseId);
+  }
+
+  /**
+   * Reorder a row within a view. Structural, since other rows may be keyed on the way:
+   * the whole tree is re-projected rather than one row.
+   */
+  setRowOrder(rowId: NodeId, viewId: ViewId, position: RowPosition): { keyed: NodeId[] } {
+    const result = this.#workspace.setRowOrder(rowId, viewId, position);
+    const row = this.#workspace.getPage(rowId);
+    this.#reindexPages();
+    this.#scheduleFlush();
+    this.#changed({
+      origin: 'local',
+      pages: [rowId, ...result.keyed],
+      bodies: [],
+      databases: this.#databaseOf(row),
+    });
+    return result;
+  }
+
+  /** A board drag: one engine commit, one flush, one change event. */
+  moveCard(
+    rowId: NodeId,
+    viewId: ViewId,
+    option: OptionId | null,
+    position: RowPosition,
+  ): { keyed: NodeId[] } {
+    const result = this.#workspace.moveCard(rowId, viewId, option, position);
+    const row = this.#workspace.getPage(rowId);
+    this.#reindexPages();
+    this.#scheduleFlush();
+    this.#changed({
+      origin: 'local',
+      pages: [rowId, ...result.keyed],
+      bodies: [],
+      databases: this.#databaseOf(row),
+    });
+    return result;
+  }
+
+  /**
+   * Run a view, with any unsaved toolbar edits laid over its stored spec.
+   *
+   * "Now" comes from the wall clock here, in apps/, where it is allowed — the read model
+   * never reaches for one. Capped at MAX_QUERY_ROWS per call; the renderer pages.
+   */
+  queryView(input: ViewQuery): QueryResult {
+    const schema = this.#workspace.database(input.databaseId);
+    const stored = schema.views.find((v) => v.id === input.viewId);
+    if (stored === undefined) throw new Error(`no view ${input.viewId} on this database`);
+    const view: ViewDef = { ...stored };
+    const overrides = input.overrides ?? {};
+    if (overrides.filter === null) delete view.filter;
+    else if (overrides.filter !== undefined) view.filter = overrides.filter;
+    if (overrides.sorts !== undefined) view.sorts = overrides.sorts;
+    if (overrides.groupBy === null) delete view.groupBy;
+    else if (overrides.groupBy !== undefined) view.groupBy = overrides.groupBy;
+
+    const ctx = {
+      nowMs: Date.now(),
+      timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+    };
+    return this.#index.query(
+      input.databaseId,
+      {
+        ...(view.filter === undefined ? {} : { filter: view.filter }),
+        sorts: view.sorts,
+        ...(view.groupBy === undefined ? {} : { groupBy: view.groupBy }),
+      },
+      ctx,
+      {
+        limit: Math.min(input.limit ?? MAX_QUERY_ROWS, MAX_QUERY_ROWS),
+        offset: input.offset ?? 0,
+      },
+      input.viewId,
+    );
   }
 
   /** Flatten a page's document and hand the text to the index. */
@@ -531,7 +835,7 @@ export class WorkspaceHost {
     body.dirty = true;
     this.#indexBody(id, body.doc);
     this.#scheduleFlush();
-    this.#changed({ origin: 'local', pages: [], bodies: [id] });
+    this.#changed({ origin: 'local', pages: [], bodies: [id], databases: [] });
   }
 
   // ---- import ------------------------------------------------------------
@@ -591,7 +895,7 @@ export class WorkspaceHost {
     // One event for the whole import, not one per page: a ten-thousand-page archive
     // must not send the renderer ten thousand refreshes.
     const created = [...nodeByPath.values()];
-    this.#changed({ origin: 'local', pages: created, bodies: created });
+    this.#changed({ origin: 'local', pages: created, bodies: created, databases: [] });
     return report;
   }
 
@@ -638,7 +942,7 @@ export class WorkspaceHost {
     }
     await this.flush();
 
-    const pagesBeforeMerge = this.#workspace.allPages().length;
+    const unitsBeforeMerge = this.#unitCount();
     const tree = await this.#store.pull(this.#workspace.doc);
 
     // Joplin's circuit breaker. Knowtion's layout is meant to make this impossible —
@@ -646,7 +950,7 @@ export class WorkspaceHost {
     // reasoning that makes it unnecessary is the same reasoning that would be wrong if
     // there were a bug. This is the last thing between a defect in the merge path and
     // somebody's notes, so it stops rather than continues.
-    const verdict = checkDataLoss(pagesBeforeMerge, this.#workspace.allPages().length);
+    const verdict = checkDataLoss(unitsBeforeMerge, this.#unitCount());
     if (!verdict.safe) {
       this.#haltedReason = verdict.reason ?? 'merging would have removed almost everything';
       console.error(`[knowtion] sync halted: ${this.#haltedReason}`);
@@ -666,7 +970,7 @@ export class WorkspaceHost {
     if (tree.applied > 0 || tree.adopted > 0 || bodiesUpdated.length > 0) {
       // Never on a quiet cycle: a listener refreshes on every event, and a folder that
       // is polled every fifteen seconds must not produce a refresh every fifteen seconds.
-      this.#changed({ origin: 'remote', pages: [], bodies: bodiesUpdated });
+      this.#changed({ origin: 'remote', pages: [], bodies: bodiesUpdated, databases: [] });
     }
     await this.#writeAck();
     await this.#compact();

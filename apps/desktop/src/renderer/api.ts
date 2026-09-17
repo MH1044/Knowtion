@@ -90,6 +90,8 @@ export interface WorkspaceChange {
   pages: string[];
   /** Pages whose body changed. Always exact. */
   bodies: string[];
+  /** Databases whose schema or rows changed. Empty on a remote change: possibly any. */
+  databases: string[];
 }
 
 type Result<T> = { ok: true; value: T } | { ok: false; error: string };
