@@ -15,7 +15,7 @@
  */
 
 /** Bumped when the table shapes change. A mismatch drops and rebuilds. */
-export const SCHEMA_VERSION = 2;
+export const SCHEMA_VERSION = 3;
 
 /**
  * Bumped when the way text is turned into tokens changes.
@@ -41,6 +41,9 @@ create table if not exists page (
   uuid        text not null,
   parent_id   text,
   title       text not null,
+  -- The engine's folded form of the title, so a title sort folds case exactly as the
+  -- JavaScript evaluator does. SQLite's own lower() is ASCII-only.
+  title_fold  text not null,
   body        text not null default '',
   archived_at integer,
   created_at  integer not null,
