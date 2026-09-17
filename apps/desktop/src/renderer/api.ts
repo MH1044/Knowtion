@@ -6,6 +6,25 @@
  * unknown state with nothing shown to the user.
  */
 
+import type {
+  DatabaseSchema,
+  OptionColour,
+  PropertyDef,
+  PropertyType,
+  PropertyValue,
+  QueryResult,
+  RowPosition,
+  SelectOption,
+  Sort,
+  StoredFilter,
+  ViewDef,
+  ViewOverrides,
+  ViewQuery,
+  ViewType,
+} from '../shared/db-types.js';
+
+export type * from '../shared/db-types.js';
+
 export interface Page {
   id: string;
   parentId?: string;
@@ -15,10 +34,17 @@ export interface Page {
   createdAt: number;
   updatedAt: number;
   archivedAt?: number;
+  /** Present when the page is a database. */
+  database?: DatabaseSchema;
+  /** Present when the page is a row of a database. */
+  properties?: Record<string, PropertyValue>;
+  orderKeys?: Record<string, string>;
 }
 
 export interface PageNode extends Page {
   children: PageNode[];
+  /** Live rows under a database whose children were left out of the tree. */
+  rowCount?: number;
 }
 
 export interface SearchHit {
@@ -134,6 +160,79 @@ interface Bridge {
   updateBody(input: { id: string; update: Uint8Array }): Promise<Result<null>>;
   /** Subscribe to pushed changes. Returns the unsubscribe. Not a request, so no Result. */
   onChanged(callback: (change: WorkspaceChange) => void): () => void;
+  dbSchema(input: { id: string }): Promise<Result<DatabaseSchema | null>>;
+  dbConvert(input: { id: string }): Promise<Result<DatabaseSchema>>;
+  dbDefineProperty(input: {
+    databaseId: string;
+    name: string;
+    type: PropertyType;
+    options?: { name: string; color?: OptionColour }[];
+  }): Promise<Result<PropertyDef>>;
+  dbUpdateProperty(input: {
+    databaseId: string;
+    propertyId: string;
+    patch: { name?: string; type?: PropertyType };
+  }): Promise<Result<PropertyDef>>;
+  dbRemoveProperty(input: { databaseId: string; propertyId: string }): Promise<Result<null>>;
+  dbAddOption(input: {
+    databaseId: string;
+    propertyId: string;
+    name: string;
+    color?: OptionColour;
+  }): Promise<Result<SelectOption>>;
+  dbUpdateOption(input: {
+    databaseId: string;
+    propertyId: string;
+    optionId: string;
+    patch: { name?: string; color?: OptionColour | null };
+  }): Promise<Result<SelectOption>>;
+  dbRemoveOption(input: {
+    databaseId: string;
+    propertyId: string;
+    optionId: string;
+  }): Promise<Result<null>>;
+  dbCreateRow(input: {
+    databaseId: string;
+    title?: string;
+    values?: Record<string, PropertyValue>;
+  }): Promise<Result<Page>>;
+  dbSetValue(input: {
+    rowId: string;
+    propertyId: string;
+    value: PropertyValue | null;
+  }): Promise<Result<Page>>;
+  dbCreateView(input: {
+    databaseId: string;
+    name: string;
+    type: ViewType;
+    groupBy?: string;
+  }): Promise<Result<ViewDef>>;
+  dbUpdateView(input: {
+    databaseId: string;
+    viewId: string;
+    patch: {
+      name?: string;
+      type?: ViewType;
+      filter?: StoredFilter | null;
+      sorts?: Sort[];
+      groupBy?: string | null;
+      columns?: string[];
+      hidden?: string[];
+    };
+  }): Promise<Result<ViewDef>>;
+  dbRemoveView(input: { databaseId: string; viewId: string }): Promise<Result<null>>;
+  dbReorder(input: {
+    rowId: string;
+    viewId: string;
+    position: RowPosition;
+  }): Promise<Result<{ keyed: string[] }>>;
+  dbMoveCard(input: {
+    rowId: string;
+    viewId: string;
+    option: string | null;
+    position: RowPosition;
+  }): Promise<Result<{ keyed: string[] }>>;
+  dbQuery(input: ViewQuery): Promise<Result<QueryResult>>;
 }
 
 declare global {
@@ -178,4 +277,59 @@ export const api = {
   updateBody: (id: string, update: Uint8Array) =>
     unwrap(window.knowtion.updateBody({ id, update })),
   onChanged: (callback: (change: WorkspaceChange) => void) => window.knowtion.onChanged(callback),
+  dbSchema: (id: string) => unwrap(window.knowtion.dbSchema({ id })),
+  dbConvert: (id: string) => unwrap(window.knowtion.dbConvert({ id })),
+  dbDefineProperty: (
+    databaseId: string,
+    input: { name: string; type: PropertyType; options?: { name: string; color?: OptionColour }[] },
+  ) => unwrap(window.knowtion.dbDefineProperty({ databaseId, ...input })),
+  dbUpdateProperty: (
+    databaseId: string,
+    propertyId: string,
+    patch: { name?: string; type?: PropertyType },
+  ) => unwrap(window.knowtion.dbUpdateProperty({ databaseId, propertyId, patch })),
+  dbRemoveProperty: (databaseId: string, propertyId: string) =>
+    unwrap(window.knowtion.dbRemoveProperty({ databaseId, propertyId })),
+  dbAddOption: (
+    databaseId: string,
+    propertyId: string,
+    input: { name: string; color?: OptionColour },
+  ) => unwrap(window.knowtion.dbAddOption({ databaseId, propertyId, ...input })),
+  dbUpdateOption: (
+    databaseId: string,
+    propertyId: string,
+    optionId: string,
+    patch: { name?: string; color?: OptionColour | null },
+  ) => unwrap(window.knowtion.dbUpdateOption({ databaseId, propertyId, optionId, patch })),
+  dbRemoveOption: (databaseId: string, propertyId: string, optionId: string) =>
+    unwrap(window.knowtion.dbRemoveOption({ databaseId, propertyId, optionId })),
+  dbCreateRow: (
+    databaseId: string,
+    input: { title?: string; values?: Record<string, PropertyValue> } = {},
+  ) => unwrap(window.knowtion.dbCreateRow({ databaseId, ...input })),
+  dbSetValue: (rowId: string, propertyId: string, value: PropertyValue | null) =>
+    unwrap(window.knowtion.dbSetValue({ rowId, propertyId, value })),
+  dbCreateView: (databaseId: string, input: { name: string; type: ViewType; groupBy?: string }) =>
+    unwrap(window.knowtion.dbCreateView({ databaseId, ...input })),
+  dbUpdateView: (
+    databaseId: string,
+    viewId: string,
+    patch: {
+      name?: string;
+      type?: ViewType;
+      filter?: StoredFilter | null;
+      sorts?: Sort[];
+      groupBy?: string | null;
+      columns?: string[];
+      hidden?: string[];
+    },
+  ) => unwrap(window.knowtion.dbUpdateView({ databaseId, viewId, patch })),
+  dbRemoveView: (databaseId: string, viewId: string) =>
+    unwrap(window.knowtion.dbRemoveView({ databaseId, viewId })),
+  dbReorder: (rowId: string, viewId: string, position: RowPosition) =>
+    unwrap(window.knowtion.dbReorder({ rowId, viewId, position })),
+  dbMoveCard: (rowId: string, viewId: string, option: string | null, position: RowPosition) =>
+    unwrap(window.knowtion.dbMoveCard({ rowId, viewId, option, position })),
+  dbQuery: (query: ViewQuery & { overrides?: ViewOverrides }) =>
+    unwrap(window.knowtion.dbQuery(query)),
 };

@@ -12,7 +12,7 @@ import { dirname, join } from 'node:path';
 import { hostname } from 'node:os';
 import { fileURLToPath } from 'node:url';
 
-import { BrowserWindow, app, dialog, ipcMain, session } from 'electron';
+import { BrowserWindow, app, dialog, ipcMain, session, shell } from 'electron';
 
 import {
   checkRecoveryPhrase,
@@ -221,7 +221,150 @@ function handle(channel: string, fn: (...args: never[]) => unknown): void {
   });
 }
 
+/**
+ * The renderer is sandboxed, not trusted. A payload of the wrong shape must come back as
+ * `{ ok: false }` rather than a TypeError thrown inside the engine, so every db channel
+ * checks the fields it forwards. Value typing itself is the engine's job.
+ */
+function str(value: unknown, what: string): string {
+  if (typeof value !== 'string') throw new Error(`${what} must be a string`);
+  return value;
+}
+
+function record(value: unknown, what: string): Record<string, unknown> {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    throw new Error(`${what} must be an object`);
+  }
+  return value as Record<string, unknown>;
+}
+
+function registerDatabaseHandlers(): void {
+  handle('db:schema', (input: unknown) => {
+    const { id } = record(input, 'input');
+    return mustHost().databaseSchema(str(id, 'id') as never) ?? null;
+  });
+  handle('db:convert', (input: unknown) => {
+    const { id } = record(input, 'input');
+    return mustHost().convertToDatabase(str(id, 'id') as never);
+  });
+  handle('db:defineProperty', (input: unknown) => {
+    const { databaseId, name, type, options } = record(input, 'input');
+    return mustHost().defineProperty(str(databaseId, 'databaseId') as never, {
+      name: str(name, 'name'),
+      type: str(type, 'type') as never,
+      ...(options === undefined ? {} : { options: options as never }),
+    });
+  });
+  handle('db:updateProperty', (input: unknown) => {
+    const { databaseId, propertyId, patch } = record(input, 'input');
+    return mustHost().updateProperty(
+      str(databaseId, 'databaseId') as never,
+      str(propertyId, 'propertyId') as never,
+      record(patch, 'patch'),
+    );
+  });
+  handle('db:removeProperty', (input: unknown) => {
+    const { databaseId, propertyId } = record(input, 'input');
+    mustHost().removeProperty(
+      str(databaseId, 'databaseId') as never,
+      str(propertyId, 'propertyId') as never,
+    );
+  });
+  handle('db:addOption', (input: unknown) => {
+    const { databaseId, propertyId, name, color } = record(input, 'input');
+    return mustHost().addOption(
+      str(databaseId, 'databaseId') as never,
+      str(propertyId, 'propertyId') as never,
+      {
+        name: str(name, 'name'),
+        ...(color === undefined ? {} : { color: str(color, 'color') as never }),
+      },
+    );
+  });
+  handle('db:updateOption', (input: unknown) => {
+    const { databaseId, propertyId, optionId, patch } = record(input, 'input');
+    return mustHost().updateOption(
+      str(databaseId, 'databaseId') as never,
+      str(propertyId, 'propertyId') as never,
+      str(optionId, 'optionId') as never,
+      record(patch, 'patch'),
+    );
+  });
+  handle('db:removeOption', (input: unknown) => {
+    const { databaseId, propertyId, optionId } = record(input, 'input');
+    mustHost().removeOption(
+      str(databaseId, 'databaseId') as never,
+      str(propertyId, 'propertyId') as never,
+      str(optionId, 'optionId') as never,
+    );
+  });
+  handle('db:createRow', (input: unknown) => {
+    const { databaseId, title, values } = record(input, 'input');
+    return mustHost().createRow(str(databaseId, 'databaseId') as never, {
+      ...(title === undefined ? {} : { title: str(title, 'title') }),
+      ...(values === undefined ? {} : { values: record(values, 'values') as never }),
+    });
+  });
+  handle('db:setValue', (input: unknown) => {
+    const { rowId, propertyId, value } = record(input, 'input');
+    if (value !== null) record(value, 'value');
+    return mustHost().setPropertyValue(
+      str(rowId, 'rowId') as never,
+      str(propertyId, 'propertyId') as never,
+      value as never,
+    );
+  });
+  handle('db:createView', (input: unknown) => {
+    const { databaseId, name, type, groupBy } = record(input, 'input');
+    return mustHost().createView(str(databaseId, 'databaseId') as never, {
+      name: str(name, 'name'),
+      type: str(type, 'type') as never,
+      ...(groupBy === undefined ? {} : { groupBy: str(groupBy, 'groupBy') as never }),
+    });
+  });
+  handle('db:updateView', (input: unknown) => {
+    const { databaseId, viewId, patch } = record(input, 'input');
+    return mustHost().updateView(
+      str(databaseId, 'databaseId') as never,
+      str(viewId, 'viewId') as never,
+      record(patch, 'patch'),
+    );
+  });
+  handle('db:removeView', (input: unknown) => {
+    const { databaseId, viewId } = record(input, 'input');
+    mustHost().removeView(str(databaseId, 'databaseId') as never, str(viewId, 'viewId') as never);
+  });
+  handle('db:reorder', (input: unknown) => {
+    const { rowId, viewId, position } = record(input, 'input');
+    return mustHost().setRowOrder(
+      str(rowId, 'rowId') as never,
+      str(viewId, 'viewId') as never,
+      record(position, 'position') as never,
+    );
+  });
+  handle('db:moveCard', (input: unknown) => {
+    const { rowId, viewId, option, position } = record(input, 'input');
+    return mustHost().moveCard(
+      str(rowId, 'rowId') as never,
+      str(viewId, 'viewId') as never,
+      (option === null ? null : str(option, 'option')) as never,
+      record(position, 'position') as never,
+    );
+  });
+  handle('db:query', (input: unknown) => {
+    const { databaseId, viewId, overrides, limit, offset } = record(input, 'input');
+    return mustHost().queryView({
+      databaseId: str(databaseId, 'databaseId') as never,
+      viewId: str(viewId, 'viewId') as never,
+      ...(overrides === undefined ? {} : { overrides: record(overrides, 'overrides') }),
+      ...(typeof limit === 'number' ? { limit } : {}),
+      ...(typeof offset === 'number' ? { offset } : {}),
+    });
+  });
+}
+
 function registerHandlers(): void {
+  registerDatabaseHandlers();
   handle('workspace:tree', () => mustHost().tree());
   handle('workspace:trash', () => mustHost().trash());
   handle('workspace:page', (input: { id: string }) => mustHost().page(input.id as never));
@@ -739,6 +882,13 @@ async function createWindow(): Promise<void> {
       nodeIntegration: false,
       sandbox: true,
     },
+  });
+
+  // A URL cell is a link. Without this, clicking one opens a new BrowserWindow inside
+  // the sandbox pointed at the internet; with it, the OS browser opens and nothing else.
+  window.webContents.setWindowOpenHandler(({ url }) => {
+    if (/^https?:/i.test(url)) void shell.openExternal(url);
+    return { action: 'deny' };
   });
 
   window.once('ready-to-show', () => {

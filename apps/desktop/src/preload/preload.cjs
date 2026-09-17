@@ -36,6 +36,22 @@ contextBridge.exposeInMainWorld('knowtion', {
   flush: call('workspace:flush'),
   openBody: call('body:open'),
   updateBody: call('body:update'),
+  dbSchema: call('db:schema'),
+  dbConvert: call('db:convert'),
+  dbDefineProperty: call('db:defineProperty'),
+  dbUpdateProperty: call('db:updateProperty'),
+  dbRemoveProperty: call('db:removeProperty'),
+  dbAddOption: call('db:addOption'),
+  dbUpdateOption: call('db:updateOption'),
+  dbRemoveOption: call('db:removeOption'),
+  dbCreateRow: call('db:createRow'),
+  dbSetValue: call('db:setValue'),
+  dbCreateView: call('db:createView'),
+  dbUpdateView: call('db:updateView'),
+  dbRemoveView: call('db:removeView'),
+  dbReorder: call('db:reorder'),
+  dbMoveCard: call('db:moveCard'),
+  dbQuery: call('db:query'),
   // The one channel that flows from main to renderer. The renderer gets the payload and
   // nothing else: the IpcRendererEvent carries the sender and any transferred ports.
   onChanged: (callback) => {
