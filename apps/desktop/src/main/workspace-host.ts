@@ -64,6 +64,7 @@ import {
   type PackCrypto,
 } from '@knowtion/sync';
 
+import { MAX_QUERY_ROWS } from '../shared/db-types.js';
 import { normaliseText, plainTextFromLoroJson } from './plain-text.js';
 import { currentKey, keyringFrom, type WorkspaceKeyMaterial } from './workspace-keys.js';
 
@@ -186,9 +187,6 @@ export interface ViewQuery {
   limit?: number;
   offset?: number;
 }
-
-/** Rows a single query may carry across IPC. The renderer pages past it. */
-const MAX_QUERY_ROWS = 500;
 
 /** One open page body: its document and the store that persists it. */
 interface OpenBody {

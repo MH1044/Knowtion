@@ -148,3 +148,12 @@ export interface ViewQuery {
 
 /** The filter spec version the renderer writes. Mirrors the engine; the drift test checks it. */
 export const QUERY_SPEC_VERSION = 1;
+
+/**
+ * Rows a single query may carry across the process boundary.
+ *
+ * Both sides read this one number: the host clamps every query to it, and the renderer
+ * uses it as the size of a page. They were separate constants that happened to agree,
+ * which is a silent bug waiting for someone to change one of them.
+ */
+export const MAX_QUERY_ROWS = 500;

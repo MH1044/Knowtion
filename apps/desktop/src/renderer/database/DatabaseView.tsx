@@ -6,21 +6,26 @@
  * here, changed, which is how an edit on another device reaches an open table without
  * polling. Which view is active is ephemera (FORMAT.md section 10) and lives in
  * localStorage, wrapped in try/catch because storage can be unavailable in a sandbox.
+ *
+ * A query carries at most MAX_QUERY_ROWS rows across the process boundary, so a view with
+ * more matching rows than that is read one page at a time rather than accumulated: a
+ * table that grows without bound is a table that eventually stops responding, and the
+ * count a query reports is the full number of matches, so the page count is exact.
  */
 import { useCallback, useEffect, useState } from 'react';
 
+import { MAX_QUERY_ROWS } from '../../shared/db-types.js';
 import { api, type Page, type QueryResult, type ViewDef } from '../api.js';
 import { useWorkspaceChanges } from '../changes.js';
 import { BoardView } from './BoardView.js';
 import { positionForDrop } from './dnd.js';
 import { FilterEditor } from './FilterEditor.js';
+import { clampPage, offsetOf, pageCount } from './paging.js';
 import { SchemaEditor } from './SchemaEditor.js';
 import { GroupEditor, SortEditor } from './SortGroupEditor.js';
 import { TableView } from './TableView.js';
 import { useRowDrag } from './useRowDrag.js';
 import { ViewToolbar } from './ViewToolbar.js';
-
-const PAGE_SIZE = 200;
 
 /** How many of filter, sorts and grouping a view has set, for the toolbar badge. */
 function activeCount(view: ViewDef): number {
@@ -65,7 +70,7 @@ export function DatabaseView({
   const databaseId = page.id;
   const [activeViewId, setActiveViewId] = useState(() => rememberedView(databaseId));
   const [result, setResult] = useState<QueryResult>();
-  const [limit, setLimit] = useState(PAGE_SIZE);
+  const [pageIndex, setPageIndex] = useState(0);
   const [showSchema, setShowSchema] = useState(false);
   const [showControls, setShowControls] = useState(false);
   const [tick, setTick] = useState(0);
@@ -91,9 +96,19 @@ export function DatabaseView({
     if (viewId === undefined) return;
     let cancelled = false;
     api
-      .dbQuery({ databaseId, viewId, limit })
+      .dbQuery({
+        databaseId,
+        viewId,
+        limit: MAX_QUERY_ROWS,
+        offset: offsetOf(pageIndex, MAX_QUERY_ROWS),
+      })
       .then((next) => {
-        if (!cancelled) setResult(next);
+        if (cancelled) return;
+        setResult(next);
+        // The page being read can stop existing while it is read, because another device
+        // can delete the rows under it. Land on the last real page instead of an empty one.
+        const held = clampPage(pageIndex, next.total, MAX_QUERY_ROWS);
+        if (held !== pageIndex) setPageIndex(held);
       })
       .catch(() => {
         if (!cancelled) setResult(undefined);
@@ -101,7 +116,7 @@ export function DatabaseView({
     return () => {
       cancelled = true;
     };
-  }, [databaseId, viewId, limit, tick]);
+  }, [databaseId, viewId, pageIndex, tick]);
 
   useWorkspaceChanges((change) => {
     const shown = new Set(result?.rows.map((r) => r.id) ?? []);
@@ -122,6 +137,23 @@ export function DatabaseView({
   const addOption = async (propertyId: string, name: string): Promise<string> =>
     (await api.dbAddOption(databaseId, propertyId, { name })).id;
 
+  // A grouped spec buckets in memory and returns every matching row, so there is nothing
+  // to page through and no pager to show.
+  const paged = result !== undefined && result.groups === undefined;
+
+  /**
+   * Create a row, and follow it. An unsorted view puts a new row last, which may be on a
+   * page nobody is looking at; a sorted view could put it anywhere, so stay put and let
+   * the refetch place it rather than guessing.
+   */
+  const newRow = (input?: Parameters<typeof api.dbCreateRow>[1]) =>
+    void run(async () => {
+      await api.dbCreateRow(databaseId, input);
+      if (paged && view.sorts.length === 0) {
+        setPageIndex(pageCount(result.total + 1, MAX_QUERY_ROWS) - 1);
+      }
+    });
+
   return (
     <section className="database-view">
       <ViewToolbar
@@ -130,7 +162,7 @@ export function DatabaseView({
         onSelectView={(id) => {
           setActiveViewId(id);
           rememberView(databaseId, id);
-          setLimit(PAGE_SIZE);
+          setPageIndex(0);
         }}
         onNewView={(input) => {
           void run(async () => {
@@ -140,7 +172,7 @@ export function DatabaseView({
           });
         }}
         onNewRow={() => {
-          void run(() => api.dbCreateRow(databaseId));
+          newRow();
         }}
         showSchema={showSchema}
         onToggleSchema={() => {
@@ -165,6 +197,8 @@ export function DatabaseView({
             properties={schema.properties}
             filter={view.filter}
             onChange={(filter) => {
+              // The row set changes under the reader, so the page they were on is gone.
+              setPageIndex(0);
               void run(() => api.dbUpdateView(databaseId, view.id, { filter }));
             }}
           />
@@ -172,6 +206,7 @@ export function DatabaseView({
             properties={schema.properties}
             sorts={view.sorts}
             onChange={(sorts) => {
+              setPageIndex(0);
               void run(() => api.dbUpdateView(databaseId, view.id, { sorts }));
             }}
           />
@@ -180,6 +215,7 @@ export function DatabaseView({
               properties={schema.properties}
               groupBy={view.groupBy}
               onChange={(groupBy) => {
+                setPageIndex(0);
                 void run(() => api.dbUpdateView(databaseId, view.id, { groupBy }));
               }}
             />
@@ -197,13 +233,10 @@ export function DatabaseView({
           onOpenRow={onOpenRow}
           onNewCard={(option) => {
             const groupBy = view.groupBy;
-            void run(() =>
-              api.dbCreateRow(
-                databaseId,
-                option === null || groupBy === undefined
-                  ? {}
-                  : { values: { [groupBy]: { type: 'select', value: option } } },
-              ),
+            newRow(
+              option === null || groupBy === undefined
+                ? {}
+                : { values: { [groupBy]: { type: 'select', value: option } } },
             );
           }}
           onMoveCard={(rowId, option, position) => {
@@ -222,11 +255,12 @@ export function DatabaseView({
           onAddOption={addOption}
           onOpenRow={onOpenRow}
           onNewRow={() => {
-            void run(() => api.dbCreateRow(databaseId));
+            newRow();
           }}
-          onLoadMore={() => {
-            setLimit((l) => l + PAGE_SIZE);
-          }}
+          page={pageIndex}
+          pageCount={paged ? pageCount(result.total, MAX_QUERY_ROWS) : 1}
+          pageSize={MAX_QUERY_ROWS}
+          onPage={setPageIndex}
           {...(canReorder(view)
             ? {
                 dragHandle: (row) => (
