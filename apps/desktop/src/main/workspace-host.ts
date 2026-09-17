@@ -14,6 +14,7 @@ import { join, resolve } from 'node:path';
 import { LoroDoc } from 'loro-crdt';
 import {
   Workspace,
+  isCalendarDate,
   systemRuntime,
   uuidToBytes,
   type DatabaseSchema,
@@ -35,7 +36,12 @@ import {
   type ViewType,
 } from '@knowtion/engine';
 import { loroDocFromJson, plainTextFromJson } from '@knowtion/editor/headless';
-import { importNotionArchive, type ImportReport } from '@knowtion/importers';
+import {
+  importNotionArchive,
+  type ImportReport,
+  type ImportedDatabase,
+  type ImportedValue,
+} from '@knowtion/importers';
 import { ReadModel, type QueryResult, type SearchHit } from '@knowtion/readmodel';
 import {
   deviceFingerprint,
@@ -853,7 +859,7 @@ export class WorkspaceHost {
    * second, silently-diverging copy of a pre-1.0 library's internals.
    */
   async importNotion(archive: Uint8Array): Promise<ImportReport> {
-    const { pages, report } = importNotionArchive(archive);
+    const { pages, databases, report } = importNotionArchive(archive);
 
     // Parents before children: shallower archive paths first.
     const ordered = [...pages].sort(
@@ -884,6 +890,10 @@ export class WorkspaceHost {
       this.#bodies.set(page.id, { doc, store, dirty: false });
     }
 
+    // Databases after pages: a database's page and its rows' pages already exist, and
+    // converting the parent turns the children it has into rows.
+    const { databaseIds, rowIds } = this.#materialiseDatabases(databases, nodeByPath, report);
+
     this.#reindexPages();
     // Re-apply the body text: re-projecting the hierarchy above rewrote the page rows.
     for (const imported of ordered) {
@@ -894,9 +904,71 @@ export class WorkspaceHost {
     await this.flush();
     // One event for the whole import, not one per page: a ten-thousand-page archive
     // must not send the renderer ten thousand refreshes.
-    const created = [...nodeByPath.values()];
-    this.#changed({ origin: 'local', pages: created, bodies: created, databases: [] });
+    const created = [...nodeByPath.values(), ...rowIds];
+    this.#changed({ origin: 'local', pages: created, bodies: created, databases: databaseIds });
     return report;
+  }
+
+  /**
+   * Turn each imported database into a real one: convert (or create) its page, define
+   * its properties with their options, and set every value on its rows — a row's own
+   * page when the export had one, a new row otherwise. Options were named by the
+   * importer and are minted here; a value the engine refuses is counted and reported,
+   * never allowed to fail the whole import.
+   */
+  #materialiseDatabases(
+    databases: ImportedDatabase[],
+    nodeByPath: Map<string, NodeId>,
+    report: ImportReport,
+  ): { databaseIds: NodeId[]; rowIds: NodeId[] } {
+    const databaseIds: NodeId[] = [];
+    const rowIds: NodeId[] = [];
+    for (const database of databases) {
+      const existing =
+        database.pagePath === undefined ? undefined : nodeByPath.get(database.pagePath);
+      const databaseId = existing ?? this.#workspace.createPage({ title: database.title }).id;
+      if (existing === undefined) nodeByPath.set(database.path, databaseId);
+      this.#workspace.convertToDatabase(databaseId);
+
+      const propertyIds = new Map<string, PropertyId>();
+      const optionIds = new Map<string, Map<string, OptionId>>();
+      for (const property of database.properties) {
+        const def = this.#workspace.defineProperty(databaseId, {
+          name: property.name,
+          type: property.type,
+          options: property.options.map((name) => ({ name })),
+        });
+        propertyIds.set(property.name, def.id);
+        optionIds.set(property.name, new Map(def.options.map((o) => [o.name, o.id])));
+      }
+
+      let refused = 0;
+      for (const row of database.rows) {
+        const own = row.pagePath === undefined ? undefined : nodeByPath.get(row.pagePath);
+        const rowId = own ?? this.#workspace.createRow(databaseId, { title: row.title }).id;
+        if (own === undefined) rowIds.push(rowId);
+        for (const [name, imported] of Object.entries(row.values)) {
+          const propertyId = propertyIds.get(name);
+          const value = engineValue(imported, optionIds.get(name));
+          if (propertyId === undefined || value === undefined) {
+            refused += 1;
+            continue;
+          }
+          try {
+            this.#workspace.setPropertyValue(rowId, propertyId, value);
+          } catch {
+            refused += 1;
+          }
+        }
+      }
+      if (refused > 0) {
+        report.warnings.push(
+          `"${database.title}": ${String(refused)} value(s) could not be stored and were left empty.`,
+        );
+      }
+      databaseIds.push(databaseId);
+    }
+    return { databaseIds, rowIds };
   }
 
   // ---- sync ---------------------------------------------------------------
@@ -1177,5 +1249,36 @@ export class WorkspaceHost {
       now: () => Date.now(),
     });
     return eviction.forget(deviceHex);
+  }
+}
+
+/**
+ * An imported value as the engine stores it. Options arrive by name and leave by id; a
+ * name the schema does not know, or a date the engine would refuse, becomes undefined
+ * and is counted by the caller rather than thrown.
+ */
+function engineValue(
+  imported: ImportedValue,
+  options: Map<string, OptionId> | undefined,
+): PropertyValue | undefined {
+  switch (imported.type) {
+    case 'text':
+    case 'number':
+    case 'checkbox':
+    case 'url':
+    case 'datetime':
+      return imported;
+    case 'date':
+      return isCalendarDate(imported.value) ? { type: 'date', value: imported.value } : undefined;
+    case 'select': {
+      const id = options?.get(imported.value);
+      return id === undefined ? undefined : { type: 'select', value: id };
+    }
+    case 'multi-select': {
+      const ids = imported.value
+        .map((name) => options?.get(name))
+        .filter((id): id is OptionId => id !== undefined);
+      return { type: 'multi-select', value: ids };
+    }
   }
 }

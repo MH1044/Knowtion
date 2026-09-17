@@ -379,6 +379,7 @@ describe('search', () => {
 describe('Notion import', () => {
   const HOME = '11111111111111111111111111111111';
   const CHILD = '22222222222222222222222222222222';
+  const DB = '33333333333333333333333333333333';
 
   const notionPage = (title: string, id: string, body: string) =>
     `<html><head><title>${title}</title></head><body>` +
@@ -395,7 +396,10 @@ describe('Notion import', () => {
       [`Export-x/Home ${HOME}/Recipes ${CHILD}.html`]: strToU8(
         notionPage('Recipes', CHILD, '<h2>Bread</h2><ul class="bulleted-list"><li>flour</li></ul>'),
       ),
-      [`Export-x/Tasks ${CHILD}_all.csv`]: strToU8('Name,Status\nBuy flour,Done'),
+      [`Export-x/Home ${HOME}/Tasks ${DB}.html`]: strToU8(notionPage('Tasks', DB, '<p>t</p>')),
+      [`Export-x/Home ${HOME}/Tasks ${DB}_all.csv`]: strToU8(
+        'Name,Status,Estimate\nWrite the plan,Done,3\nShip it,Todo,\nReview,Done,1.5\n',
+      ),
     });
   }
 
@@ -403,9 +407,9 @@ describe('Notion import', () => {
     const host = await open(await dataDir());
     const report = await host.importNotion(await archive());
 
-    expect(report.pagesImported).toBe(2);
+    expect(report.pagesImported).toBe(3);
     expect(titles(host.tree())).toEqual(['Home']);
-    expect(titles(at(host.tree(), 0).children)).toEqual(['Recipes']);
+    expect(titles(at(host.tree(), 0).children)).toEqual(['Recipes', 'Tasks']);
     await host.close();
   });
 
@@ -440,12 +444,52 @@ describe('Notion import', () => {
     }
   });
 
-  it('reports the database it could not import rather than dropping it quietly', async () => {
+  it('materialises a database from its CSV: schema, options, rows and values', async () => {
     const host = await open(await dataDir());
     const report = await host.importNotion(await archive());
 
-    expect(report.skipped.some((s) => s.reason.includes('database'))).toBe(true);
+    expect(report.databases).toEqual([
+      {
+        title: 'Tasks',
+        rows: 3,
+        properties: [
+          { name: 'Status', type: 'select', options: 2 },
+          { name: 'Estimate', type: 'number', options: 0 },
+        ],
+        notes: [],
+      },
+    ]);
     expect(report.warnings.join(' ')).toMatch(/only one view/i);
+
+    // The database is the exported page, converted; its rows are new, under it.
+    const tasks = at(at(host.tree(), 0).children, 1);
+    expect(tasks.rowCount).toBe(3);
+    const schema = host.databaseSchema(tasks.id);
+    expect(schema?.properties.map((p) => [p.name, p.type])).toEqual([
+      ['Status', 'select'],
+      ['Estimate', 'number'],
+    ]);
+    const status = at(schema?.properties ?? [], 0);
+    const estimate = at(schema?.properties ?? [], 1);
+    const optionName = new Map(status.options.map((o) => [o.id, o.name]));
+
+    const view = at(schema?.views ?? [], 0);
+    const result = host.queryView({ databaseId: tasks.id, viewId: view.id });
+    expect(
+      result.rows.map((r) => {
+        const chosen = r.values[status.id];
+        const number = r.values[estimate.id];
+        return [
+          r.title,
+          chosen?.type === 'select' ? optionName.get(chosen.value) : undefined,
+          number?.type === 'number' ? number.value : undefined,
+        ];
+      }),
+    ).toEqual([
+      ['Write the plan', 'Done', 3],
+      ['Ship it', 'Todo', undefined],
+      ['Review', 'Done', 1.5],
+    ]);
     await host.close();
   });
 
