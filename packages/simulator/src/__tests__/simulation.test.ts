@@ -77,4 +77,15 @@ describe('harsher conditions', () => {
     expect(b.trace).toEqual(a.trace);
     expect(b.finalPageCount).toBe(a.finalPageCount);
   }, 120_000);
+
+  it('exercises databases, or the query oracle proves nothing', async () => {
+    const result = await runSimulation({ seed: 31, devices: 3, steps: 200 });
+    const trace = result.trace.join('\n');
+    expect(trace).toMatch(/convert .* to a database/);
+    expect(trace).toMatch(/add \w+(-\w+)? property/);
+    expect(trace).toMatch(/set \S+ on /);
+    expect(trace).toMatch(/set spec of /);
+    expect(trace).toMatch(/move \S+ (first|last|before|after) in /);
+    expect(result.converged).toBe(true);
+  }, 60_000);
 });
