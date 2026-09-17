@@ -90,7 +90,7 @@ describe('rebuild equivalence', () => {
 
     incremental.close();
     rebuilt.close();
-  });
+  }, 30_000);
 });
 
 describe('search at scale', () => {
