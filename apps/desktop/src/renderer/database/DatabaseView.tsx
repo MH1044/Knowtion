@@ -11,10 +11,13 @@ import { useCallback, useEffect, useState } from 'react';
 
 import { api, type Page, type QueryResult, type ViewDef } from '../api.js';
 import { useWorkspaceChanges } from '../changes.js';
+import { BoardView } from './BoardView.js';
+import { positionForDrop } from './dnd.js';
 import { FilterEditor } from './FilterEditor.js';
 import { SchemaEditor } from './SchemaEditor.js';
 import { GroupEditor, SortEditor } from './SortGroupEditor.js';
 import { TableView } from './TableView.js';
+import { useRowDrag } from './useRowDrag.js';
 import { ViewToolbar } from './ViewToolbar.js';
 
 const PAGE_SIZE = 200;
@@ -46,19 +49,17 @@ export interface DatabaseViewProps {
   page: Page;
   run: (action: () => Promise<unknown>) => Promise<void>;
   onOpenRow: (rowId: string) => void;
-  /** Renders a view of a type this component does not draw itself, such as a board. */
-  renderView?: (input: {
-    view: ViewDef;
-    result: QueryResult;
-    refetch: () => void;
-  }) => React.JSX.Element | null;
+}
+
+/** A table can be dragged into a manual order only when nothing else decides the order. */
+function canReorder(view: ViewDef): boolean {
+  return view.type === 'table' && view.sorts.length === 0 && view.groupBy === undefined;
 }
 
 export function DatabaseView({
   page,
   run,
   onOpenRow,
-  renderView,
 }: DatabaseViewProps): React.JSX.Element | null {
   const schema = page.database;
   const databaseId = page.id;
@@ -74,6 +75,17 @@ export function DatabaseView({
 
   const view = schema?.views.find((v) => v.id === activeViewId) ?? schema?.views[0];
   const viewId = view?.id;
+
+  // Table drag-to-reorder. Declared before the early return, as hooks must be.
+  const drag = useRowDrag((dragging, target) => {
+    if (viewId === undefined || result === undefined) return;
+    const position = positionForDrop(
+      result.rows.map((r) => r.id),
+      dragging.id,
+      target.index,
+    );
+    if (position !== null) void run(() => api.dbReorder(dragging.id, viewId, position));
+  });
 
   useEffect(() => {
     if (viewId === undefined) return;
@@ -177,26 +189,74 @@ export function DatabaseView({
       {showSchema && <SchemaEditor databaseId={databaseId} schema={schema} run={run} />}
       {result === undefined ? (
         <p className="placeholder">Loading…</p>
+      ) : view.type === 'board' && result.groups !== undefined ? (
+        <BoardView
+          properties={schema.properties}
+          view={view}
+          groups={result.groups}
+          onOpenRow={onOpenRow}
+          onNewCard={(option) => {
+            const groupBy = view.groupBy;
+            void run(() =>
+              api.dbCreateRow(
+                databaseId,
+                option === null || groupBy === undefined
+                  ? {}
+                  : { values: { [groupBy]: { type: 'select', value: option } } },
+              ),
+            );
+          }}
+          onMoveCard={(rowId, option, position) => {
+            void run(() => api.dbMoveCard(rowId, view.id, option, position));
+          }}
+        />
       ) : (
-        ((view.type !== 'table' && renderView?.({ view, result, refetch })) ?? (
-          <TableView
-            properties={schema.properties}
-            view={view}
-            rows={result.rows}
-            groups={result.groups}
-            total={result.total}
-            onCommit={commit}
-            onRename={(rowId, title) => void run(() => api.renamePage(rowId, title))}
-            onAddOption={addOption}
-            onOpenRow={onOpenRow}
-            onNewRow={() => {
-              void run(() => api.dbCreateRow(databaseId));
-            }}
-            onLoadMore={() => {
-              setLimit((l) => l + PAGE_SIZE);
-            }}
-          />
-        ))
+        <TableView
+          properties={schema.properties}
+          view={view}
+          rows={result.rows}
+          groups={result.groups}
+          total={result.total}
+          onCommit={commit}
+          onRename={(rowId, title) => void run(() => api.renamePage(rowId, title))}
+          onAddOption={addOption}
+          onOpenRow={onOpenRow}
+          onNewRow={() => {
+            void run(() => api.dbCreateRow(databaseId));
+          }}
+          onLoadMore={() => {
+            setLimit((l) => l + PAGE_SIZE);
+          }}
+          {...(canReorder(view)
+            ? {
+                dragHandle: (row) => (
+                  <span
+                    className="drag-handle"
+                    title="Drag to reorder"
+                    {...drag.handleProps(row.id, 'table')}
+                  >
+                    ⋮⋮
+                  </span>
+                ),
+                rowProps: (row, index) => ({
+                  className: [
+                    drag.dragging?.id === row.id ? 'dragging' : '',
+                    drag.target?.list === 'table' && drag.target.index === index
+                      ? 'drop-before'
+                      : '',
+                    drag.target?.list === 'table' &&
+                    drag.target.index === result.rows.length &&
+                    index === result.rows.length - 1
+                      ? 'drop-after'
+                      : '',
+                  ]
+                    .filter((c) => c !== '')
+                    .join(' '),
+                }),
+                bodyProps: drag.listProps('table', 'tr[data-row]'),
+              }
+            : {})}
+        />
       )}
     </section>
   );

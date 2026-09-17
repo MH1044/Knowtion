@@ -1060,3 +1060,114 @@ button.danger {
   font-weight: 400;
   margin-left: 6px;
 }
+
+/* Board */
+.board {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  overflow-x: auto;
+  padding: 12px 24px;
+}
+
+.board-column {
+  flex: 0 0 260px;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px;
+  min-height: 80px;
+}
+
+.board-column.drop-target {
+  border-color: var(--accent);
+}
+
+.board-column header {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 2px 4px 8px;
+}
+
+.board-column h3 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.cards {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-height: 24px;
+}
+
+.card {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px;
+  cursor: grab;
+}
+
+.card.dragging {
+  opacity: 0.4;
+}
+
+.card.drop-before {
+  box-shadow: 0 -2px 0 0 var(--accent);
+}
+
+.drop-end {
+  height: 2px;
+  background: var(--accent);
+}
+
+.card-title {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: none;
+  color: var(--text);
+  font: inherit;
+  padding: 0 0 4px;
+  cursor: pointer;
+}
+
+.card-field {
+  color: var(--muted);
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.new-card {
+  width: 100%;
+  margin-top: 6px;
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  text-align: left;
+}
+
+/* Table drag */
+.db-table tr.dragging {
+  opacity: 0.4;
+}
+
+.db-table tr.drop-before td {
+  box-shadow: inset 0 2px 0 0 var(--accent);
+}
+
+.db-table tr.drop-after td {
+  box-shadow: inset 0 -2px 0 0 var(--accent);
+}
+
+.drag-handle {
+  cursor: grab;
+  color: var(--muted);
+  user-select: none;
+}
