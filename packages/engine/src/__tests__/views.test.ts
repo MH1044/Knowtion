@@ -10,7 +10,7 @@
  */
 import { describe, expect, it } from 'vitest';
 
-import type { PropertyDef } from '../properties.js';
+import type { PropertyDef, ViewId } from '../properties.js';
 import { deterministicRuntime } from '../runtime.js';
 import { WorkspaceError, type NodeId } from '../types.js';
 import { Workspace } from '../workspace.js';
@@ -43,7 +43,7 @@ function fixture(w = ws()) {
   const text = w.defineProperty(db.id, { name: 'Text', type: 'text' });
   const rows = ['a', 'b', 'c', 'd'].map((title) => w.createRow(db.id, { title }));
   const table = at(w.database(db.id).views, 0);
-  const order = (viewId: string) =>
+  const order = (viewId: ViewId) =>
     w
       .rows(db.id, { viewId })
       .map((r) => r.title)
