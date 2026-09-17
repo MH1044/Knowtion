@@ -1171,3 +1171,15 @@ button.danger {
   color: var(--muted);
   user-select: none;
 }
+
+.db-pager {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.db-pager button[disabled] {
+  opacity: 0.4;
+}

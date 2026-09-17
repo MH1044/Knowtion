@@ -9,6 +9,7 @@
 import { Fragment, useState } from 'react';
 
 import type { PropertyDef, PropertyValue, RowView, ViewDef } from '../api.js';
+import { rangeOf } from './paging.js';
 import { PropertyCell } from './PropertyCell.js';
 
 export interface TableViewProps {
@@ -23,7 +24,11 @@ export interface TableViewProps {
   onAddOption: (propertyId: string, name: string) => Promise<string>;
   onOpenRow: (rowId: string) => void;
   onNewRow: () => void;
-  onLoadMore: () => void;
+  /** Zero-based page being shown, how many there are, and how big one is. */
+  page: number;
+  pageCount: number;
+  pageSize: number;
+  onPage: (page: number) => void;
   /** The drag handle, when reordering is offered. Absent while the view is sorted. */
   dragHandle?: (row: RowView, index: number) => React.JSX.Element;
   rowProps?: (row: RowView, index: number) => React.HTMLAttributes<HTMLTableRowElement>;
@@ -88,6 +93,7 @@ export function TableView(props: TableViewProps): React.JSX.Element {
     .map((id) => byId.get(id))
     .filter((p): p is PropertyDef => p !== undefined);
   const span = columns.length + 1 + (props.dragHandle === undefined ? 0 : 1);
+  const range = rangeOf(props.page, props.pageSize, total);
 
   const renderRow = (row: RowView, index: number) => (
     <tr key={row.id} data-row={row.id} {...(props.rowProps?.(row, index) ?? {})}>
@@ -159,10 +165,34 @@ export function TableView(props: TableViewProps): React.JSX.Element {
         <button type="button" onClick={props.onNewRow}>
           + New row
         </button>
-        {rows.length < total && (
-          <button type="button" onClick={props.onLoadMore}>
-            Showing {rows.length} of {total} · Load more
-          </button>
+        {props.pageCount > 1 && (
+          <nav className="db-pager" aria-label="Rows">
+            <button
+              type="button"
+              disabled={props.page <= 0}
+              onClick={() => {
+                props.onPage(props.page - 1);
+              }}
+            >
+              ‹ Previous
+            </button>
+            <span>
+              Page {props.page + 1} of {props.pageCount}
+              <span className="muted">
+                {' · rows '}
+                {range.first}–{range.last} of {total}
+              </span>
+            </span>
+            <button
+              type="button"
+              disabled={props.page >= props.pageCount - 1}
+              onClick={() => {
+                props.onPage(props.page + 1);
+              }}
+            >
+              Next ›
+            </button>
+          </nav>
         )}
       </div>
     </div>

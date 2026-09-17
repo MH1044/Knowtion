@@ -21,6 +21,8 @@ import {
 
 import { NodeStorage } from '@knowtion/sync';
 
+import { MAX_QUERY_ROWS } from '../../shared/db-types.js';
+
 import { WorkspaceHost } from '../workspace-host.js';
 import { collectGrantedKeys, withEpoch } from '../workspace-keys.js';
 
@@ -1112,6 +1114,47 @@ describe('change notification', () => {
 
 describe('databases', () => {
   const ctx = { limit: 100 };
+
+  it('caps one query at 500 rows and pages past it, with the total unchanged throughout', async () => {
+    // The renderer pages rather than accumulating, so the contract it depends on is: a
+    // query never returns more than the cap, an offset reaches the rest, and the total is
+    // the whole match count on every page rather than the size of the page in hand.
+    const host = await open(await dataDir());
+    const database = host.createPage({ title: 'Big' });
+    const schema = host.convertToDatabase(database.id);
+    const view = at(schema.views, 0);
+    const ROWS = 600;
+    for (let i = 0; i < ROWS; i++) {
+      host.createRow(database.id, { title: `row ${String(i).padStart(3, '0')}` });
+    }
+
+    const first = host.queryView({ databaseId: database.id, viewId: view.id });
+    expect(first.rows).toHaveLength(MAX_QUERY_ROWS);
+    expect(first.total).toBe(ROWS);
+
+    const second = host.queryView({
+      databaseId: database.id,
+      viewId: view.id,
+      limit: MAX_QUERY_ROWS,
+      offset: MAX_QUERY_ROWS,
+    });
+    expect(second.rows).toHaveLength(ROWS - MAX_QUERY_ROWS);
+    expect(second.total).toBe(ROWS);
+
+    // Asking for more than the cap is clamped rather than refused, and the two pages are
+    // disjoint and in order: nothing is skipped or shown twice at the boundary.
+    const greedy = host.queryView({ databaseId: database.id, viewId: view.id, limit: 10_000 });
+    expect(greedy.rows).toHaveLength(MAX_QUERY_ROWS);
+    expect([...first.rows, ...second.rows].map((r) => r.title)).toEqual(
+      Array.from({ length: ROWS }, (_, i) => `row ${String(i).padStart(3, '0')}`),
+    );
+
+    // Past the end is empty, not an error, which is what a stranded page looks like.
+    const past = host.queryView({ databaseId: database.id, viewId: view.id, offset: ROWS });
+    expect(past.rows).toEqual([]);
+    expect(past.total).toBe(ROWS);
+    await host.close();
+  }, 30_000);
 
   it('converts a page, and its existing children come back as rows of the table', async () => {
     const host = await open(await dataDir());
