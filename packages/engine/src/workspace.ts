@@ -14,13 +14,17 @@ import {
   DB_OPTIONS_KEY,
   DB_PROPS_KEY,
   DB_VIEWS_KEY,
+  ROW_ORDER_KEY,
   ROW_PROPS_KEY,
   decodeDatabaseSchema,
+  decodeRowOrder,
   decodeRowValues,
   optionKey,
   type DatabaseSchema,
 } from './database.js';
+import { compareRows } from './evaluate.js';
 import { createIdGen, type IdGen } from './ids.js';
+import { orderKeyBetween, type OrderKey } from './order-key.js';
 import {
   encodePropertyValue,
   type OptionColour,
@@ -30,11 +34,18 @@ import {
   type PropertyType,
   type PropertyValue,
   type SelectOption,
+  type ViewId,
 } from './properties.js';
-import { stripProperty } from './query.js';
+import { stripProperty, validateSpec, type Sort, type StoredFilter } from './query.js';
 import type { Runtime } from './runtime.js';
-import { WorkspaceError, type NodeId, type Page, type PageNode } from './types.js';
-import type { ViewDef } from './views.js';
+import {
+  WorkspaceError,
+  type NodeId,
+  type Page,
+  type PageNode,
+  type RowPosition,
+} from './types.js';
+import { viewSpecOf, type ViewDef, type ViewType } from './views.js';
 
 const TREE_KEY = 'pages';
 const UNTITLED = 'Untitled';
@@ -110,6 +121,8 @@ export class Workspace {
     const parentSchema = liveParent === undefined ? undefined : this.#schemaOf(liveParent, memo);
     const properties =
       parentSchema === undefined ? undefined : decodeRowValues(parentSchema, data[ROW_PROPS_KEY]);
+    const orderKeys =
+      parentSchema === undefined ? undefined : decodeRowOrder(parentSchema, data[ROW_ORDER_KEY]);
     return {
       id: node.id,
       // A deleted parent means this node is detached, not that it is a root. Loro
@@ -128,6 +141,7 @@ export class Workspace {
       ...(typeof data.archivedAt === 'number' ? { archivedAt: data.archivedAt } : {}),
       ...(database === undefined ? {} : { database }),
       ...(properties === undefined ? {} : { properties }),
+      ...(orderKeys === undefined ? {} : { orderKeys }),
     };
   }
 
@@ -169,12 +183,26 @@ export class Workspace {
     return (nodes ?? []).filter((n) => !n.isDeleted()).map((n) => this.#toPage(n, memo));
   }
 
-  /** The whole hierarchy, as the sidebar renders it. Archived pages are excluded. */
-  tree(): PageNode[] {
+  /**
+   * The whole hierarchy, as the sidebar renders it. Archived pages are excluded.
+   *
+   * With `collapseDatabases`, a database's rows are left out and counted instead. A
+   * sidebar does not want ten thousand rows as children, and neither does the IPC payload
+   * that carries the tree after every change.
+   */
+  tree(options: { collapseDatabases?: boolean } = {}): PageNode[] {
     const build = (parentId: NodeId | undefined): PageNode[] =>
       this.listChildren(parentId)
         .filter((page) => page.archivedAt === undefined)
-        .map((page) => ({ ...page, children: build(page.id) }));
+        .map((page) => {
+          if (options.collapseDatabases === true && page.database !== undefined) {
+            const rowCount = this.listChildren(page.id).filter(
+              (row) => row.archivedAt === undefined,
+            ).length;
+            return { ...page, children: [], rowCount };
+          }
+          return { ...page, children: build(page.id) };
+        });
     return build(undefined);
   }
 
@@ -514,16 +542,22 @@ export class Workspace {
   }
 
   /**
-   * The rows of a database: its live children, in sidebar order.
+   * The rows of a database: its live children.
    *
-   * Archived rows are left out unless asked for, as `tree()` leaves archived pages out.
+   * In sidebar order by default; in a view's manual order when `viewId` is given —
+   * keyed rows first by key, then unkeyed rows by creation, the rule the read model
+   * mirrors. Archived rows are left out unless asked for, as `tree()` leaves archived
+   * pages out.
    */
-  rows(databaseId: NodeId, options: { includeArchived?: boolean } = {}): Page[] {
-    this.#databaseNode(databaseId);
-    const rows = this.listChildren(databaseId);
-    return options.includeArchived === true
-      ? rows
-      : rows.filter((row) => row.archivedAt === undefined);
+  rows(databaseId: NodeId, options: { viewId?: ViewId; includeArchived?: boolean } = {}): Page[] {
+    const { schema } = this.#databaseNode(databaseId);
+    let rows = this.listChildren(databaseId);
+    if (options.includeArchived !== true) rows = rows.filter((row) => row.archivedAt === undefined);
+    if (options.viewId !== undefined) {
+      this.#view(schema, options.viewId);
+      rows.sort(compareRows(new Map(schema.properties.map((p) => [p.id, p])), [], options.viewId));
+    }
+    return rows;
   }
 
   /** A new row, with any initial values, in one commit. */
@@ -583,6 +617,228 @@ export class Workspace {
     this.#touch(node);
     this.#doc.commit();
     return this.#toPage(node);
+  }
+
+  // ---- views ------------------------------------------------------------------
+
+  #view(schema: DatabaseSchema, viewId: ViewId): ViewDef {
+    const view = schema.views.find((v) => v.id === viewId);
+    if (view === undefined) throw new WorkspaceError('UNKNOWN_VIEW', `no view ${viewId} here`);
+    return view;
+  }
+
+  /** A board needs a select property to make columns of; nothing else is checked here. */
+  #assertViewShape(schema: DatabaseSchema, view: Pick<ViewDef, 'type' | 'groupBy'>): void {
+    if (view.type !== 'board') return;
+    const grouped = schema.properties.find((p) => p.id === view.groupBy);
+    if (grouped?.type !== 'select') {
+      throw new WorkspaceError('INVALID_VIEW', 'a board groups by a select property');
+    }
+  }
+
+  createView(
+    databaseId: NodeId,
+    input: { name: string; type: ViewType; groupBy?: PropertyId },
+  ): ViewDef {
+    const { node, db, schema } = this.#databaseNode(databaseId);
+    if (input.name.trim() === '') throw new WorkspaceError('INVALID_SCHEMA', 'a view needs a name');
+    if (input.groupBy !== undefined) this.#property(schema, input.groupBy);
+    this.#assertViewShape(schema, input);
+    const viewId = this.#ids.next();
+    this.#writeView(this.#ensureMap(db, DB_VIEWS_KEY), viewId, input, this.#runtime.clock.now());
+    this.#touch(node);
+    this.#doc.commit();
+    return this.#view(this.#databaseNode(databaseId).schema, viewId);
+  }
+
+  /**
+   * Change a view. Each field is its own key, so a patch touches only what it names.
+   *
+   * The resulting spec must validate against the schema: a filter on a missing property
+   * or with an operator its type does not allow is refused, and so is a filter from a
+   * newer grammar — a client must never write what it cannot read.
+   */
+  updateView(
+    databaseId: NodeId,
+    viewId: ViewId,
+    patch: {
+      name?: string;
+      type?: ViewType;
+      filter?: StoredFilter | null;
+      sorts?: Sort[];
+      groupBy?: PropertyId | null;
+      columns?: PropertyId[];
+      hidden?: PropertyId[];
+    },
+  ): ViewDef {
+    const { node, db, schema } = this.#databaseNode(databaseId);
+    const view = this.#view(schema, viewId);
+    if (patch.name?.trim() === '')
+      throw new WorkspaceError('INVALID_SCHEMA', 'a view needs a name');
+
+    const next: ViewDef = {
+      ...view,
+      ...(patch.name === undefined ? {} : { name: patch.name }),
+      ...(patch.type === undefined ? {} : { type: patch.type }),
+      ...(patch.sorts === undefined ? {} : { sorts: patch.sorts }),
+      ...(patch.columns === undefined ? {} : { columns: patch.columns }),
+      ...(patch.hidden === undefined ? {} : { hidden: patch.hidden }),
+    };
+    if (patch.filter === null) delete next.filter;
+    else if (patch.filter !== undefined) next.filter = patch.filter;
+    if (patch.groupBy === null) delete next.groupBy;
+    else if (patch.groupBy !== undefined) next.groupBy = patch.groupBy;
+
+    const problems = validateSpec(schema.properties, viewSpecOf(next));
+    if (problems.length > 0) {
+      const first = problems[0];
+      throw new WorkspaceError(
+        'INVALID_VIEW',
+        `${first?.path ?? 'view'}: ${first?.code ?? 'INVALID'}`,
+      );
+    }
+    for (const id of [...next.columns, ...next.hidden]) this.#property(schema, id);
+    this.#assertViewShape(schema, next);
+
+    const stored = this.#ensureMap(this.#ensureMap(db, DB_VIEWS_KEY), viewId);
+    if (patch.name !== undefined) stored.set('name', patch.name);
+    if (patch.type !== undefined) stored.set('type', patch.type);
+    if (patch.sorts !== undefined) stored.set('sorts', patch.sorts);
+    if (patch.columns !== undefined) stored.set('columns', patch.columns);
+    if (patch.hidden !== undefined) stored.set('hidden', patch.hidden);
+    if (patch.filter === null) stored.delete('filter');
+    else if (patch.filter !== undefined) stored.set('filter', patch.filter);
+    if (patch.groupBy === null) stored.delete('groupBy');
+    else if (patch.groupBy !== undefined) stored.set('groupBy', patch.groupBy);
+    this.#touch(node);
+    this.#doc.commit();
+    return this.#view(this.#databaseNode(databaseId).schema, viewId);
+  }
+
+  /** Remove a view. A database always keeps at least one. */
+  removeView(databaseId: NodeId, viewId: ViewId): void {
+    const { node, db, schema } = this.#databaseNode(databaseId);
+    this.#view(schema, viewId);
+    if (schema.views.length <= 1) {
+      throw new WorkspaceError('INVALID_VIEW', 'a database keeps at least one view');
+    }
+    this.#ensureMap(db, DB_VIEWS_KEY).delete(viewId);
+    this.#touch(node);
+    this.#doc.commit();
+  }
+
+  // ---- manual order ------------------------------------------------------------
+
+  /**
+   * Place a row in a view's manual order, keying whatever must be keyed for it to land
+   * there. Does not commit; the callers do.
+   *
+   * Unkeyed rows sort after every keyed row, in creation order. Dropping a row among them
+   * therefore means keying the unkeyed rows that come before the drop point — without
+   * visibly moving them — so the dropped row can take a key after the last of them. The
+   * common cases cost one write: a drag inside the keyed region, or the first drag into
+   * a view nobody has ordered yet.
+   */
+  #placeRow(
+    mover: LoroTreeNode,
+    databaseId: NodeId,
+    schema: DatabaseSchema,
+    viewId: ViewId,
+    position: RowPosition,
+  ): NodeId[] {
+    this.#view(schema, viewId);
+    const ordered = this.rows(databaseId, { viewId, includeArchived: true }).filter(
+      (row) => row.id !== mover.id,
+    );
+    let index: number;
+    switch (position.kind) {
+      case 'first':
+        index = 0;
+        break;
+      case 'last':
+        index = ordered.length;
+        break;
+      default: {
+        const anchor = ordered.findIndex((row) => row.id === position.row);
+        if (anchor < 0) {
+          throw new WorkspaceError('NOT_FOUND', `no row ${position.row} to place against`);
+        }
+        index = position.kind === 'before' ? anchor : anchor + 1;
+      }
+    }
+
+    const keyed: NodeId[] = [];
+    let previousKey: OrderKey | undefined = undefined;
+    // Every row before the drop point must carry a key, or the mover could not sort
+    // after it. Keyed rows already do; the unkeyed tail is keyed in place, in order.
+    for (const row of ordered.slice(0, index)) {
+      const existing = row.orderKeys?.[viewId];
+      if (existing !== undefined) {
+        previousKey = existing;
+        continue;
+      }
+      const key = orderKeyBetween(previousKey, undefined, this.#runtime.random);
+      this.#ensureMap(this.#node(row.id).data, ROW_ORDER_KEY).set(viewId, key);
+      keyed.push(row.id);
+      previousKey = key;
+    }
+    const nextKey = ordered[index]?.orderKeys?.[viewId];
+    const key = orderKeyBetween(previousKey, nextKey, this.#runtime.random);
+    this.#ensureMap(mover.data, ROW_ORDER_KEY).set(viewId, key);
+    this.#touch(mover);
+    return keyed;
+  }
+
+  /**
+   * Reorder a row within a view. Returns the other rows that had to be keyed for it.
+   *
+   * The key is stored on the row under `order[viewId]` (FORMAT.md section 10): dragging
+   * in one view never reorders another, and deleting the row cleans up after itself.
+   */
+  setRowOrder(rowId: NodeId, viewId: ViewId, position: RowPosition): { keyed: NodeId[] } {
+    const { node, schema } = this.#rowNode(rowId);
+    const databaseId = this.#parentId(node);
+    if (position.kind !== 'first' && position.kind !== 'last' && position.row === rowId) {
+      throw new WorkspaceError('INVALID_VIEW', 'a row cannot be placed against itself');
+    }
+    const keyed = this.#placeRow(node, databaseId, schema, viewId, position);
+    this.#doc.commit();
+    return { keyed };
+  }
+
+  #parentId(node: LoroTreeNode): NodeId {
+    const parent = node.parent();
+    if (!parent || parent.isDeleted())
+      throw new WorkspaceError('NOT_FOUND', 'the row has no parent');
+    return parent.id;
+  }
+
+  /**
+   * A board drag: set the row's value for the view's group property and place it, in
+   * one commit — one flush, one pack, one change event.
+   */
+  moveCard(
+    rowId: NodeId,
+    viewId: ViewId,
+    option: OptionId | null,
+    position: RowPosition,
+  ): { keyed: NodeId[] } {
+    const { node, schema } = this.#rowNode(rowId);
+    const databaseId = this.#parentId(node);
+    const view = this.#view(schema, viewId);
+    if (view.type !== 'board' || view.groupBy === undefined) {
+      throw new WorkspaceError('INVALID_VIEW', 'cards move on a board grouped by a property');
+    }
+    if (option === null) {
+      if (node.data.get(ROW_PROPS_KEY) instanceof LoroMap) {
+        this.#ensureMap(node.data, ROW_PROPS_KEY).delete(view.groupBy);
+      }
+    } else {
+      this.#writeValue(node, schema, view.groupBy, { type: 'select', value: option });
+    }
+    const keyed = this.#placeRow(node, databaseId, schema, viewId, position);
+    this.#doc.commit();
+    return { keyed };
   }
 
   #selectProperty(schema: DatabaseSchema, propertyId: PropertyId): PropertyDef {

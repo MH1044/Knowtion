@@ -13,6 +13,7 @@
  * workspace.ts.
  */
 
+import { isOrderKey, type OrderKey } from './order-key.js';
 import {
   decodePropertyValue,
   isOptionColour,
@@ -65,6 +66,17 @@ export function decodeRowValues(
   for (const property of schema.properties) {
     const value = decodePropertyValue(property, raw[property.id]);
     if (value !== undefined) out[property.id] = value;
+  }
+  return out;
+}
+
+/** A row's per-view positions, for the views the parent still has. Malformed keys are ignored. */
+export function decodeRowOrder(schema: DatabaseSchema, raw: unknown): Record<ViewId, OrderKey> {
+  const out: Record<ViewId, OrderKey> = {};
+  if (!isRecord(raw)) return out;
+  for (const view of schema.views) {
+    const key = raw[view.id];
+    if (typeof key === 'string' && isOrderKey(key)) out[view.id] = key;
   }
   return out;
 }
