@@ -14,11 +14,13 @@
  */
 
 import {
+  decodePropertyValue,
   isOptionColour,
   isPropertyType,
   type OptionId,
   type PropertyDef,
   type PropertyId,
+  type PropertyValue,
   type SelectOption,
   type ViewId,
 } from './properties.js';
@@ -48,6 +50,23 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function byId<T extends { id: string }>(a: T, b: T): number {
   return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+}
+
+/**
+ * A row's values, as its parent's schema reads them. Unknown property ids and values of
+ * the wrong shape are left out, never touched.
+ */
+export function decodeRowValues(
+  schema: DatabaseSchema,
+  raw: unknown,
+): Record<PropertyId, PropertyValue> {
+  const out: Record<PropertyId, PropertyValue> = {};
+  if (!isRecord(raw)) return out;
+  for (const property of schema.properties) {
+    const value = decodePropertyValue(property, raw[property.id]);
+    if (value !== undefined) out[property.id] = value;
+  }
+  return out;
 }
 
 /** The option key inside `db.options`: one level, so two devices renaming different options both win. */

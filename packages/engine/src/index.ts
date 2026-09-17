@@ -20,6 +20,7 @@ export {
   ROW_ORDER_KEY,
   ROW_PROPS_KEY,
   decodeDatabaseSchema,
+  decodeRowValues,
   optionKey,
 } from './database.js';
 export type { DatabaseSchema } from './database.js';
