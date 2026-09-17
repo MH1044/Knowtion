@@ -12,6 +12,7 @@
  */
 
 import type { TreeID } from 'loro-crdt';
+import type { DatabaseSchema } from './database.js';
 import type { Uuid } from './ids.js';
 
 /**
@@ -35,6 +36,8 @@ export interface PageMeta {
   updatedAt: number;
   /** Set when the page is in the trash. Trashing is soft; deletion is separate. */
   archivedAt?: number;
+  /** Present when this page is a database: its properties and views (ADR-0014). */
+  database?: DatabaseSchema;
 }
 
 export interface Page extends PageMeta {
@@ -49,7 +52,16 @@ export interface PageNode extends Page {
 
 /** Thrown when an operation would produce an impossible tree. */
 export class WorkspaceError extends Error {
-  readonly code: 'NOT_FOUND' | 'WOULD_CYCLE' | 'ARCHIVED' | 'INVALID_VALUE';
+  readonly code:
+    | 'NOT_FOUND'
+    | 'WOULD_CYCLE'
+    | 'ARCHIVED'
+    | 'NOT_A_DATABASE'
+    | 'UNKNOWN_PROPERTY'
+    | 'UNKNOWN_VIEW'
+    | 'INVALID_VALUE'
+    | 'INVALID_SCHEMA'
+    | 'INVALID_VIEW';
 
   constructor(code: WorkspaceError['code'], message: string) {
     super(message);
