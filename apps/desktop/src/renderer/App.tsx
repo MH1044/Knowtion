@@ -2,6 +2,8 @@ import { useCallback, useEffect, useState } from 'react';
 
 import { api, type ImportReport, type KeyStatus, type Page, type PageNode } from './api.js';
 import { useWorkspaceChanges } from './changes.js';
+import { DatabaseView } from './database/DatabaseView.js';
+import { RowProperties } from './database/RowProperties.js';
 import { RecoverySetup } from './RecoverySetup.js';
 import { PageBody } from './PageBody.js';
 import { PageTree } from './PageTree.js';
@@ -27,6 +29,11 @@ export function App(): React.JSX.Element {
   const [importReport, setImportReport] = useState<ImportReport>();
   const [importing, setImporting] = useState(false);
   const [keyStatus, setKeyStatus] = useState<KeyStatus>();
+  /**
+   * The open page. Usually found in the tree; a database's rows are left out of the tree
+   * on purpose, so a row opened from a table is fetched by id instead.
+   */
+  const [selected, setSelected] = useState<Page>();
 
   const loadKeyStatus = useCallback(async () => {
     try {
@@ -77,7 +84,29 @@ export function App(): React.JSX.Element {
     [refresh],
   );
 
-  const selected = selectedId === undefined ? undefined : findPage(tree, selectedId);
+  useEffect(() => {
+    if (selectedId === undefined) {
+      setSelected(undefined);
+      return;
+    }
+    const inTree = findPage(tree, selectedId);
+    if (inTree !== undefined) {
+      setSelected(inTree);
+      return;
+    }
+    let cancelled = false;
+    api
+      .page(selectedId)
+      .then((page) => {
+        if (!cancelled) setSelected(page);
+      })
+      .catch(() => {
+        if (!cancelled) setSelected(undefined);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedId, tree]);
 
   if (keyStatus === undefined) return <div className="app loading">Starting Knowtion…</div>;
   if (keyStatus.needsSetup) {
@@ -180,6 +209,10 @@ export function App(): React.JSX.Element {
             key={selected.id}
             page={selected}
             run={run}
+            onOpen={(id) => {
+              setSelectedId(id);
+              setShowTrash(false);
+            }}
             onArchived={() => {
               setSelectedId(undefined);
             }}
@@ -258,10 +291,12 @@ function ImportSummary({
 function PageView({
   page,
   run,
+  onOpen,
   onArchived,
 }: {
-  page: PageNode;
+  page: Page;
   run: (action: () => Promise<unknown>) => Promise<void>;
+  onOpen: (id: string) => void;
   onArchived: () => void;
 }): React.JSX.Element {
   // Local title state so typing stays responsive; the engine is told on blur rather
@@ -299,6 +334,15 @@ function PageView({
         }}
       />
       <div className="page-actions">
+        {page.database === undefined && (
+          <button
+            type="button"
+            title="Existing child pages become its rows"
+            onClick={() => void run(() => api.dbConvert(page.id))}
+          >
+            Turn into database
+          </button>
+        )}
         <button
           type="button"
           onClick={() =>
@@ -311,7 +355,22 @@ function PageView({
           Move to trash
         </button>
       </div>
-      <PageBody pageId={page.id} />
+      {page.properties !== undefined && (
+        <RowProperties page={page} run={run} onOpenParent={onOpen} />
+      )}
+      {page.database !== undefined ? (
+        <>
+          <DatabaseView page={page} run={run} onOpenRow={onOpen} />
+          {/* One Node type: the page still has a body. Behind a toggle so the table owns
+              the viewport, and never lost by converting. Open state is ephemera. */}
+          <details className="description">
+            <summary>Description</summary>
+            <PageBody pageId={page.id} />
+          </details>
+        </>
+      ) : (
+        <PageBody pageId={page.id} />
+      )}
     </article>
   );
 }

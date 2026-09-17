@@ -708,3 +708,300 @@ input:focus-visible {
 .write-failure strong {
   color: var(--danger);
 }
+
+/* Databases */
+.database-view {
+  margin: 8px -24px 24px;
+}
+
+.db-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 0 24px 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.db-tabs {
+  display: flex;
+  gap: 4px;
+  flex: 1;
+}
+
+.db-tabs button {
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--muted);
+  padding: 6px 10px;
+}
+
+.db-tabs button.active {
+  color: var(--text);
+  border-bottom-color: var(--accent);
+}
+
+.db-tabs .add-view {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+
+.db-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.db-warning {
+  flex-basis: 100%;
+  margin: 0;
+  color: var(--danger);
+  font-size: 12px;
+}
+
+.db-table-wrap {
+  overflow-x: auto;
+  padding: 0 24px;
+}
+
+.db-table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 14px;
+}
+
+.db-table thead th {
+  position: sticky;
+  top: 0;
+  background: var(--bg);
+  color: var(--muted);
+  font-weight: 500;
+  text-align: left;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+
+.db-table td {
+  border-bottom: 1px solid var(--border);
+  padding: 2px 8px;
+  vertical-align: middle;
+}
+
+.db-table .handle-col {
+  width: 24px;
+  color: var(--muted);
+  cursor: grab;
+}
+
+.db-table .empty-row {
+  color: var(--muted);
+  padding: 16px 8px;
+}
+
+.db-table input,
+.db-table select,
+.row-properties input,
+.row-properties select {
+  background: transparent;
+  border: 1px solid transparent;
+  color: inherit;
+  font: inherit;
+  padding: 4px 6px;
+  min-width: 0;
+  width: 100%;
+}
+
+.db-table input:hover,
+.db-table select:hover,
+.row-properties input:hover,
+.row-properties select:hover {
+  border-color: var(--border);
+}
+
+.db-table input:focus-visible,
+.db-table select:focus-visible,
+.row-properties input:focus-visible,
+.row-properties select:focus-visible {
+  border-color: var(--accent);
+  outline: none;
+}
+
+.db-table input[type='checkbox'] {
+  width: auto;
+}
+
+.cell-title {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.cell-title .open-row {
+  opacity: 0;
+  padding: 2px 6px;
+}
+
+.db-table tr:hover .open-row,
+.cell-title .open-row:focus-visible {
+  opacity: 1;
+}
+
+.cell-editor {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.cell-editor.invalid input {
+  border-color: var(--danger);
+}
+
+.cell-hint {
+  color: var(--muted);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.cell-link {
+  color: var(--accent);
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  background: rgb(108 140 255 / 18%);
+  border-radius: 10px;
+  padding: 1px 8px;
+  font-size: 12px;
+}
+
+.chip button {
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  padding: 0 2px;
+}
+
+.chips select {
+  width: auto;
+}
+
+.cell-datetime {
+  display: flex;
+  gap: 4px;
+}
+
+.cell-datetime select {
+  max-width: 160px;
+}
+
+.db-table-footer {
+  display: flex;
+  gap: 8px;
+  padding: 8px 24px;
+}
+
+.schema-editor {
+  padding: 12px 24px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-raised);
+}
+
+.property-list,
+.option-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.property-list > li {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 6px;
+  align-items: center;
+  padding: 4px 0;
+}
+
+.option-list {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding-left: 12px;
+}
+
+.option-list li {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.option-list input {
+  width: 120px;
+}
+
+.add-property {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.schema-note {
+  color: var(--muted);
+  font-size: 12px;
+  margin: 8px 0 0;
+}
+
+.row-properties {
+  margin-bottom: 24px;
+}
+
+.row-properties dl {
+  display: grid;
+  grid-template-columns: 160px 1fr;
+  gap: 6px 12px;
+  margin: 8px 0 0;
+}
+
+.row-properties .row-property {
+  display: contents;
+}
+
+.row-properties dt {
+  color: var(--muted);
+  align-self: center;
+}
+
+.row-properties dd {
+  margin: 0;
+}
+
+.back-link {
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  padding: 0;
+}
+
+.description {
+  margin-top: 16px;
+}
+
+.description summary {
+  color: var(--muted);
+  cursor: pointer;
+}
+
+button.danger {
+  color: var(--danger);
+}
