@@ -14,6 +14,7 @@
 import type { TreeID } from 'loro-crdt';
 import type { DatabaseSchema } from './database.js';
 import type { Uuid } from './ids.js';
+import type { PropertyId, PropertyValue } from './properties.js';
 
 /**
  * Identifies a node in the page hierarchy.
@@ -38,6 +39,12 @@ export interface PageMeta {
   archivedAt?: number;
   /** Present when this page is a database: its properties and views (ADR-0014). */
   database?: DatabaseSchema;
+  /**
+   * Present when this page is a row — its parent is a database. Only values that fit
+   * the parent's current schema appear; a value of another shape stays in the log and
+   * reads as absent until the property's type comes back.
+   */
+  properties?: Record<PropertyId, PropertyValue>;
 }
 
 export interface Page extends PageMeta {

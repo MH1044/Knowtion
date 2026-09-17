@@ -7,25 +7,29 @@
  * the first pixel. The tree document is the only thing allowed at startup (ADR-0002).
  */
 
-import { LoroDoc, type LoroMap, type LoroTreeNode } from 'loro-crdt';
+import { LoroDoc, LoroMap, type LoroTreeNode } from 'loro-crdt';
 
 import {
   DB_KEY,
   DB_OPTIONS_KEY,
   DB_PROPS_KEY,
   DB_VIEWS_KEY,
+  ROW_PROPS_KEY,
   decodeDatabaseSchema,
+  decodeRowValues,
   optionKey,
   type DatabaseSchema,
 } from './database.js';
 import { createIdGen, type IdGen } from './ids.js';
-import type {
-  OptionColour,
-  OptionId,
-  PropertyDef,
-  PropertyId,
-  PropertyType,
-  SelectOption,
+import {
+  encodePropertyValue,
+  type OptionColour,
+  type OptionId,
+  type PropertyDef,
+  type PropertyId,
+  type PropertyType,
+  type PropertyValue,
+  type SelectOption,
 } from './properties.js';
 import { stripProperty } from './query.js';
 import type { Runtime } from './runtime.js';
@@ -34,6 +38,15 @@ import type { ViewDef } from './views.js';
 
 const TREE_KEY = 'pages';
 const UNTITLED = 'Untitled';
+
+/**
+ * Database schemas already decoded during one read, by database node id.
+ *
+ * Every row's values are read through its parent's schema. Decoding that schema once per
+ * row would make `allPages()` over a ten-thousand-row database decode the same map ten
+ * thousand times; a memo that lives for one call makes it once per database.
+ */
+type SchemaMemo = Map<string, DatabaseSchema | undefined>;
 
 export interface WorkspaceOptions {
   runtime: Runtime;
@@ -89,10 +102,14 @@ export class Workspace {
     return node;
   }
 
-  #toPage(node: LoroTreeNode): Page {
+  #toPage(node: LoroTreeNode, memo: SchemaMemo = new Map()): Page {
     const data = node.data.toJSON() as Record<string, unknown>;
     const parent = node.parent();
     const database = decodeDatabaseSchema(data[DB_KEY]);
+    const liveParent = parent && !parent.isDeleted() ? parent : undefined;
+    const parentSchema = liveParent === undefined ? undefined : this.#schemaOf(liveParent, memo);
+    const properties =
+      parentSchema === undefined ? undefined : decodeRowValues(parentSchema, data[ROW_PROPS_KEY]);
     return {
       id: node.id,
       // A deleted parent means this node is detached, not that it is a root. Loro
@@ -110,17 +127,29 @@ export class Workspace {
       updatedAt: (data.updatedAt as number | undefined) ?? 0,
       ...(typeof data.archivedAt === 'number' ? { archivedAt: data.archivedAt } : {}),
       ...(database === undefined ? {} : { database }),
+      ...(properties === undefined ? {} : { properties }),
     };
+  }
+
+  /** The schema on a node, if it is a database, decoded at most once per read. */
+  #schemaOf(node: LoroTreeNode, memo: SchemaMemo): DatabaseSchema | undefined {
+    const cached = memo.get(node.id);
+    if (cached !== undefined || memo.has(node.id)) return cached;
+    const raw = node.data.get(DB_KEY);
+    const schema = raw instanceof LoroMap ? decodeDatabaseSchema(raw.toJSON()) : undefined;
+    memo.set(node.id, schema);
+    return schema;
   }
 
   // ---- reads -------------------------------------------------------------
 
   /** Every live page, in no particular order. */
   allPages(): Page[] {
+    const memo: SchemaMemo = new Map();
     return this.#tree
       .nodes()
       .filter((n) => !n.isDeleted())
-      .map((n) => this.#toPage(n));
+      .map((n) => this.#toPage(n, memo));
   }
 
   getPage(id: NodeId): Page {
@@ -136,7 +165,8 @@ export class Workspace {
   /** Direct children in display order. Pass undefined for top-level pages. */
   listChildren(parentId?: NodeId): Page[] {
     const nodes = parentId === undefined ? this.#tree.roots() : this.#node(parentId).children();
-    return (nodes ?? []).filter((n) => !n.isDeleted()).map((n) => this.#toPage(n));
+    const memo: SchemaMemo = new Map();
+    return (nodes ?? []).filter((n) => !n.isDeleted()).map((n) => this.#toPage(n, memo));
   }
 
   /** The whole hierarchy, as the sidebar renders it. Archived pages are excluded. */
@@ -468,6 +498,91 @@ export class Workspace {
     }
     this.#touch(node);
     this.#doc.commit();
+  }
+
+  // ---- rows -----------------------------------------------------------------
+
+  /** A row's node with its parent database's schema. Throws NOT_A_DATABASE otherwise. */
+  #rowNode(rowId: NodeId): { node: LoroTreeNode; schema: DatabaseSchema } {
+    const node = this.#node(rowId);
+    const parent = node.parent();
+    const schema = parent && !parent.isDeleted() ? this.#schemaOf(parent, new Map()) : undefined;
+    if (schema === undefined) {
+      throw new WorkspaceError('NOT_A_DATABASE', `page ${rowId} is not a row of a database`);
+    }
+    return { node, schema };
+  }
+
+  /**
+   * The rows of a database: its live children, in sidebar order.
+   *
+   * Archived rows are left out unless asked for, as `tree()` leaves archived pages out.
+   */
+  rows(databaseId: NodeId, options: { includeArchived?: boolean } = {}): Page[] {
+    this.#databaseNode(databaseId);
+    const rows = this.listChildren(databaseId);
+    return options.includeArchived === true
+      ? rows
+      : rows.filter((row) => row.archivedAt === undefined);
+  }
+
+  /** A new row, with any initial values, in one commit. */
+  createRow(
+    databaseId: NodeId,
+    input: { title?: string; values?: Record<PropertyId, PropertyValue> } = {},
+  ): Page {
+    const { schema } = this.#databaseNode(databaseId);
+    const node = this.#tree.createNode(databaseId);
+    const now = this.#runtime.clock.now();
+    node.data.set('uuid', this.#ids.next());
+    node.data.set('title', input.title ?? UNTITLED);
+    node.data.set('createdAt', now);
+    node.data.set('updatedAt', now);
+    for (const [propertyId, value] of Object.entries(input.values ?? {})) {
+      this.#writeValue(node, schema, propertyId as PropertyId, value);
+    }
+    this.#doc.commit();
+    return this.#toPage(node);
+  }
+
+  #writeValue(
+    node: LoroTreeNode,
+    schema: DatabaseSchema,
+    propertyId: PropertyId,
+    value: PropertyValue,
+  ): void {
+    const property = this.#property(schema, propertyId);
+    const encoded = encodePropertyValue(property, value);
+    const props = this.#ensureMap(node.data, ROW_PROPS_KEY);
+    if (encoded === undefined) props.delete(propertyId);
+    else props.set(propertyId, encoded);
+  }
+
+  /**
+   * Set one cell. The value's tag must match the property's type.
+   *
+   * Two devices setting different properties of one row while apart both survive: each
+   * property is its own key in the row's `props` map. The same property converges by
+   * last-writer-wins, as every other field on a node does.
+   */
+  setPropertyValue(rowId: NodeId, propertyId: PropertyId, value: PropertyValue): Page {
+    const { node, schema } = this.#rowNode(rowId);
+    this.#writeValue(node, schema, propertyId, value);
+    this.#touch(node);
+    this.#doc.commit();
+    return this.#toPage(node);
+  }
+
+  /** Clear one cell. Deletes the entry, never the `props` map itself. */
+  clearPropertyValue(rowId: NodeId, propertyId: PropertyId): Page {
+    const { node, schema } = this.#rowNode(rowId);
+    this.#property(schema, propertyId);
+    if (node.data.get(ROW_PROPS_KEY) instanceof LoroMap) {
+      this.#ensureMap(node.data, ROW_PROPS_KEY).delete(propertyId);
+    }
+    this.#touch(node);
+    this.#doc.commit();
+    return this.#toPage(node);
   }
 
   #selectProperty(schema: DatabaseSchema, propertyId: PropertyId): PropertyDef {
