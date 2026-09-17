@@ -11,11 +11,14 @@
  */
 
 import { readArchive, type ZipEntry } from '../zip.js';
+import { parseDatabaseCsv, type ImportedDatabase } from './database.js';
 import { decodeHref, normaliseId, parseNotionPage } from './html.js';
 import type { BrokenLink, ImportReport, ImportedPage } from './types.js';
 
 export interface NotionImport {
   pages: ImportedPage[];
+  /** Databases, each tied to its page and its rows' pages where the archive has them. */
+  databases: ImportedDatabase[];
   report: ImportReport;
 }
 
@@ -61,31 +64,23 @@ export function importNotionArchive(archive: Uint8Array): NotionImport {
 
 /** Split out so tests can supply entries without building a zip. */
 export function importNotionEntries(entries: ZipEntry[]): NotionImport {
-  const report: ImportReport = { pagesImported: 0, brokenLinks: [], skipped: [], warnings: [] };
+  const report: ImportReport = {
+    pagesImported: 0,
+    databases: [],
+    brokenLinks: [],
+    skipped: [],
+    warnings: [],
+  };
   const decoder = new TextDecoder();
 
   const htmlEntries = entries.filter((e) => e.path.toLowerCase().endsWith('.html'));
+  const csvEntries = entries.filter((e) => e.path.toLowerCase().endsWith('.csv'));
   const pages: ImportedPage[] = [];
 
   for (const entry of entries) {
     const lower = entry.path.toLowerCase();
-    if (lower.endsWith('.html')) continue;
-    if (lower.endsWith('.csv')) {
-      // Databases arrive as CSV beside the HTML. Importing them needs the database
-      // engine, which is a later milestone; saying so beats importing them as prose.
-      report.skipped.push({ path: entry.path, reason: 'database export — needs database support' });
-    } else {
-      report.skipped.push({ path: entry.path, reason: 'attachment — needs asset support' });
-    }
-  }
-
-  if (report.skipped.some((s) => s.reason.startsWith('database'))) {
-    // Notion exports a single view and drops its filters, sorts and grouping. The user
-    // will otherwise assume we lost them.
-    report.warnings.push(
-      'Notion exports only one view of each database, without its filters, sorts or grouping. ' +
-        'Those settings are not in the archive and cannot be recovered.',
-    );
+    if (lower.endsWith('.html') || lower.endsWith('.csv')) continue;
+    report.skipped.push({ path: entry.path, reason: 'attachment — needs asset support' });
   }
 
   for (const entry of htmlEntries) {
@@ -114,7 +109,82 @@ export function importNotionEntries(entries: ZipEntry[]): NotionImport {
 
   resolveLinks(pages, report);
   report.pagesImported = pages.length;
-  return { pages, report };
+
+  const databases = importDatabases(csvEntries, pages, decoder, report);
+  if (databases.length > 0) {
+    // Notion exports a single view and drops its filters, sorts and grouping. The user
+    // will otherwise assume we lost them.
+    report.warnings.push(
+      'Notion exports only one view of each database, without its filters, sorts or grouping. ' +
+        'Those settings are not in the archive and cannot be recovered.',
+    );
+  }
+  return { pages, databases, report };
+}
+
+/**
+ * Each CSV is a database. Its page is the HTML with the same identifier when the export
+ * has one; its rows are that page's children, matched by title, when the export has
+ * those. A Markdown-and-CSV export writes two files per database — the view as shown,
+ * and `_all` with every row — and only the complete one is read.
+ */
+function importDatabases(
+  csvEntries: ZipEntry[],
+  pages: ImportedPage[],
+  decoder: TextDecoder,
+  report: ImportReport,
+): ImportedDatabase[] {
+  const allVariant = new Set(csvEntries.map((e) => e.path).filter((p) => /_all\.csv$/i.test(p)));
+  const pageById = new Map(pages.map((p) => [p.notionId, p]));
+  const databases: ImportedDatabase[] = [];
+
+  for (const entry of csvEntries) {
+    const isAll = /_all\.csv$/i.test(entry.path);
+    if (!isAll && allVariant.has(entry.path.replace(/\.csv$/i, '_all.csv'))) {
+      report.skipped.push({ path: entry.path, reason: 'superseded by the _all export beside it' });
+      continue;
+    }
+    const fileName = (entry.path.split('/').pop() ?? entry.path).replace(/_all(?=\.csv$)/i, '');
+    const fromName = splitNotionName(fileName);
+    const notionId = normaliseId(fromName.id);
+    const page = notionId === undefined ? undefined : pageById.get(notionId);
+
+    const database = parseDatabaseCsv(decoder.decode(entry.bytes), {
+      path: entry.path,
+      title: page?.title ?? (fromName.title || 'Untitled'),
+      ...(notionId === undefined ? {} : { notionId }),
+      ...(page === undefined ? {} : { pagePath: page.path }),
+    });
+    if (database === undefined) {
+      report.skipped.push({ path: entry.path, reason: 'empty CSV' });
+      continue;
+    }
+
+    // Rows that were exported as pages of their own: claim each once, by title.
+    if (page !== undefined) {
+      const unclaimed = pages.filter((p) => p.parentPath === page.path);
+      for (const row of database.rows) {
+        const index = unclaimed.findIndex((p) => p.title === row.title);
+        const claimed = unclaimed[index];
+        if (claimed === undefined) continue;
+        row.pagePath = claimed.path;
+        unclaimed.splice(index, 1);
+      }
+    }
+
+    databases.push(database);
+    report.databases.push({
+      title: database.title,
+      rows: database.rows.length,
+      properties: database.properties.map((p) => ({
+        name: p.name,
+        type: p.type,
+        options: p.options.length,
+      })),
+      notes: database.notes,
+    });
+  }
+  return databases;
 }
 
 /**

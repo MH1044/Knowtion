@@ -277,17 +277,73 @@ describe('importing a whole export', () => {
     expect(importNotionEntries(entries).report.brokenLinks).toHaveLength(1);
   });
 
-  it('records databases as skipped, and warns that view settings are gone', () => {
+  it('imports a database from its CSV, tied to its page and to the pages of its rows', () => {
+    const db = 'd'.repeat(32);
+    const rowA = 'e'.repeat(32);
+    const rowB = 'f'.repeat(32);
     const entries = [
       entry(`Export-abc/Home ${ID.home}.html`, page('Home', ID.home, '<p>x</p>')),
-      { path: `Export-abc/Tasks ${ID.child}_all.csv`, bytes: new TextEncoder().encode('a,b\n1,2') },
+      entry(`Export-abc/Tasks ${db}.html`, page('Tasks', db, '<p>table</p>')),
+      entry(`Export-abc/Tasks ${db}/Row A ${rowA}.html`, page('Row A', rowA, '<p>a</p>')),
+      entry(`Export-abc/Tasks ${db}/Row B ${rowB}.html`, page('Row B', rowB, '<p>b</p>')),
+      {
+        path: `Export-abc/Tasks ${db}.csv`,
+        bytes: new TextEncoder().encode(
+          'Name,Status,Done\nRow A,Todo,No\nRow B,Done,Yes\nRow C,Todo,No\n',
+        ),
+      },
     ];
-    const { report } = importNotionEntries(entries);
+    const { databases, report } = importNotionEntries(entries);
 
-    expect(report.skipped.map((s) => s.reason)).toContain(
-      'database export — needs database support',
-    );
+    expect(databases).toHaveLength(1);
+    const database = at(databases, 0);
+    expect(database.title).toBe('Tasks');
+    expect(database.pagePath).toBe(`Export-abc/Tasks ${db}.html`);
+    expect(database.properties).toEqual([
+      { name: 'Status', type: 'select', options: ['Todo', 'Done'] },
+      { name: 'Done', type: 'checkbox', options: [] },
+    ]);
+    // Rows that were exported as pages are claimed by title; the third has no page.
+    expect(database.rows.map((r) => r.pagePath)).toEqual([
+      `Export-abc/Tasks ${db}/Row A ${rowA}.html`,
+      `Export-abc/Tasks ${db}/Row B ${rowB}.html`,
+      undefined,
+    ]);
+    expect(at(database.rows, 1).values).toEqual({
+      Status: { type: 'select', value: 'Done' },
+      Done: { type: 'checkbox', value: true },
+    });
+
+    expect(report.databases).toEqual([
+      {
+        title: 'Tasks',
+        rows: 3,
+        properties: [
+          { name: 'Status', type: 'select', options: 2 },
+          { name: 'Done', type: 'checkbox', options: 0 },
+        ],
+        notes: [],
+      },
+    ]);
+    expect(report.skipped).toEqual([]);
     expect(report.warnings.join(' ')).toMatch(/only one view/i);
+  });
+
+  it('reads the _all export of a database and skips the partial one beside it', () => {
+    const db = 'd'.repeat(32);
+    const csv = (rows: string) => new TextEncoder().encode(`Name,Status\n${rows}`);
+    const entries = [
+      { path: `Export-abc/Tasks ${db}.csv`, bytes: csv('Row A,Todo\n') },
+      { path: `Export-abc/Tasks ${db}_all.csv`, bytes: csv('Row A,Todo\nRow B,Done\n') },
+    ];
+    const { databases, report } = importNotionEntries(entries);
+    expect(databases.map((d) => d.rows.length)).toEqual([2]);
+    // No page of its own in this export: the database is named from the file.
+    expect(at(databases, 0).title).toBe('Tasks');
+    expect(at(databases, 0).pagePath).toBeUndefined();
+    expect(report.skipped).toEqual([
+      { path: `Export-abc/Tasks ${db}.csv`, reason: 'superseded by the _all export beside it' },
+    ]);
   });
 
   it('records attachments as skipped rather than dropping them silently', () => {

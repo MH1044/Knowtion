@@ -14,4 +14,22 @@ export type { ParsedPage } from './notion/html.js';
 
 export { importNotionArchive, importNotionEntries, splitNotionName } from './notion/import.js';
 export type { NotionImport } from './notion/import.js';
-export type { BrokenLink, DocNode, ImportReport, ImportedPage } from './notion/types.js';
+export type {
+  BrokenLink,
+  DocNode,
+  ImportReport,
+  ImportedDatabaseSummary,
+  ImportedPage,
+} from './notion/types.js';
+
+export { parseCsv } from './csv.js';
+export { parseNotionDate, utcInstant } from './notion/dates.js';
+export type { ParsedDate } from './notion/dates.js';
+export { convertValue, inferType, parseDatabaseCsv } from './notion/database.js';
+export type {
+  ImportedDatabase,
+  ImportedProperty,
+  ImportedPropertyType,
+  ImportedRow,
+  ImportedValue,
+} from './notion/database.js';
