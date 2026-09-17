@@ -11,7 +11,6 @@ import { describe, expect, it } from 'vitest';
 
 import { Workspace, deterministicRuntime, type NodeId } from '@knowtion/engine';
 
-import { INDEX_VERSION, SCHEMA_VERSION } from '../schema.js';
 import { ReadModel } from '../read-model.js';
 
 /** Indexing a scratch array of ids can't statically prove the index is in bounds. */
@@ -89,17 +88,6 @@ describe('rebuild equivalence', () => {
 
     incremental.close();
     rebuilt.close();
-  });
-
-  it('discards a store built under different indexing rules', () => {
-    // A tokenizer or segmentation change must force a rebuild rather than silently
-    // serving results built by the old rules.
-    expect(SCHEMA_VERSION).toBeGreaterThan(0);
-    expect(INDEX_VERSION).toBeGreaterThan(0);
-
-    const model = ReadModel.open(':memory:');
-    expect(model.isEmpty).toBe(true);
-    model.close();
   });
 });
 

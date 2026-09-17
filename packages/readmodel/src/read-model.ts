@@ -8,9 +8,9 @@
 
 import { DatabaseSync } from 'node:sqlite';
 
-import type { Page } from '@knowtion/engine';
+import { canonicalRowJson, type Page } from '@knowtion/engine';
 
-import { DDL, INDEX_VERSION, SCHEMA_VERSION } from './schema.js';
+import { DDL, DROP_DDL, INDEX_VERSION, SCHEMA_VERSION } from './schema.js';
 import { segmentForIndex } from './segmenter.js';
 
 /**
@@ -88,15 +88,7 @@ export class ReadModel {
 
   /** Drop everything and recreate. The only migration strategy a derived store needs. */
   #reset(): void {
-    this.#db.exec(`
-      drop trigger if exists search_doc_ai;
-      drop trigger if exists search_doc_ad;
-      drop trigger if exists search_doc_au;
-      drop table if exists search;
-      drop table if exists search_doc;
-      drop table if exists page;
-      drop table if exists meta;
-    `);
+    this.#db.exec(DROP_DDL);
     this.#db.exec(DDL);
     const set = this.#db.prepare('insert or replace into meta(key, value) values (?, ?)');
     set.run('schema_version', String(SCHEMA_VERSION));
@@ -143,8 +135,9 @@ export class ReadModel {
       this.#db.exec('delete from search_doc');
 
       const insertPage = this.#db.prepare(
-        `insert into page(id, uuid, parent_id, title, body, archived_at, updated_at)
-         values (?, ?, ?, ?, ?, ?, ?)`,
+        `insert into page(id, uuid, parent_id, title, body, archived_at, created_at, updated_at,
+                          is_database, row_json)
+         values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       );
       const insertDoc = this.#db.prepare(
         'insert into search_doc(rowid, title, body) values (?, ?, ?)',
@@ -159,7 +152,10 @@ export class ReadModel {
           page.title,
           body,
           page.archivedAt ?? null,
+          page.createdAt,
           page.updatedAt,
+          page.database === undefined ? 0 : 1,
+          canonicalRowJson(page.properties, page.orderKeys),
         );
         insertDoc.run(result.lastInsertRowid, segmentForIndex(page.title), segmentForIndex(body));
       }
