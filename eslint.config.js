@@ -96,6 +96,29 @@ export default tseslint.config(
     },
   },
 
+  // Adding a member to a union must break the build, not leak a wrong answer.
+  //
+  // A property type is switched on in roughly three dozen places across the engine, the
+  // read model, the host, the renderer, the importer and the simulator. Without this
+  // rule, adding one compiles cleanly everywhere and fails at runtime in whichever of
+  // those places was missed. `considerDefaultExhaustiveForUnions` is off deliberately:
+  // a `default:` arm is precisely the thing that would absorb the new member in silence,
+  // so a switch over a union has to name every member it handles.
+  {
+    files: ['**/*.ts', '**/*.tsx'],
+    ignores: ['apps/*/e2e/**/*.ts', '*.config.ts', 'apps/*/*.config.ts'],
+    rules: {
+      '@typescript-eslint/switch-exhaustiveness-check': [
+        'error',
+        {
+          allowDefaultCaseForExhaustiveSwitch: true,
+          considerDefaultExhaustiveForUnions: false,
+          requireDefaultForNonUnion: true,
+        },
+      ],
+    },
+  },
+
   // The engine must stay headless. If packages/ can reach into apps/, the boundary
   // that keeps a second host shell possible is gone, and it goes quietly.
   {

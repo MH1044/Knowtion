@@ -71,6 +71,49 @@ function calendarDateOf(value: PropertyValue): CalendarDate | undefined {
   return undefined;
 }
 
+/**
+ * The comparison operators, one function each.
+ *
+ * Inline in `matchesLeaf` these were switches ending in `default:`, which is the one
+ * shape that can absorb a newly added operator without a word from the compiler. As
+ * their own functions the switch is exhaustive and the end of the function is
+ * unreachable, so adding an operator fails the build here rather than quietly matching
+ * nothing.
+ */
+function compareNumber(op: 'eq' | 'lt' | 'lte' | 'gt' | 'gte', n: number, want: number): boolean {
+  switch (op) {
+    case 'eq':
+      return n === want;
+    case 'lt':
+      return n < want;
+    case 'lte':
+      return n <= want;
+    case 'gt':
+      return n > want;
+    case 'gte':
+      return n >= want;
+  }
+}
+
+/** `cmp` is the day compared against the operand: negative earlier, positive later. */
+function compareDay(
+  op: 'onDate' | 'before' | 'after' | 'onOrBefore' | 'onOrAfter',
+  cmp: -1 | 0 | 1,
+): boolean {
+  switch (op) {
+    case 'onDate':
+      return cmp === 0;
+    case 'before':
+      return cmp < 0;
+    case 'after':
+      return cmp > 0;
+    case 'onOrBefore':
+      return cmp <= 0;
+    case 'onOrAfter':
+      return cmp >= 0;
+  }
+}
+
 /** One leaf against one row. The filter must already have had its dates resolved. */
 function matchesLeaf(row: QueryRow, leaf: FilterLeaf, defs: Defs): boolean {
   const def = defs.get(leaf.property);
@@ -97,19 +140,7 @@ function matchesLeaf(row: QueryRow, leaf: FilterLeaf, defs: Defs): boolean {
     case 'gt':
     case 'gte': {
       if (empty || value?.type !== 'number') return false;
-      const n = value.value;
-      switch (leaf.op) {
-        case 'eq':
-          return n === leaf.value;
-        case 'lt':
-          return n < leaf.value;
-        case 'lte':
-          return n <= leaf.value;
-        case 'gt':
-          return n > leaf.value;
-        default:
-          return n >= leaf.value;
-      }
+      return compareNumber(leaf.op, value.value, leaf.value);
     }
     case 'ne':
       // Defined as not(eq): an empty cell is "not equal to 3".
@@ -134,19 +165,7 @@ function matchesLeaf(row: QueryRow, leaf: FilterLeaf, defs: Defs): boolean {
       if (empty || value === undefined) return false;
       const day = calendarDateOf(value);
       if (day === undefined || leaf.value.kind !== 'on') return false;
-      const cmp = compareCodepoints(day, leaf.value.date);
-      switch (leaf.op) {
-        case 'onDate':
-          return cmp === 0;
-        case 'before':
-          return cmp < 0;
-        case 'after':
-          return cmp > 0;
-        case 'onOrBefore':
-          return cmp <= 0;
-        default:
-          return cmp >= 0;
-      }
+      return compareDay(leaf.op, compareCodepoints(day, leaf.value.date));
     }
   }
 }

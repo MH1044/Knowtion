@@ -758,7 +758,8 @@ export class Workspace {
       case 'last':
         index = ordered.length;
         break;
-      default: {
+      case 'before':
+      case 'after': {
         const anchor = ordered.findIndex((row) => row.id === position.row);
         if (anchor < 0) {
           throw new WorkspaceError('NOT_FOUND', `no row ${position.row} to place against`);

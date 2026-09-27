@@ -334,7 +334,9 @@ export function isEmptyValue(def: PropertyDef, value: PropertyValue | undefined)
       return !Number.isFinite(value.value);
     case 'multi-select':
       return value.value.length === 0;
-    default:
+    case 'select':
+    case 'date':
+    case 'datetime':
       return false;
   }
 }

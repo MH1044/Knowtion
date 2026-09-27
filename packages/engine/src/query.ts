@@ -240,7 +240,8 @@ export function filterLeaves(filter: Filter): FilterLeaf[] {
       return [filter];
     case 'not':
       return filterLeaves(filter.clause);
-    default:
+    case 'and':
+    case 'or':
       return filter.clauses.flatMap(filterLeaves);
   }
 }
@@ -251,7 +252,8 @@ function depthOf(filter: Filter): number {
       return 1;
     case 'not':
       return 1 + depthOf(filter.clause);
-    default:
+    case 'and':
+    case 'or':
       return 1 + Math.max(0, ...filter.clauses.map(depthOf));
   }
 }
@@ -300,7 +302,11 @@ function leafProblems(
         return isCalendarDate(operand.date) ? [] : [{ path, code: 'BAD_OPERAND' }];
       return Math.abs(operand.days) <= MAX_RELATIVE_DAYS ? [] : [{ path, code: 'BAD_OPERAND' }];
     }
-    default:
+    case 'isEmpty':
+    case 'equals':
+    case 'contains':
+    case 'startsWith':
+    case 'is':
       return [];
   }
 }
@@ -316,7 +322,8 @@ function filterProblems(
       return leafProblems(filter, path, defs, strict);
     case 'not':
       return filterProblems(filter.clause, `${path}.clause`, defs, strict);
-    default:
+    case 'and':
+    case 'or':
       return filter.clauses.flatMap((clause, i) =>
         filterProblems(clause, `${path}.clauses[${String(i)}]`, defs, strict),
       );
@@ -446,7 +453,21 @@ export function resolveDates(filter: Filter, ctx: QueryContext): Filter {
             return { ...filter, value: { kind: 'on', date: addDays(today, filter.value.days) } };
           }
           return filter;
-        default:
+        case 'isEmpty':
+        case 'equals':
+        case 'contains':
+        case 'startsWith':
+        case 'eq':
+        case 'ne':
+        case 'lt':
+        case 'lte':
+        case 'gt':
+        case 'gte':
+        case 'is':
+        case 'optionIs':
+        case 'optionIsNot':
+        case 'hasOption':
+        case 'lacksOption':
           return filter;
       }
   }
@@ -467,7 +488,8 @@ export function stripProperty(filter: Filter, property: PropertyId): Filter | un
       const clause = stripProperty(filter.clause, property);
       return clause === undefined ? undefined : { kind: 'not', clause };
     }
-    default: {
+    case 'and':
+    case 'or': {
       const clauses = filter.clauses
         .map((c) => stripProperty(c, property))
         .filter((c): c is Filter => c !== undefined);

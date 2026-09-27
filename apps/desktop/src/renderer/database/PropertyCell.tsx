@@ -58,7 +58,11 @@ function textOf(value: PropertyValue | undefined): string {
       return value.value;
     case 'number':
       return String(value.value);
-    default:
+    case 'checkbox':
+    case 'select':
+    case 'multi-select':
+    case 'date':
+    case 'datetime':
       return '';
   }
 }
