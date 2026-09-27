@@ -333,37 +333,50 @@ function databasePage(defs: PropertyDef[]): Page {
   };
 }
 
+/**
+ * Two hundred and fifty random cases, each opening a database, projecting a schema and a
+ * handful of rows into it and running a query both ways. That is a second or two on an
+ * idle machine and several when the rest of the suite is running beside it, so the
+ * timeout is stated rather than left at vitest's five seconds — where it sat just close
+ * enough to the edge to fail about one run in six once a ninth property type was added.
+ */
+const EQUIVALENCE_TIMEOUT_MS = 60_000;
+
 describe('twin interpreters', () => {
-  it('return the same rows, in the same order, in the same buckets, with the same warnings', () => {
-    fc.assert(
-      fc.property(arbCase, ({ defs, rows, spec, inView }) => {
-        // Text the two sides cannot both carry is out of scope: the engine well-forms text
-        // at write time, so lone surrogates never reach either interpreter in practice.
-        const wellFormed = rows.every((row) =>
-          Object.values(row.properties ?? {}).every(
-            (v) => typeof v.value !== 'string' || toWellFormedText(v.value) === v.value,
-          ),
-        );
-        fc.pre(wellFormed);
-
-        const viewId = inView ? VIEW_ID : undefined;
-        const expected = evaluateQuery(rows, defs, spec, CTX, viewId);
-
-        const model = ReadModel.open(':memory:');
-        try {
-          model.projectPages([databasePage(defs), ...rows]);
-          const actual = model.query(DATABASE_ID, spec, CTX, {}, viewId);
-          expect(actual.rows.map((r) => r.id)).toEqual(expected.rows.map((r) => r.id));
-          expect(actual.total).toBe(expected.rows.length);
-          expect(actual.warnings).toEqual(expected.warnings);
-          expect(actual.groups?.map((g) => [g.key, g.rows.map((r) => r.id)])).toEqual(
-            expected.groups?.map((g) => [g.key, g.rows.map((r) => r.id)]),
+  it(
+    'return the same rows, in the same order, in the same buckets, with the same warnings',
+    () => {
+      fc.assert(
+        fc.property(arbCase, ({ defs, rows, spec, inView }) => {
+          // Text the two sides cannot both carry is out of scope: the engine well-forms text
+          // at write time, so lone surrogates never reach either interpreter in practice.
+          const wellFormed = rows.every((row) =>
+            Object.values(row.properties ?? {}).every(
+              (v) => typeof v.value !== 'string' || toWellFormedText(v.value) === v.value,
+            ),
           );
-        } finally {
-          model.close();
-        }
-      }),
-      { numRuns: 250, verbose: true },
-    );
-  });
+          fc.pre(wellFormed);
+
+          const viewId = inView ? VIEW_ID : undefined;
+          const expected = evaluateQuery(rows, defs, spec, CTX, viewId);
+
+          const model = ReadModel.open(':memory:');
+          try {
+            model.projectPages([databasePage(defs), ...rows]);
+            const actual = model.query(DATABASE_ID, spec, CTX, {}, viewId);
+            expect(actual.rows.map((r) => r.id)).toEqual(expected.rows.map((r) => r.id));
+            expect(actual.total).toBe(expected.rows.length);
+            expect(actual.warnings).toEqual(expected.warnings);
+            expect(actual.groups?.map((g) => [g.key, g.rows.map((r) => r.id)])).toEqual(
+              expected.groups?.map((g) => [g.key, g.rows.map((r) => r.id)]),
+            );
+          } finally {
+            model.close();
+          }
+        }),
+        { numRuns: 250, verbose: true },
+      );
+    },
+    EQUIVALENCE_TIMEOUT_MS,
+  );
 });
