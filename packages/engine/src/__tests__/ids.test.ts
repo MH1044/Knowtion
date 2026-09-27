@@ -1,6 +1,6 @@
 import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
-import { bytesToUuid, createIdGen, uuidToBytes, uuidTimestamp } from '../ids.js';
+import { bytesToUuid, createIdGen, isUuid, uuidToBytes, uuidTimestamp } from '../ids.js';
 import { deterministicRuntime, systemRuntime } from '../runtime.js';
 
 /** Indexing a Uint8Array can't statically prove the index is in bounds. */
@@ -124,5 +124,18 @@ describe('UUIDv7', () => {
     expect(() => uuidToBytes('not-a-uuid')).toThrow(TypeError);
     expect(() => uuidToBytes('0198A1B2-C3D4-7000-8000-000000000000')).toThrow(TypeError);
     expect(() => bytesToUuid(new Uint8Array(15))).toThrow(TypeError);
+  });
+});
+
+describe('isUuid', () => {
+  it('accepts only the canonical lowercase hyphenated form', () => {
+    const uuid = bytesToUuid(new Uint8Array(16).fill(0xab));
+    expect(isUuid(uuid)).toBe(true);
+    expect(isUuid(uuid.toUpperCase())).toBe(false);
+    expect(isUuid(uuid.replaceAll('-', ''))).toBe(false);
+    expect(isUuid(`{${uuid}}`)).toBe(false);
+    expect(isUuid('')).toBe(false);
+    expect(isUuid(undefined)).toBe(false);
+    expect(isUuid(7)).toBe(false);
   });
 });

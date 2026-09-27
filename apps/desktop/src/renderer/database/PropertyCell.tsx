@@ -63,6 +63,7 @@ function textOf(value: PropertyValue | undefined): string {
     case 'multi-select':
     case 'date':
     case 'datetime':
+    case 'relation':
       return '';
   }
 }
@@ -333,6 +334,17 @@ export function PropertyCell(props: PropertyCellProps): React.JSX.Element {
       return <SelectCell {...props} />;
     case 'multi-select':
       return <MultiSelectCell {...props} />;
+    case 'relation': {
+      // Read-only until the picker arrives: a cell that cannot show which pages are
+      // linked must at least not pretend the cell is empty. It never commits, so a
+      // relation written by a newer build survives being looked at by this one.
+      const targets = value?.type === 'relation' ? value.value : [];
+      return (
+        <span className="cell-text">
+          {targets.length === 0 ? '' : `${String(targets.length)} linked`}
+        </span>
+      );
+    }
     case 'date': {
       const current = value?.type === 'date' ? value.value : '';
       if (readOnly)

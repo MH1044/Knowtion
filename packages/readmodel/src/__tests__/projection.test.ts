@@ -62,6 +62,11 @@ function randomValue(rand: () => number, def: PropertyDef): PropertyValue | unde
       const chosen = def.options.filter(() => rand() < 0.5).map((o) => o.id);
       return chosen.length === 0 ? undefined : { type: 'multi-select', value: chosen };
     }
+    case 'relation':
+      // Targets have to be real pages, which this generator does not have. Relation
+      // projection is covered by the equivalence test, which needs no live pages
+      // because both interpreters see the same list.
+      return undefined;
     case 'date':
       return {
         type: 'date',

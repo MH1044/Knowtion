@@ -26,6 +26,7 @@ export const OPS_BY_TYPE: Record<PropertyType, readonly FilterOp[]> = {
   'multi-select': ['isEmpty', 'hasOption', 'lacksOption'],
   date: ['isEmpty', 'onDate', 'before', 'after', 'onOrBefore', 'onOrAfter'],
   datetime: ['isEmpty', 'onDate', 'before', 'after', 'onOrBefore', 'onOrAfter'],
+  relation: ['isEmpty'],
 };
 
 export const OP_LABELS: Record<FilterOp, string> = {

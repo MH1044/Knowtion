@@ -31,6 +31,7 @@ const ALL_TYPES: PropertyType[] = [
   'date',
   'datetime',
   'url',
+  'relation',
 ];
 
 describe('the operator table', () => {

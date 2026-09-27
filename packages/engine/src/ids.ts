@@ -122,6 +122,15 @@ export function bytesToUuid(bytes: Uint8Array): Uuid {
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
+/**
+ * Canonical lowercase hyphenated form, which is the only form allowed inside CRDT maps
+ * (ADR-0014). Uppercase hex and braced forms are rejected rather than normalised: two
+ * spellings of one identifier are two map keys, and the merge would keep both.
+ */
+export function isUuid(value: unknown): value is Uuid {
+  return typeof value === 'string' && UUID_PATTERN.test(value);
+}
+
 export function uuidToBytes(uuid: string): Uint8Array {
   if (!UUID_PATTERN.test(uuid)) {
     throw new TypeError(`not a canonical lowercase UUID: ${uuid}`);

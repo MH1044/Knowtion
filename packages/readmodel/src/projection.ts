@@ -140,6 +140,7 @@ function columnsOf(value: PropertyValue): {
     case 'select':
       return { ...empty, text: value.value };
     case 'multi-select':
+    case 'relation':
       return { ...empty, json: JSON.stringify(value.value) };
     case 'date':
       return { ...empty, text: value.value };

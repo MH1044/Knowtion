@@ -221,6 +221,7 @@ function compileSort(
         case 'datetime':
           return { joins: [join], order: [`(${s}.int_value is null)`, `${s}.int_value ${dir}`] };
         case 'multi-select':
+        case 'relation':
           return { joins: [join], order: [] }; // unsortable; sanitising never lets one through
       }
     }

@@ -21,6 +21,7 @@ import {
   isEmptyValue,
   isZoneName,
   localDateOf,
+  relationTargetOf,
   toWellFormedText,
   type CalendarDate,
   type OptionId,
@@ -40,8 +41,23 @@ function def(type: PropertyType, options: OptionId[] = []): PropertyDef {
     type,
     createdAt: 0,
     options: options.map((o, i) => ({ id: o, name: `option ${String(i)}` })),
+    // A relation needs somewhere to point before it will accept a value at all.
+    ...(type === 'relation' ? { config: { database: id(200) } } : {}),
   };
 }
+
+// Byte values with hex letters in them, so the uppercase case below is a real change.
+const TARGET_A = id(0xab);
+const TARGET_B = id(0xcd);
+
+/** A relation whose config never reached this device, so the key is absent, not undefined. */
+const untargetedRelation: PropertyDef = {
+  id: id(9),
+  name: 'the relation',
+  type: 'relation',
+  createdAt: 0,
+  options: [],
+};
 
 /** Narrow a thrown value to the error the engine promises. */
 function rejectedWith(code: WorkspaceError['code']): Error {
@@ -227,6 +243,52 @@ describe('text', () => {
   });
 });
 
+describe('relations', () => {
+  it('stores target uuids, deduplicated, in the order they were given', () => {
+    const relation = def('relation');
+    expect(
+      encodePropertyValue(relation, { type: 'relation', value: [TARGET_B, TARGET_A] }),
+    ).toEqual([TARGET_B, TARGET_A]);
+    expect(
+      encodePropertyValue(relation, { type: 'relation', value: [TARGET_A, TARGET_B, TARGET_A] }),
+    ).toEqual([TARGET_A, TARGET_B]);
+    // Empty clears, as an empty text does: absent and empty are one state in the log.
+    expect(encodePropertyValue(relation, { type: 'relation', value: [] })).toBeUndefined();
+  });
+
+  it('refuses a target that is not a canonical uuid, and a relation with no database', () => {
+    const relation = def('relation');
+    expect(() =>
+      encodePropertyValue(relation, { type: 'relation', value: ['nope' as typeof TARGET_A] }),
+    ).toThrow(rejectedWith('INVALID_VALUE'));
+    expect(() =>
+      encodePropertyValue(relation, {
+        type: 'relation',
+        value: [TARGET_A.toUpperCase() as typeof TARGET_A],
+      }),
+    ).toThrow(rejectedWith('INVALID_VALUE'));
+    expect(() =>
+      encodePropertyValue(untargetedRelation, { type: 'relation', value: [TARGET_A] }),
+    ).toThrow(rejectedWith('INVALID_VALUE'));
+  });
+
+  it('decodes shape only: a target that names no page is still a target here', () => {
+    const relation = def('relation');
+    expect(decodePropertyValue(relation, [TARGET_A, 'nope', TARGET_A, 7])).toEqual({
+      type: 'relation',
+      value: [TARGET_A],
+    });
+    expect(decodePropertyValue(relation, [])).toBeUndefined();
+    expect(decodePropertyValue(relation, 'not an array')).toBeUndefined();
+  });
+
+  it('names its target database only when it is a relation with one', () => {
+    expect(relationTargetOf(def('relation'))).toBe(id(200));
+    expect(relationTargetOf(def('text'))).toBeUndefined();
+    expect(relationTargetOf(untargetedRelation)).toBeUndefined();
+  });
+});
+
 describe('emptiness', () => {
   it('follows the shared rules', () => {
     expect(isEmptyValue(def('text'), undefined)).toBe(true);
@@ -236,6 +298,8 @@ describe('emptiness', () => {
     expect(isEmptyValue(def('checkbox'), undefined)).toBe(false); // absent means unchecked
     expect(isEmptyValue(def('multi-select'), { type: 'multi-select', value: [] })).toBe(true);
     expect(isEmptyValue(def('select', [OPT_A]), { type: 'select', value: OPT_A })).toBe(false);
+    expect(isEmptyValue(def('relation'), { type: 'relation', value: [] })).toBe(true);
+    expect(isEmptyValue(def('relation'), { type: 'relation', value: [TARGET_A] })).toBe(false);
   });
 });
 

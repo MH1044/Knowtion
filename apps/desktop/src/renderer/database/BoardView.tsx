@@ -54,6 +54,10 @@ function summary(def: PropertyDef, row: RowView): string | undefined {
       return formatDate(value.value);
     case 'datetime':
       return formatDateTime(value.value.ms, value.value.zone);
+    case 'relation':
+      // Titles live on the target rows, which a card does not have. The count is the
+      // honest summary until the relation picker lands.
+      return value.value.length === 0 ? undefined : `${String(value.value.length)} linked`;
   }
 }
 

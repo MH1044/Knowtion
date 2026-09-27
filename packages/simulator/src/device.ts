@@ -137,6 +137,12 @@ function randomValue(random: () => number, def: PropertyDef): PropertyValue | un
         type: 'datetime',
         value: { ms: CLOCK_ORIGIN_MS + n(random, 1_000_000) * 1_000, zone: 'UTC' },
       };
+    case 'relation':
+      // A relation value is a list of pages that must actually exist, which this
+      // function cannot see. The simulator does not define relation properties yet
+      // either, so this arm is unreachable today; relations join the simulation with
+      // the link table, where the invalidation they need can be exercised.
+      return undefined;
   }
 }
 

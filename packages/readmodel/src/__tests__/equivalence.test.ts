@@ -51,6 +51,7 @@ const TYPES: PropertyType[] = [
   'date',
   'datetime',
   'url',
+  'relation',
 ];
 
 const arbText = fc.oneof(
@@ -94,6 +95,9 @@ const arbSchema: fc.Arbitrary<PropertyDef[]> = fc
                   name: `o${String(k)}`,
                 }))
               : [],
+          // A relation with nothing to point at is not a relation either interpreter
+          // would be asked about, so the generated schema gives it a target.
+          ...(type === 'relation' ? { config: { database: uuidOf(500) } } : {}),
         })),
       ),
     ),
@@ -127,6 +131,13 @@ function arbValue(def: PropertyDef): fc.Arbitrary<PropertyValue> {
           zone: arbZone,
         })
         .map((value) => ({ type: 'datetime', value }));
+    case 'relation':
+      // Targets are page uuids, and whether they name a live page is decided above
+      // this layer. Both interpreters see the same list either way, which is the
+      // property under test.
+      return fc
+        .subarray([uuidOf(2000), uuidOf(2001), uuidOf(2002)])
+        .map((value) => ({ type: 'relation', value }));
   }
 }
 

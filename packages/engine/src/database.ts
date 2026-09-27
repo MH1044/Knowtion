@@ -13,12 +13,14 @@
  * workspace.ts.
  */
 
+import { isUuid } from './ids.js';
 import { isOrderKey, type OrderKey } from './order-key.js';
 import {
   decodePropertyValue,
   isOptionColour,
   isPropertyType,
   type OptionId,
+  type PropertyConfig,
   type PropertyDef,
   type PropertyId,
   type PropertyValue,
@@ -43,14 +45,41 @@ export interface DatabaseSchema {
   views: ViewDef[];
 }
 
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
-
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 function byId<T extends { id: string }>(a: T, b: T): number {
   return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+}
+
+/**
+ * The config a property of this type needs, or undefined when it has none or the stored
+ * one cannot be read.
+ *
+ * The caller distinguishes the two: a type that needs no config is fine without one, and
+ * a type that needs one is dropped from the schema without it. Nothing is repaired here.
+ */
+function decodeConfig(type: PropertyDef['type'], raw: unknown): PropertyConfig | undefined {
+  switch (type) {
+    case 'text':
+    case 'number':
+    case 'checkbox':
+    case 'select':
+    case 'multi-select':
+    case 'date':
+    case 'datetime':
+    case 'url':
+      return undefined;
+    case 'relation':
+      if (!isRecord(raw) || !isUuid(raw.database)) return undefined;
+      return { database: raw.database };
+  }
+}
+
+/** Types whose property is meaningless, and so unreadable, without a config. */
+function needsConfig(type: PropertyDef['type']): boolean {
+  return type === 'relation';
 }
 
 /**
@@ -94,11 +123,11 @@ function decodeOptions(raw: unknown, properties: Map<string, PropertyDef>): void
     const propertyId = key.slice(0, colon);
     const optionId = key.slice(colon + 1);
     const property = properties.get(propertyId);
-    if (property === undefined || !UUID.test(optionId)) continue;
+    if (property === undefined || !isUuid(optionId)) continue;
     if (property.type !== 'select' && property.type !== 'multi-select') continue;
     if (!isRecord(value) || typeof value.name !== 'string') continue;
     const option: SelectOption = {
-      id: optionId as OptionId,
+      id: optionId,
       name: value.name,
       ...(isOptionColour(value.color) ? { color: value.color } : {}),
     };
@@ -120,14 +149,20 @@ export function decodeDatabaseSchema(raw: unknown): DatabaseSchema | undefined {
   const properties = new Map<string, PropertyDef>();
   if (isRecord(raw[DB_PROPS_KEY])) {
     for (const [id, value] of Object.entries(raw[DB_PROPS_KEY])) {
-      if (!UUID.test(id) || !isRecord(value)) continue;
+      if (!isUuid(id) || !isRecord(value)) continue;
       if (typeof value.name !== 'string' || !isPropertyType(value.type)) continue;
+      const config = decodeConfig(value.type, value.config);
+      // A relation with no readable target is not a property this build can present. It
+      // is left in the log untouched, exactly like a property of a type this build does
+      // not know: a client that understands it still sees it.
+      if (config === undefined && needsConfig(value.type)) continue;
       properties.set(id, {
-        id: id as PropertyId,
+        id,
         name: value.name,
         type: value.type,
         createdAt: typeof value.createdAt === 'number' ? value.createdAt : 0,
         options: [],
+        ...(config === undefined ? {} : { config }),
       });
     }
   }
@@ -137,8 +172,8 @@ export function decodeDatabaseSchema(raw: unknown): DatabaseSchema | undefined {
   const views: ViewDef[] = [];
   if (isRecord(raw[DB_VIEWS_KEY])) {
     for (const [id, value] of Object.entries(raw[DB_VIEWS_KEY])) {
-      if (!UUID.test(id)) continue;
-      const view = decodeView(id as ViewId, value, sortedProperties);
+      if (!isUuid(id)) continue;
+      const view = decodeView(id, value, sortedProperties);
       if (view !== undefined) views.push(view);
     }
   }

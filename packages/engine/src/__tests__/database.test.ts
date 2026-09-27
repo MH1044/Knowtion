@@ -10,7 +10,7 @@
  */
 import { describe, expect, it } from 'vitest';
 
-import { DB_KEY } from '../database.js';
+import { DB_KEY, decodeDatabaseSchema } from '../database.js';
 import type { PropertyDef } from '../properties.js';
 import { deterministicRuntime } from '../runtime.js';
 import { WorkspaceError } from '../types.js';
@@ -371,5 +371,56 @@ describe('two devices', () => {
     b.merge(fromA);
     expect(a.database(page.id)).toEqual(b.database(page.id));
     expect(a.database(page.id).views).toHaveLength(2);
+  });
+});
+
+/**
+ * The schema decoder read directly, for shapes the workspace will not write.
+ *
+ * A property whose config is missing or unreadable is the same situation as a property
+ * of a type this build does not know: FORMAT.md's reading rules say leave it alone, and
+ * leaving it alone means not presenting it either.
+ */
+describe('a relation property in the log', () => {
+  const DB = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
+  const PROP = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb';
+
+  const withConfig = (config: unknown): unknown => ({
+    createdAt: 1,
+    props: { [PROP]: { name: 'Owner', type: 'relation', createdAt: 2, config } },
+  });
+
+  it('is read when it names a target database', () => {
+    const schema = must(decodeDatabaseSchema(withConfig({ database: DB })), 'the schema');
+    expect(schema.properties).toEqual([
+      {
+        id: PROP,
+        name: 'Owner',
+        type: 'relation',
+        createdAt: 2,
+        options: [],
+        config: { database: DB },
+      },
+    ]);
+  });
+
+  it('is left out when the target is missing, malformed or not canonical', () => {
+    for (const config of [
+      undefined,
+      {},
+      { database: 'not a uuid' },
+      { database: DB.toUpperCase() },
+      { database: 7 },
+      'a string, not a map',
+    ]) {
+      const schema = must(decodeDatabaseSchema(withConfig(config)), 'the schema');
+      expect(schema.properties).toEqual([]);
+    }
+  });
+
+  it('does not invent a config for a type that has none', () => {
+    const raw = { createdAt: 1, props: { [PROP]: { name: 'Note', type: 'text', createdAt: 2 } } };
+    const schema = must(decodeDatabaseSchema(raw), 'the schema');
+    expect(at(schema.properties, 0).config).toBeUndefined();
   });
 });

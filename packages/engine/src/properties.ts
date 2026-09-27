@@ -17,7 +17,7 @@
  * on `Intl`: a value valid on one device must be valid on every other.
  */
 
-import type { Uuid } from './ids.js';
+import { isUuid, type Uuid } from './ids.js';
 import { WorkspaceError } from './types.js';
 
 export const PROPERTY_TYPES = [
@@ -29,6 +29,7 @@ export const PROPERTY_TYPES = [
   'date',
   'datetime',
   'url',
+  'relation',
 ] as const;
 export type PropertyType = (typeof PROPERTY_TYPES)[number];
 
@@ -53,7 +54,14 @@ export type PropertyValue =
   | { type: 'multi-select'; value: OptionId[] }
   | { type: 'date'; value: CalendarDate }
   | { type: 'datetime'; value: DateTimeValue }
-  | { type: 'url'; value: string };
+  | { type: 'url'; value: string }
+  /**
+   * The pages this row points at, by their stable uuid rather than their tree id
+   * (ADR-0015). Order is the order they were added: unlike multi-select, which has the
+   * schema's option order to canonicalise against, a relation has nothing but the
+   * order a person put them in.
+   */
+  | { type: 'relation'; value: Uuid[] };
 
 export const OPTION_COLOURS = [
   'gray',
@@ -74,6 +82,20 @@ export interface SelectOption {
   color?: OptionColour;
 }
 
+/** What a relation points at: the target database's page uuid. */
+export interface RelationConfig {
+  database: Uuid;
+}
+
+/**
+ * The configuration a property type needs to mean anything.
+ *
+ * Only the derived types have one, and it holds what the property IS, never what it
+ * currently evaluates to (ADR-0015). Rollup and formula configs join this union in the
+ * phase that implements them.
+ */
+export type PropertyConfig = RelationConfig;
+
 export interface PropertyDef {
   id: PropertyId;
   name: string;
@@ -81,6 +103,19 @@ export interface PropertyDef {
   createdAt: number;
   /** Always present; empty unless the type is select or multi-select. */
   options: SelectOption[];
+  /**
+   * Present exactly when the type needs one. A relation whose config cannot be read is
+   * not a relation anybody can use, so the schema decoder drops the property entirely
+   * rather than presenting one with nowhere to point — the same treatment a property of
+   * an unknown type gets, and for the same reason: leave it alone, let a client that
+   * understands it deal with it.
+   */
+  config?: PropertyConfig;
+}
+
+/** The database a relation points at, or undefined if this is not a usable relation. */
+export function relationTargetOf(def: PropertyDef): Uuid | undefined {
+  return def.type === 'relation' ? def.config?.database : undefined;
 }
 
 export function isPropertyType(value: unknown): value is PropertyType {
@@ -268,6 +303,19 @@ export function encodePropertyValue(def: PropertyDef, value: PropertyValue): unk
       if (!isZoneName(zone)) throw invalid(def, `${JSON.stringify(zone)} is not a zone name`);
       return { ms, zone };
     }
+    case 'relation': {
+      if (relationTargetOf(def) === undefined) {
+        throw invalid(def, 'points at no database');
+      }
+      for (const target of value.value) {
+        if (!isUuid(target)) throw invalid(def, `${JSON.stringify(target)} is not a page uuid`);
+      }
+      // Deduplicated, first occurrence winning, so the stored form is canonical without
+      // reordering what the person chose. Whether each target is a live row of the target
+      // database is the caller's to check: this module cannot see the tree.
+      const targets = [...new Set(value.value)];
+      return targets.length === 0 ? undefined : targets;
+    }
   }
 }
 
@@ -314,6 +362,14 @@ export function decodePropertyValue(def: PropertyDef, raw: unknown): PropertyVal
       if (typeof zone !== 'string' || !isZoneName(zone)) return undefined;
       return { type: 'datetime', value: { ms, zone } };
     }
+    case 'relation': {
+      if (!Array.isArray(raw)) return undefined;
+      // Shape only. A target that names no live page is dropped where the tree is in
+      // scope, because a page that has not synced yet is not the same thing as a page
+      // that never existed, and this function cannot tell them apart.
+      const targets = [...new Set(raw.filter((id): id is Uuid => isUuid(id)))];
+      return targets.length === 0 ? undefined : { type: 'relation', value: targets };
+    }
   }
 }
 
@@ -333,6 +389,7 @@ export function isEmptyValue(def: PropertyDef, value: PropertyValue | undefined)
     case 'number':
       return !Number.isFinite(value.value);
     case 'multi-select':
+    case 'relation':
       return value.value.length === 0;
     case 'select':
     case 'date':

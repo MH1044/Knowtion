@@ -96,9 +96,13 @@ export const OPS_BY_TYPE: Record<PropertyType, readonly FilterOp[]> = {
   'multi-select': ['isEmpty', 'hasOption', 'lacksOption'],
   date: ['isEmpty', 'onDate', 'before', 'after', 'onOrBefore', 'onOrAfter'],
   datetime: ['isEmpty', 'onDate', 'before', 'after', 'onOrBefore', 'onOrAfter'],
+  // Whether a relation holds anything is answerable from the value alone. Asking
+  // whether it points at a particular page needs the link table that arrives with
+  // invalidation, so those operators arrive with it rather than ahead of it.
+  relation: ['isEmpty'],
 };
 
-/** Multi-select has no single value to order by; everything else does. */
+/** Multi-select and relation hold a list with no single value to order by. */
 export const SORTABLE_TYPES: readonly PropertyType[] = [
   'text',
   'url',

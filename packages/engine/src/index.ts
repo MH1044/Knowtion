@@ -29,7 +29,7 @@ export type { DatabaseSchema } from './database.js';
 export { VIEW_TYPES, decodeView, isViewType, viewSpecOf } from './views.js';
 export type { ViewDef, ViewType } from './views.js';
 
-export { bytesToUuid, createIdGen, uuidToBytes, uuidTimestamp } from './ids.js';
+export { bytesToUuid, createIdGen, isUuid, uuidToBytes, uuidTimestamp } from './ids.js';
 export type { IdGen, Uuid } from './ids.js';
 
 export { deterministicRuntime, systemRuntime } from './runtime.js';
@@ -59,6 +59,7 @@ export {
   isPropertyType,
   isZoneName,
   localDateOf,
+  relationTargetOf,
   toWellFormedText,
 } from './properties.js';
 export type {
@@ -66,10 +67,12 @@ export type {
   DateTimeValue,
   OptionColour,
   OptionId,
+  PropertyConfig,
   PropertyDef,
   PropertyId,
   PropertyType,
   PropertyValue,
+  RelationConfig,
   SelectOption,
   ViewId,
 } from './properties.js';

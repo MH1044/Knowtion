@@ -248,6 +248,7 @@ function sortKeyOf(
       return position < 0 ? undefined : position;
     }
     case 'multi-select':
+    case 'relation':
       return undefined; // unsortable; validation never lets one through
     case 'date':
       return value.value;

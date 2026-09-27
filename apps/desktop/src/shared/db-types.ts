@@ -13,7 +13,15 @@
  */
 
 export type PropertyType =
-  'text' | 'number' | 'checkbox' | 'select' | 'multi-select' | 'date' | 'datetime' | 'url';
+  | 'text'
+  | 'number'
+  | 'checkbox'
+  | 'select'
+  | 'multi-select'
+  | 'date'
+  | 'datetime'
+  | 'url'
+  | 'relation';
 
 export type OptionColour =
   'gray' | 'brown' | 'orange' | 'yellow' | 'green' | 'blue' | 'purple' | 'pink' | 'red';
@@ -24,6 +32,13 @@ export interface SelectOption {
   color?: OptionColour;
 }
 
+/** What a relation points at: the target database's page uuid. */
+export interface RelationConfig {
+  database: string;
+}
+
+export type PropertyConfig = RelationConfig;
+
 export interface PropertyDef {
   id: string;
   name: string;
@@ -31,6 +46,8 @@ export interface PropertyDef {
   createdAt: number;
   /** Always present; empty unless the type is select or multi-select. */
   options: SelectOption[];
+  /** Present exactly when the type needs one; a relation without one is never shown. */
+  config?: PropertyConfig;
 }
 
 export type PropertyValue =
@@ -42,7 +59,9 @@ export type PropertyValue =
   /** `YYYY-MM-DD`, zoneless. Never build a Date from it: that is how a day goes missing. */
   | { type: 'date'; value: string }
   | { type: 'datetime'; value: { ms: number; zone: string } }
-  | { type: 'url'; value: string };
+  | { type: 'url'; value: string }
+  /** Target page uuids, in the order they were added. */
+  | { type: 'relation'; value: string[] };
 
 export type DateOperand = { kind: 'on'; date: string } | { kind: 'relative'; days: number };
 
