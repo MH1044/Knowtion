@@ -32,6 +32,15 @@ export function ViewToolbar({
   const selects = schema.properties.filter((p) => p.type === 'select');
   const [groupBy, setGroupBy] = useState<string>('');
 
+  /** Close the form and forget the draft, so reopening it starts clean rather than
+   * offering the name of a view somebody decided not to create. */
+  const closeAddView = (): void => {
+    setAddingView(false);
+    setViewName('');
+    setViewType('table');
+    setGroupBy('');
+  };
+
   return (
     <div className="db-toolbar">
       <div className="db-tabs" role="tablist">
@@ -61,8 +70,7 @@ export function ViewToolbar({
                 type: viewType,
                 ...(viewType === 'board' && groupBy !== '' ? { groupBy } : {}),
               });
-              setAddingView(false);
-              setViewName('');
+              closeAddView();
             }}
           >
             <input
@@ -105,12 +113,7 @@ export function ViewToolbar({
             <button type="submit" disabled={viewType === 'board' && groupBy === ''}>
               Add
             </button>
-            <button
-              type="button"
-              onClick={() => {
-                setAddingView(false);
-              }}
-            >
+            <button type="button" onClick={closeAddView}>
               Cancel
             </button>
           </form>

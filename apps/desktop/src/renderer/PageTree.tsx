@@ -2,6 +2,20 @@ import { useState } from 'react';
 
 import type { PageNode } from './api.js';
 
+/**
+ * The tree leaves a database's rows out on purpose — ten thousand rows would be ten
+ * thousand sidebar nodes — so it says how many there are instead. Without this the page
+ * looks empty and the rows look lost.
+ */
+function RowCount({ node }: { node: PageNode }): React.JSX.Element | null {
+  if (node.rowCount === undefined) return null;
+  return (
+    <span className="row-count" title={`${String(node.rowCount)} rows in this database`}>
+      {node.rowCount}
+    </span>
+  );
+}
+
 interface PageTreeProps {
   nodes: PageNode[];
   selectedId: string | undefined;
@@ -71,6 +85,7 @@ function PageTreeItem({
         >
           {node.title || 'Untitled'}
         </button>
+        <RowCount node={node} />
         <button
           type="button"
           className="add"

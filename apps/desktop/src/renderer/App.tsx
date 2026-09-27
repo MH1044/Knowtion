@@ -318,6 +318,9 @@ function ImportSummary({
               </li>
             ))}
           </ul>
+          {report.skipped.length > 50 && (
+            <p className="muted">and {report.skipped.length - 50} more</p>
+          )}
         </details>
       )}
     </div>
@@ -434,7 +437,14 @@ function TrashView({
               <button
                 type="button"
                 className="danger"
-                onClick={() => void run(() => api.deletePage(page.id))}
+                onClick={() => {
+                  // Removing a schema property asks first; erasing a page and everything
+                  // under it, with no undo anywhere in the app, should ask louder.
+                  const name = page.title || 'Untitled';
+                  if (window.confirm(`Permanently delete "${name}" and everything inside it?`)) {
+                    void run(() => api.deletePage(page.id));
+                  }
+                }}
               >
                 Delete permanently
               </button>

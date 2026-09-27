@@ -24,6 +24,52 @@ const TYPES: { value: PropertyType; label: string }[] = [
   { value: 'url', label: 'URL' },
 ];
 
+/**
+ * A name that can be edited here and renamed on another device at the same time.
+ *
+ * Uncontrolled inputs were simpler and wrong: a rename arriving mid-session never
+ * appeared, because the DOM keeps whatever it was first given. This is the same
+ * seen/draft guard the page title and the row title use — adopt an incoming name unless
+ * the person has typed, in which case their draft stands until they commit it.
+ */
+function NameField({
+  value,
+  label,
+  onCommit,
+}: {
+  value: string;
+  label: string;
+  onCommit: (name: string) => void;
+}): React.JSX.Element {
+  const [draft, setDraft] = useState(value);
+  const [seen, setSeen] = useState(value);
+  if (value !== seen) {
+    setSeen(value);
+    if (draft === seen) setDraft(value);
+  }
+  return (
+    <input
+      value={draft}
+      aria-label={label}
+      onChange={(e) => {
+        setDraft(e.target.value);
+      }}
+      onBlur={() => {
+        const name = draft.trim();
+        if (name !== '' && name !== value) onCommit(name);
+        else setDraft(value);
+      }}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') e.currentTarget.blur();
+        if (e.key === 'Escape') {
+          setDraft(value);
+          e.currentTarget.blur();
+        }
+      }}
+    />
+  );
+}
+
 export function SchemaEditor({
   databaseId,
   schema,
@@ -39,22 +85,23 @@ export function SchemaEditor({
   const [newType, setNewType] = useState<PropertyType>('text');
   const [optionDrafts, setOptionDrafts] = useState<Record<string, string>>({});
 
+  const addOption = (propertyId: string): void => {
+    const name = (optionDrafts[propertyId] ?? '').trim();
+    if (name === '') return;
+    void run(() => api.dbAddOption(databaseId, propertyId, { name }));
+    setOptionDrafts({ ...optionDrafts, [propertyId]: '' });
+  };
+
   return (
     <section className="schema-editor" aria-label="Properties">
       <ul className="property-list">
         {schema.properties.map((property) => (
           <li key={property.id}>
-            <input
-              defaultValue={property.name}
-              aria-label="Property name"
-              onBlur={(e) => {
-                const name = e.target.value.trim();
-                if (name !== '' && name !== property.name) {
-                  void run(() => api.dbUpdateProperty(databaseId, property.id, { name }));
-                }
-              }}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') e.currentTarget.blur();
+            <NameField
+              value={property.name}
+              label="Property name"
+              onCommit={(name) => {
+                void run(() => api.dbUpdateProperty(databaseId, property.id, { name }));
               }}
             />
             <select
@@ -90,19 +137,13 @@ export function SchemaEditor({
               <ul className="option-list">
                 {property.options.map((option) => (
                   <li key={option.id}>
-                    <input
-                      defaultValue={option.name}
-                      aria-label="Option name"
-                      onBlur={(e) => {
-                        const name = e.target.value.trim();
-                        if (name !== '' && name !== option.name) {
-                          void run(() =>
-                            api.dbUpdateOption(databaseId, property.id, option.id, { name }),
-                          );
-                        }
-                      }}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') e.currentTarget.blur();
+                    <NameField
+                      value={option.name}
+                      label="Option name"
+                      onCommit={(name) => {
+                        void run(() =>
+                          api.dbUpdateOption(databaseId, property.id, option.id, { name }),
+                        );
                       }}
                     />
                     <button
@@ -117,6 +158,8 @@ export function SchemaEditor({
                   </li>
                 ))}
                 <li>
+                  {/* Enter alone was the only way in, so a typed option was lost to a
+                      stray click. The button makes the action visible and reachable. */}
                   <input
                     value={optionDrafts[property.id] ?? ''}
                     placeholder="New option"
@@ -125,13 +168,22 @@ export function SchemaEditor({
                       setOptionDrafts({ ...optionDrafts, [property.id]: e.target.value });
                     }}
                     onKeyDown={(e) => {
-                      const name = (optionDrafts[property.id] ?? '').trim();
-                      if (e.key === 'Enter' && name !== '') {
-                        void run(() => api.dbAddOption(databaseId, property.id, { name }));
+                      if (e.key === 'Enter') addOption(property.id);
+                      if (e.key === 'Escape') {
                         setOptionDrafts({ ...optionDrafts, [property.id]: '' });
                       }
                     }}
                   />
+                  <button
+                    type="button"
+                    aria-label={`Add option to ${property.name}`}
+                    disabled={(optionDrafts[property.id] ?? '').trim() === ''}
+                    onClick={() => {
+                      addOption(property.id);
+                    }}
+                  >
+                    Add
+                  </button>
                 </li>
               </ul>
             )}
