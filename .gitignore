@@ -59,6 +59,12 @@ node_modules/electron/dist/
 CLAUDE.md
 AGENTS.md
 
+# Per-machine editor and tool state, which carries absolute home-directory paths
+CLAUDE.local.md
+.cursor/
+.aider*
+.continue/
+
 # Logs that tools save into the working directory
 *-localsave*.txt
 
