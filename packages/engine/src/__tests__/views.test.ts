@@ -11,9 +11,17 @@
 import { describe, expect, it } from 'vitest';
 
 import type { PropertyDef, ViewId } from '../properties.js';
+import { sanitiseSpec } from '../query.js';
+import { decodeView, viewSpecOf, type ViewDef } from '../views.js';
 import { deterministicRuntime } from '../runtime.js';
 import { WorkspaceError, type NodeId } from '../types.js';
 import { Workspace } from '../workspace.js';
+
+/** Unwraps a value the test knows must be present. */
+function must<T>(value: T | undefined, what: string): T {
+  if (value === undefined) throw new Error(`expected ${what} to exist`);
+  return value;
+}
 
 const ws = (seed = 1, peerId = 1n) =>
   Workspace.create({ runtime: deterministicRuntime(seed), peerId });
@@ -336,5 +344,41 @@ describe('two devices', () => {
     const orderOf = (x: Workspace) => x.rows(db.id, { viewId: table.id }).map((r) => r.id);
     expect(orderOf(c)).toEqual(orderOf(d));
     expect(new Set(orderOf(c))).toEqual(new Set([aId, bId, cId, dId]));
+  });
+});
+
+describe('a filter this build cannot read', () => {
+  /**
+   * FORMAT.md section 10.1: a reader meeting a filter from a newer grammar must ignore it
+   * and say so, and must never rewrite it. Ignoring it silently was the behaviour until
+   * now, which shows more rows than intended with nothing on screen to explain why.
+   */
+  const decodedWith = (filter: unknown): ViewDef | undefined =>
+    decodeView('v1' as never, { name: 'v', type: 'table', filter }, []);
+
+  it('is reported, not mistaken for having no filter', () => {
+    const view = decodedWith({
+      v: 99,
+      expr: { kind: 'leaf', property: 'p', op: 'notYetInvented' },
+    });
+    expect(view?.filter).toBeUndefined();
+    expect(view?.unreadableFilter).toBe(true);
+
+    const { spec, warnings } = sanitiseSpec([], viewSpecOf(must(view, 'the view')));
+    expect(spec.filter).toBeUndefined();
+    expect(warnings).toContainEqual({ path: 'filter', code: 'MALFORMED' });
+  });
+
+  it('is left alone, so a newer build still finds it', () => {
+    const stored = { v: 99, expr: { kind: 'leaf', property: 'p', op: 'notYetInvented' } };
+    const before = JSON.stringify(stored);
+    decodedWith(stored);
+    expect(JSON.stringify(stored)).toBe(before);
+  });
+
+  it('a view with no filter at all says nothing', () => {
+    const view = decodedWith(undefined);
+    expect(view?.unreadableFilter).toBeUndefined();
+    expect(sanitiseSpec([], viewSpecOf(must(view, 'the view'))).warnings).toEqual([]);
   });
 });

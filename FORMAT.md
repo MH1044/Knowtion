@@ -448,13 +448,29 @@ next device to ensure it brings the old state back.
 On the database page's node data:
 
     db.createdAt   number
-    db.props       propertyId → { name, type, createdAt }
+    db.props       propertyId → { name, type, createdAt, config? }
     db.options     "propertyId:optionId" → { name, color? }
     db.views       viewId → { name, type, filter?, sorts, groupBy?, columns, hidden, createdAt }
 
 Property types are `text`, `number`, `checkbox`, `select`, `multi-select`, `date`,
-`datetime` and `url`. Options belong to a `select` or `multi-select` property and are
-keyed by the pair so two devices renaming different options both survive.
+`datetime`, `url`, `relation`, `rollup` and `formula`. Options belong to a `select` or
+`multi-select` property and are keyed by the pair so two devices renaming different
+options both survive.
+
+**`config`** is present only for the three types that need it, and holds only what the
+property is, never what it currently evaluates to (ADR-0015):
+
+    relation       { database }                       target database, a page uuid
+    rollup         { via, property, aggregate }       via is a relation propertyId, or
+                                                      the string "children"
+    formula        { source, grammar }                source text and the grammar
+                                                      version it was written against
+
+A reader that meets a `grammar` above the one it implements MUST show the formula as
+unavailable and MUST NOT evaluate it or rewrite it, for the same reason a filter from a
+newer grammar is ignored rather than guessed at. A formula's parsed form is never stored:
+the text and its grammar version are what make an old formula keep its original meaning
+while the language grows.
 
 On a row's node data:
 
@@ -472,6 +488,14 @@ Values are stored untagged and decoded through the parent database's schema:
 | multi-select | array of option ids                    |
 | date         | `YYYY-MM-DD`                           |
 | datetime     | `{ ms, zone }`                         |
+| relation     | array of target page uuids             |
+
+**A `rollup` and a `formula` have no stored value at all.** They are computed from other
+data and are forbidden from the log by the rule above: two devices in different time zones
+computing a different answer is correct behaviour, not a conflict. The same holds for the
+reverse side of a relation, which is derived from the forward side rather than written.
+Writers MUST NOT store a value under a property of these types, and readers MUST ignore
+one if a future writer does.
 
 Readers MUST ignore unknown keys, unknown property and view ids, option ids no longer
 defined, and values whose shape does not match the property's current type, and MUST NOT
@@ -479,15 +503,19 @@ rewrite or delete any of them. This is what makes changing a property's type rev
 value of the old shape is invisible until the type changes back, and is never lost. A
 `multi-select` value is a whole array replaced on write; a per-option map is the
 upgrade path, distinguishable on read, and is a reading-rule addition rather than a
-migration.
+migration. A `relation` value shares that shape and that granularity, and the same upgrade
+path is open to it. A relation target that names no live page is ignored on read exactly
+as a deleted option id is, and is never rewritten: the page may be on a device that has
+not synced yet.
 
 **Identifiers inside the CRDT.** Property, option and view ids are UUIDv7 in canonical
 lowercase hyphenated text. Section 2's rule that identifiers are stored as their sixteen
 raw bytes governs the envelope and object names; inside CRDT maps they are text.
 
 None of this changes the envelope. Format version remains 0 and the v0 fixtures stay
-valid. The data-model encodings above are pinned by
-`packages/engine/fixtures/v0/database.loro`.
+valid. The encodings for the original eight property types are pinned by
+`packages/engine/fixtures/v0/database.loro`, which stays byte-identical; the three types
+added in v0.4 are pinned by `packages/engine/fixtures/v1/database.loro`.
 
 **Sidecar records** use CBOR. Decoders MUST reject **proto**, constructor and prototype
 as keys, and MUST preserve unknown fields byte-for-byte rather than dropping them on

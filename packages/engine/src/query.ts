@@ -72,6 +72,15 @@ export interface Sort {
 /** The query-relevant part of a view. */
 export interface ViewSpec {
   filter?: StoredFilter;
+  /**
+   * Set when a stored filter existed but could not be read — a newer grammar, or a
+   * shape this build does not know.
+   *
+   * FORMAT.md section 10.1 requires such a filter to be ignored *and said so*, and never
+   * rewritten. Without this the view simply ran unfiltered and told nobody, which shows
+   * more rows than intended with nothing on screen to explain why.
+   */
+  unreadableFilter?: boolean;
   sorts: Sort[];
   /** Board columns. A select property only, in v0.3. */
   groupBy?: PropertyId;
@@ -390,6 +399,10 @@ export function sanitiseSpec(
   const warnings: QueryProblem[] = [];
   const out: ViewSpec = { sorts: [] };
 
+  if (spec.unreadableFilter === true) {
+    // The filter is left off, as the format requires, but never silently.
+    warnings.push({ path: 'filter', code: 'MALFORMED' });
+  }
   if (spec.filter !== undefined) {
     const problems = storedFilterProblems(spec.filter, index, false);
     if (problems.length === 0) out.filter = spec.filter;

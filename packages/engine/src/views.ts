@@ -32,6 +32,8 @@ export interface ViewDef {
   name: string;
   type: ViewType;
   filter?: StoredFilter;
+  /** The stored filter could not be read: ignored, but the reader is told. */
+  unreadableFilter?: boolean;
   sorts: Sort[];
   /** Board columns. A select property, in v0.3. */
   groupBy?: PropertyId;
@@ -91,14 +93,18 @@ export function decodeView(
     properties.some((p) => p.id === raw.groupBy && p.type === 'select')
       ? (raw.groupBy as PropertyId)
       : undefined;
-  const filter =
-    raw.filter === undefined || raw.filter === null ? undefined : parseStoredFilter(raw.filter);
+  const stored = raw.filter ?? undefined;
+  const filter = stored === undefined ? undefined : parseStoredFilter(stored);
+  // A filter that is present but unreadable is not the same as no filter. The view runs
+  // unfiltered either way, but only one of them owes the reader an explanation.
+  const unreadableFilter = stored !== undefined && filter === undefined;
 
   return {
     id,
     name: typeof raw.name === 'string' ? raw.name : '',
     type: raw.type,
     ...(filter === undefined ? {} : { filter }),
+    ...(unreadableFilter ? { unreadableFilter: true } : {}),
     sorts: decodeSorts(raw.sorts, live),
     ...(groupBy === undefined ? {} : { groupBy }),
     columns,
@@ -111,6 +117,7 @@ export function decodeView(
 export function viewSpecOf(view: ViewDef): ViewSpec {
   return {
     ...(view.filter === undefined ? {} : { filter: view.filter }),
+    ...(view.unreadableFilter === true ? { unreadableFilter: true } : {}),
     sorts: view.sorts,
     ...(view.groupBy === undefined ? {} : { groupBy: view.groupBy }),
   };

@@ -89,6 +89,8 @@ export interface ViewDef {
   name: string;
   type: ViewType;
   filter?: StoredFilter;
+  /** The stored filter could not be read: ignored, and the reader is told. */
+  unreadableFilter?: boolean;
   sorts: Sort[];
   groupBy?: string;
   /** Effective column order: every live property appears here. */
