@@ -1141,11 +1141,19 @@ describe('databases', () => {
     expect(second.rows).toHaveLength(ROWS - MAX_QUERY_ROWS);
     expect(second.total).toBe(ROWS);
 
-    // Asking for more than the cap is clamped rather than refused, and the two pages are
-    // disjoint and in order: nothing is skipped or shown twice at the boundary.
+    // Asking for more than the cap is clamped rather than refused.
     const greedy = host.queryView({ databaseId: database.id, viewId: view.id, limit: 10_000 });
     expect(greedy.rows).toHaveLength(MAX_QUERY_ROWS);
-    expect([...first.rows, ...second.rows].map((r) => r.title)).toEqual(
+
+    // What paging must guarantee at the boundary: nothing skipped, nothing shown twice.
+    // Deliberately not an assertion about creation order — the engine promises a stable
+    // total order (created_at, then id), and rows made inside one millisecond tie on
+    // created_at and fall back to the id, which is not numeric. A machine fast enough to
+    // create six hundred rows in a few milliseconds therefore returns them in a different
+    // order from a slow one, and both are correct.
+    const paged = [...first.rows, ...second.rows];
+    expect(new Set(paged.map((r) => r.id)).size).toBe(ROWS);
+    expect(paged.map((r) => r.title).sort()).toEqual(
       Array.from({ length: ROWS }, (_, i) => `row ${String(i).padStart(3, '0')}`),
     );
 
