@@ -59,8 +59,13 @@ function byId<T extends { id: string }>(a: T, b: T): number {
  *
  * The caller distinguishes the two: a type that needs no config is fine without one, and
  * a type that needs one is dropped from the schema without it. Nothing is repaired here.
+ *
+ * Exported because a retype has to read it. A property retyped away from `relation`
+ * keeps its config in the log but not in the decoded schema, which is the whole point of
+ * a retype hiding rather than destroying; retyping back has to look at the log to find
+ * the target again.
  */
-function decodeConfig(type: PropertyDef['type'], raw: unknown): PropertyConfig | undefined {
+export function decodeConfig(type: PropertyDef['type'], raw: unknown): PropertyConfig | undefined {
   switch (type) {
     case 'text':
     case 'number':

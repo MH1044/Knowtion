@@ -16,6 +16,7 @@ import {
   DB_VIEWS_KEY,
   ROW_ORDER_KEY,
   ROW_PROPS_KEY,
+  decodeConfig,
   decodeDatabaseSchema,
   decodeRowOrder,
   decodeRowValues,
@@ -23,12 +24,14 @@ import {
   type DatabaseSchema,
 } from './database.js';
 import { compareRows } from './evaluate.js';
-import { createIdGen, type IdGen } from './ids.js';
+import { createIdGen, isUuid, type IdGen, type Uuid } from './ids.js';
 import { orderKeyBetween, type OrderKey } from './order-key.js';
 import {
   encodePropertyValue,
+  relationTargetOf,
   type OptionColour,
   type OptionId,
+  type PropertyConfig,
   type PropertyDef,
   type PropertyId,
   type PropertyType,
@@ -69,6 +72,17 @@ export class Workspace {
   readonly #doc: LoroDoc;
   readonly #runtime: Runtime;
   readonly #ids: IdGen;
+  /**
+   * Live pages by uuid, and the document version it was built at.
+   *
+   * Relations address pages by uuid rather than by Loro node id (ADR-0015), and the tree
+   * offers no lookup by anything but node id, so resolving one target means a walk. The
+   * walk is done once and kept until the document changes: `frontiers()` advances on
+   * every local operation and on every import, so a cached index can never outlive the
+   * state it was built from. Nothing builds it unless a relation value is actually read
+   * or written, so a workspace without relations never pays for it.
+   */
+  #uuidIndex: { version: string; pages: Map<string, NodeId> } | undefined;
 
   private constructor(doc: LoroDoc, options: WorkspaceOptions) {
     this.#doc = doc;
@@ -120,7 +134,9 @@ export class Workspace {
     const liveParent = parent && !parent.isDeleted() ? parent : undefined;
     const parentSchema = liveParent === undefined ? undefined : this.#schemaOf(liveParent, memo);
     const properties =
-      parentSchema === undefined ? undefined : decodeRowValues(parentSchema, data[ROW_PROPS_KEY]);
+      parentSchema === undefined
+        ? undefined
+        : this.#resolveRelations(parentSchema, decodeRowValues(parentSchema, data[ROW_PROPS_KEY]));
     const orderKeys =
       parentSchema === undefined ? undefined : decodeRowOrder(parentSchema, data[ROW_ORDER_KEY]);
     return {
@@ -143,6 +159,65 @@ export class Workspace {
       ...(properties === undefined ? {} : { properties }),
       ...(orderKeys === undefined ? {} : { orderKeys }),
     };
+  }
+
+  /**
+   * Live pages by uuid, rebuilt only when the document has moved on.
+   *
+   * Two pages carrying the same uuid would be a corrupt log rather than a merge
+   * outcome — uuids are minted, never chosen — so the later node simply wins here
+   * rather than the reader being given a way to ask about an impossible state.
+   */
+  #pagesByUuid(): ReadonlyMap<string, NodeId> {
+    const version = JSON.stringify(this.#doc.frontiers());
+    const cached = this.#uuidIndex;
+    if (cached?.version === version) return cached.pages;
+    const pages = new Map<string, NodeId>();
+    for (const node of this.#tree.nodes()) {
+      if (node.isDeleted()) continue;
+      const uuid = node.data.get('uuid');
+      if (typeof uuid === 'string') pages.set(uuid, node.id);
+    }
+    this.#uuidIndex = { version, pages };
+    return pages;
+  }
+
+  /**
+   * A row's values with every relation target that names no live page dropped.
+   *
+   * The same treatment a select option that has been deleted gets: ignored on read,
+   * never rewritten. Whether the surviving targets are rows of the database the relation
+   * points at is checked when they are written, not here — a reader that re-validated
+   * parentage would drop every target of a relation whose own target database has not
+   * arrived yet, which is a partially synced workspace, not a broken one.
+   */
+  #resolveRelations(
+    schema: DatabaseSchema,
+    values: Record<PropertyId, PropertyValue>,
+  ): Record<PropertyId, PropertyValue> {
+    let pages: ReadonlyMap<string, NodeId> | undefined;
+    const resolved = new Map<PropertyId, PropertyValue | undefined>();
+    for (const def of schema.properties) {
+      if (def.type !== 'relation') continue;
+      const value = values[def.id];
+      if (value?.type !== 'relation') continue;
+      pages ??= this.#pagesByUuid();
+      const live = value.value.filter((target) => pages?.has(target) === true);
+      if (live.length === value.value.length) continue;
+      // Losing the last target leaves the cell absent, which is the same state as empty
+      // everywhere else in the log.
+      resolved.set(def.id, live.length === 0 ? undefined : { type: 'relation', value: live });
+    }
+    if (resolved.size === 0) return values;
+
+    // Every key in `values` came from a property of this schema, so rebuilding from the
+    // schema loses nothing and needs no cast back to the branded id type.
+    const out: Record<PropertyId, PropertyValue> = {};
+    for (const def of schema.properties) {
+      const value = resolved.has(def.id) ? resolved.get(def.id) : values[def.id];
+      if (value !== undefined) out[def.id] = value;
+    }
+    return out;
   }
 
   /** The schema on a node, if it is a database, decoded at most once per read. */
@@ -427,7 +502,13 @@ export class Workspace {
    */
   defineProperty(
     databaseId: NodeId,
-    input: { name: string; type: PropertyType; options?: { name: string; color?: OptionColour }[] },
+    input: {
+      name: string;
+      type: PropertyType;
+      options?: { name: string; color?: OptionColour }[];
+      /** Required for a relation, refused for every other type. */
+      config?: PropertyConfig;
+    },
   ): PropertyDef {
     const { node, db } = this.#databaseNode(databaseId);
     if (input.name.trim() === '') {
@@ -437,12 +518,14 @@ export class Workspace {
     if (input.options !== undefined && input.options.length > 0 && !selectable) {
       throw new WorkspaceError('INVALID_SCHEMA', `a ${input.type} property has no options`);
     }
+    const config = this.#checkConfig(input.type, input.config);
     const propertyId = this.#ids.next();
     const now = this.#runtime.clock.now();
     const property = this.#ensureMap(this.#ensureMap(db, DB_PROPS_KEY), propertyId);
     property.set('name', input.name);
     property.set('type', input.type);
     property.set('createdAt', now);
+    if (config !== undefined) property.set('config', config);
     const options = this.#ensureMap(db, DB_OPTIONS_KEY);
     for (const option of input.options ?? []) {
       this.#writeOption(options, propertyId, this.#ids.next(), option);
@@ -450,6 +533,31 @@ export class Workspace {
     this.#touch(node);
     this.#doc.commit();
     return this.#property(this.#databaseNode(databaseId).schema, propertyId);
+  }
+
+  /**
+   * The config to store for a property of this type, or undefined when it needs none.
+   *
+   * A relation is checked against the tree here and only here: the codec cannot see the
+   * tree, so "points at a database that exists" is the workspace's rule to enforce. It
+   * is a write-time rule and never a read-time one, because the database may be on a
+   * device that has not synced yet and a reader must not delete a relation over that.
+   */
+  #checkConfig(type: PropertyType, config: PropertyConfig | undefined): PropertyConfig | undefined {
+    if (type !== 'relation') {
+      if (config !== undefined) {
+        throw new WorkspaceError('INVALID_SCHEMA', `a ${type} property takes no configuration`);
+      }
+      return undefined;
+    }
+    if (config === undefined || !isUuid(config.database)) {
+      throw new WorkspaceError('INVALID_SCHEMA', 'a relation needs the database it points at');
+    }
+    const target = this.#pagesByUuid().get(config.database);
+    if (target === undefined || !this.isDatabase(target)) {
+      throw new WorkspaceError('NOT_A_DATABASE', `no database with uuid ${config.database}`);
+    }
+    return { database: config.database };
   }
 
   #writeOption(
@@ -472,16 +580,26 @@ export class Workspace {
   updateProperty(
     databaseId: NodeId,
     propertyId: PropertyId,
-    patch: { name?: string; type?: PropertyType },
+    patch: { name?: string; type?: PropertyType; config?: PropertyConfig },
   ): PropertyDef {
     const { node, db, schema } = this.#databaseNode(databaseId);
-    this.#property(schema, propertyId);
+    const existing = this.#property(schema, propertyId);
     if (patch.name?.trim() === '') {
       throw new WorkspaceError('INVALID_SCHEMA', 'a property needs a name');
     }
+    const type = patch.type ?? existing.type;
     const property = this.#ensureMap(this.#ensureMap(db, DB_PROPS_KEY), propertyId);
+    // A property that becomes a relation needs a target. It comes from the patch, or
+    // else from the log: a property retyped away from `relation` keeps its config there
+    // but not in the decoded schema, so retyping back reads the log rather than asking
+    // the caller for a target it never changed. Nothing is deleted on the way out, which
+    // is what makes a mistaken retype reversible.
+    const unchanged = patch.config === undefined && type === existing.type;
+    const remembered = type === 'relation' ? decodeConfig(type, property.get('config')) : undefined;
+    const config = unchanged ? undefined : this.#checkConfig(type, patch.config ?? remembered);
     if (patch.name !== undefined) property.set('name', patch.name);
     if (patch.type !== undefined) property.set('type', patch.type);
+    if (config !== undefined) property.set('config', config);
     this.#touch(node);
     this.#doc.commit();
     return this.#property(this.#databaseNode(databaseId).schema, propertyId);
@@ -579,6 +697,32 @@ export class Workspace {
     return this.#toPage(node);
   }
 
+  /**
+   * Every target must be a live row of the database the relation points at.
+   *
+   * Checked on write only. A reader keeps a target that has merely not arrived yet, so
+   * the strict question — is this a row of the right database — can only be asked where
+   * the answer is knowable: on the device doing the linking.
+   */
+  #checkRelationTargets(property: PropertyDef, targets: readonly Uuid[]): void {
+    const database = relationTargetOf(property);
+    const pages = this.#pagesByUuid();
+    const databaseId = database === undefined ? undefined : pages.get(database);
+    if (databaseId === undefined) {
+      throw new WorkspaceError('NOT_A_DATABASE', `relation "${property.name}" has no database`);
+    }
+    for (const target of targets) {
+      const id = pages.get(target);
+      const parent = id === undefined ? undefined : this.#node(id).parent();
+      if (parent === undefined || parent.isDeleted() || parent.id !== databaseId) {
+        throw new WorkspaceError(
+          'INVALID_VALUE',
+          `property "${property.name}" (relation): ${target} is not a row of its database`,
+        );
+      }
+    }
+  }
+
   #writeValue(
     node: LoroTreeNode,
     schema: DatabaseSchema,
@@ -586,6 +730,9 @@ export class Workspace {
     value: PropertyValue,
   ): void {
     const property = this.#property(schema, propertyId);
+    if (value.type === 'relation' && property.type === 'relation') {
+      this.#checkRelationTargets(property, value.value);
+    }
     const encoded = encodePropertyValue(property, value);
     const props = this.#ensureMap(node.data, ROW_PROPS_KEY);
     if (encoded === undefined) props.delete(propertyId);
