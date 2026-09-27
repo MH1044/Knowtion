@@ -7,19 +7,24 @@ Windows installer, creates the GitHub release and uploads the installer to it.
 
 1. **Decide the version** and set it in `apps/desktop/package.json`. That number is
    compiled into the binary and is what the update check compares against.
-2. Commit it: `chore(release): 0.4.0`.
-3. Tag and push:
+2. **Write the notes** in `docs/releases/<version>.md`. The workflow refuses to release
+   without them, because these are read by someone deciding whether to run an unsigned
+   installer. The first few lines also appear inside the application, in the banner that
+   tells people a new version exists.
+3. Commit both: `chore(release): 0.4.0`.
+4. Tag and push:
 
    ```sh
    git tag v0.4.0
    git push origin main --follow-tags
    ```
 
-4. Watch the run under the repository's Actions tab. It refuses to publish if the tag and
-   the version in `package.json` disagree, or if `npm run verify` fails.
-5. When it finishes, the release is on the Releases page with `Knowtion Setup 0.4.0.exe`
-   attached. Edit the release notes — the first few lines appear inside the application,
-   in the banner that tells people a new version exists.
+5. Watch the run under the repository's Actions tab. It refuses to publish if the tag and
+   the version in `package.json` disagree, if `docs/releases/<version>.md` is missing, or
+   if `npm run verify` fails.
+6. When it finishes, the release is on the Releases page with the installer attached and
+   the notes already written. The workflow creates the draft, uploads into it, and
+   publishes it only once the build is green.
 
 Nothing else publishes. A push to `main` runs CI and produces no binary, so an ordinary
 commit can never ship.
