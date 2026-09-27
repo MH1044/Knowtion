@@ -42,22 +42,17 @@ Everything else below has no automated coverage at all.
 
 ## Known gaps, already scheduled
 
-These are known and being fixed in the next release. Skip them rather than reporting them.
+These are known and being worked on. Skip them rather than reporting them.
 
-| Area     | Gap                                                                                 |
-| -------- | ----------------------------------------------------------------------------------- |
-| Editor   | No way to create a link, a todo item or a divider; they arrive only by pasting HTML |
-| Editor   | The empty-page placeholder text never appears                                       |
-| Sidebar  | A page cannot be moved or reparented once created                                   |
-| Sidebar  | The row count of a collapsed database is not shown                                  |
-| Database | A row cannot be deleted from the table; open it as a page first                     |
-| Database | A view cannot be renamed, retyped or deleted                                        |
-| Database | A board's group property cannot be changed after creation                           |
-| Database | A database cannot be turned back into an ordinary page                              |
-| Database | Option colours exist in the data but no colour can be chosen or seen                |
-| Database | A board renders every row, however many there are                                   |
-| Trash    | Permanent delete has no confirmation                                                |
-| Import   | The skipped-files list stops at fifty without saying there are more                 |
+| Area     | Gap                                                             |
+| -------- | --------------------------------------------------------------- |
+| Sidebar  | A page cannot be moved or reparented once created               |
+| Database | A row cannot be deleted from the table; open it as a page first |
+| Database | A view cannot be renamed, retyped or deleted                    |
+| Database | A board's group property cannot be changed after creation       |
+| Database | A database cannot be turned back into an ordinary page          |
+| Database | Option colours exist in the data but no colour can be chosen    |
+| Database | A board renders every row, however many there are               |
 
 ---
 
@@ -117,11 +112,19 @@ Needs two profiles pointed at the same sync folder.
 
 ### Typing and structure
 
+- [ ] A brand new page shows the prompt "Start writing, or type # for a heading", and it
+      disappears as soon as you type.
 - [ ] `# `, `## `, `### ` at the start of a line make headings one to three.
 - [ ] Three backticks make a code block, and marks do not apply inside it.
 - [ ] `- `, `* ` and `+ ` each start a bullet list.
 - [ ] `1. ` starts a numbered list.
 - [ ] `> ` starts a quote.
+- [ ] `---`, `___` or `***` make a divider, and the cursor lands on a line after it so
+      typing continues.
+- [ ] `[] `, `[ ] ` and `[x] ` make a todo, the last already ticked.
+- [ ] A todo shows a checkbox that ticks and unticks on click, and ticked text is struck
+      through.
+- [ ] Ticking a todo on one device ticks it on the other.
 - [ ] Enter inside a list item splits it; Tab indents; Shift-Tab outdents.
 
 ### Formatting
@@ -130,6 +133,19 @@ Needs two profiles pointed at the same sync folder.
 - [ ] Ctrl/Cmd-Shift-X toggles strikethrough.
 - [ ] Ctrl/Cmd-E toggles inline code.
 - [ ] Ctrl/Cmd-Alt-0 returns to a paragraph; Ctrl/Cmd-Alt-1/2/3 set headings.
+- [ ] Ctrl/Cmd-Shift-9 turns the current line into a todo and back.
+- [ ] Ctrl/Cmd-Enter ticks the todo the cursor is in.
+
+### Links
+
+- [ ] Typing a web address followed by a space turns it into a link.
+- [ ] A trailing full stop or closing bracket stays out of the link.
+- [ ] Selecting text and pressing Ctrl/Cmd-K opens a field for the address.
+- [ ] The field refuses anything that is not a web, mail or in-page address, and says so.
+- [ ] Escape closes the field without linking.
+- [ ] Ctrl/Cmd-Shift-K removes the link from a selection.
+- [ ] Ctrl or Cmd clicking a link opens it in your normal browser, not inside the app.
+- [ ] A plain click on a link puts the caret in it, so the text can still be edited.
 
 ### Undo
 
