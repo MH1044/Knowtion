@@ -424,3 +424,83 @@ describe('a relation property in the log', () => {
     expect(at(schema.properties, 0).config).toBeUndefined();
   });
 });
+
+/**
+ * Retiring, which is how a database becomes an ordinary page again (ADR-0016).
+ *
+ * The property under test is reversibility. FORMAT.md forbids deleting the `db` key at
+ * all, and deleting what is inside would destroy the schema every row's values are read
+ * through — so what is checked here is that nothing is destroyed and everything comes
+ * back.
+ */
+describe('retiring a database', () => {
+  function withRows() {
+    const { w, page } = database();
+    const score = w.defineProperty(page.id, { name: 'Score', type: 'number' });
+    const row = w.createRow(page.id, { title: 'Ship it' });
+    w.setPropertyValue(row.id, score.id, { type: 'number', value: 7 });
+    return { w, page, score, row };
+  }
+
+  it('makes the page ordinary and its rows child pages', () => {
+    const { w, page, row } = withRows();
+    const retired = w.retireDatabase(page.id);
+    expect(retired.database).toBeUndefined();
+    expect(w.isDatabase(page.id)).toBe(false);
+    expect(() => w.database(page.id)).toThrow(rejectedWith('NOT_A_DATABASE'));
+    // The row is still a page under the same parent; it just has no values to read.
+    const child = w.getPage(row.id);
+    expect(child.parentId).toBe(page.id);
+    expect(child.title).toBe('Ship it');
+    expect(child.properties).toBeUndefined();
+  });
+
+  it('keeps everything in the log, and gives it all back', () => {
+    const { w, page, score, row } = withRows();
+    w.retireDatabase(page.id);
+
+    // Nothing under `db` was touched, which is what makes this reversible.
+    const node = must(w.doc.getTree('pages').getNodeByID(page.id), 'the node');
+    const data = node.data.toJSON() as Record<string, unknown>;
+    expect(JSON.stringify(data[DB_KEY])).toContain('Score');
+
+    const restored = w.convertToDatabase(page.id);
+    expect(names(restored.properties)).toEqual(['Score']);
+    expect(restored.views).toHaveLength(1);
+    expect(w.getPage(row.id).properties).toEqual({ [score.id]: { type: 'number', value: 7 } });
+  });
+
+  it('is idempotent, and refuses a page that is not a database', () => {
+    const { w, page } = withRows();
+    w.retireDatabase(page.id);
+    expect(w.retireDatabase(page.id).database).toBeUndefined();
+    const plain = w.createPage({ title: 'Just a page' });
+    expect(() => w.retireDatabase(plain.id)).toThrow(rejectedWith('NOT_A_DATABASE'));
+  });
+
+  it('converges when one device retires and the other adds a row', () => {
+    const origin = withRows();
+    const snapshot = origin.w.snapshot();
+    const a = Workspace.open(snapshot, { runtime: deterministicRuntime(2), peerId: 2n });
+    const b = Workspace.open(snapshot, { runtime: deterministicRuntime(3), peerId: 3n });
+
+    a.retireDatabase(origin.page.id);
+    b.createRow(origin.page.id, { title: 'Added while apart' });
+    const fromA = a.update();
+    const fromB = b.update();
+    a.merge(fromB);
+    b.merge(fromA);
+
+    // Whichever way the flag lands, both devices agree and the new page is there.
+    expect(a.isDatabase(origin.page.id)).toBe(b.isDatabase(origin.page.id));
+    expect(titlesOf(a, origin.page.id)).toEqual(titlesOf(b, origin.page.id));
+    expect(titlesOf(a, origin.page.id)).toContain('Added while apart');
+  });
+});
+
+function titlesOf(w: Workspace, parentId: Parameters<Workspace['listChildren']>[0]): string[] {
+  return w
+    .listChildren(parentId)
+    .map((p) => p.title)
+    .sort();
+}

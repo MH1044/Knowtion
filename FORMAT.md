@@ -448,9 +448,16 @@ next device to ensure it brings the old state back.
 On the database page's node data:
 
     db.createdAt   number
+    db.retired     boolean, absent means false
     db.props       propertyId → { name, type, createdAt, config? }
     db.options     "propertyId:optionId" → { name, color? }
     db.views       viewId → { name, type, filter?, sorts, groupBy?, columns, hidden, createdAt }
+
+**`retired`** is how a database becomes an ordinary page again (ADR-0016). A reader that
+finds it true MUST treat the page as an ordinary page — no schema, no views, and its
+children are child pages rather than rows — and MUST NOT delete or rewrite anything else
+under `db`, which is what makes the operation reversible. Turning the page back into a
+database sets `retired` to false rather than deleting the key.
 
 Property types are `text`, `number`, `checkbox`, `select`, `multi-select`, `date`,
 `datetime`, `url`, `relation`, `rollup` and `formula`. Options belong to a `select` or

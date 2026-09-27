@@ -14,6 +14,7 @@ export type { NodeId, Page, PageMeta, PageNode, RowPosition } from './types.js';
 
 export {
   DB_KEY,
+  DB_RETIRED_KEY,
   DB_OPTIONS_KEY,
   DB_PROPS_KEY,
   DB_VIEWS_KEY,

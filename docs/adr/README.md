@@ -31,3 +31,4 @@ An ADR records a decision that was **expensive to make and expensive to reverse*
 | [0013](0013-reading-snapshots.md)               | Snapshots are read, and re-anchor their device's chain                     | Accepted |
 | [0014](0014-databases-on-the-tree.md)           | Databases live on the tree: schema on the database node, values on the row | Accepted |
 | [0015](0015-derived-properties.md)              | Relations stored one way; rollups and formulas derived, never stored       | Proposed |
+| [0016](0016-retiring-a-database.md)             | A database becomes a page again by being retired, never by being deleted   | Accepted |

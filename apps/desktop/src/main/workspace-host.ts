@@ -556,6 +556,13 @@ export class WorkspaceHost {
     return schema;
   }
 
+  /** Turn a database back into an ordinary page; its rows become child pages. */
+  retireDatabase(id: NodeId): Page {
+    const page = this.#workspace.retireDatabase(id);
+    this.#afterSchemaChange(id);
+    return page;
+  }
+
   defineProperty(
     databaseId: NodeId,
     input: { name: string; type: PropertyType; options?: { name: string; color?: OptionColour }[] },

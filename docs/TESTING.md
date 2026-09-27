@@ -40,18 +40,6 @@ dependent and a rare failure is the interesting kind.
 
 Everything else below has no automated coverage at all.
 
-## Known gaps, already scheduled
-
-One remains. Skip it rather than reporting it. It needs a format decision first,
-because the rule that keeps concurrent edits safe also forbids simply removing the key
-that makes a page a database.
-
-| Area     | Gap                                                    |
-| -------- | ------------------------------------------------------ |
-| Database | A database cannot be turned back into an ordinary page |
-
----
-
 ## 1. First launch and the recovery phrase
 
 - [ ] On a fresh profile the app shows "Starting Knowtion…" briefly, then the recovery
@@ -398,6 +386,18 @@ what you get in another program rather than just that a folder appeared.
       under a tab labelled Board.
 - [ ] **Drag a card with a real mouse.** The automated test dispatches the events directly
       and cannot prove a genuine gesture works.
+
+### Turning a database back into a page
+
+- [ ] **Turn back into a page** asks first, and says nothing is deleted.
+- [ ] Saying no changes nothing.
+- [ ] Saying yes: the table is gone, the page looks ordinary, and the rows are now child
+      pages in the sidebar with their own titles.
+- [ ] **Turn into database** brings back every column, every view and every value exactly
+      as they were.
+- [ ] A row's body text was never touched by any of that.
+- [ ] Retiring on one device and adding a row on the other converges: both devices agree
+      about whether it is a database, and the new page exists either way.
 
 ## 10. Settings
 

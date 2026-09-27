@@ -40,6 +40,7 @@ contextBridge.exposeInMainWorld('knowtion', {
   updateBody: call('body:update'),
   dbSchema: call('db:schema'),
   dbConvert: call('db:convert'),
+  dbRetire: call('db:retire'),
   dbDefineProperty: call('db:defineProperty'),
   dbUpdateProperty: call('db:updateProperty'),
   dbRemoveProperty: call('db:removeProperty'),

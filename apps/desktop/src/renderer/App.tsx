@@ -483,13 +483,33 @@ function PageView({
         />
       </div>
       <div className="page-actions">
-        {page.database === undefined && (
+        {page.database === undefined ? (
           <button
             type="button"
             title="Existing child pages become its rows"
             onClick={() => void run(() => api.dbConvert(page.id))}
           >
             Turn into database
+          </button>
+        ) : (
+          <button
+            type="button"
+            title="Rows become ordinary child pages; nothing is deleted"
+            onClick={() => {
+              // Worth a question: the table, its views and every column vanish from
+              // view at once. They are all still there, which is what the wording says.
+              if (
+                window.confirm(
+                  'Turn this database back into a page? The rows become child pages. ' +
+                    'Nothing is deleted — turning it into a database again brings the ' +
+                    'columns and values back.',
+                )
+              ) {
+                void run(() => api.dbRetire(page.id));
+              }
+            }}
+          >
+            Turn back into a page
           </button>
         )}
         <button

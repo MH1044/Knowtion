@@ -194,6 +194,7 @@ interface Bridge {
   onChanged(callback: (change: WorkspaceChange) => void): () => void;
   dbSchema(input: { id: string }): Promise<Result<DatabaseSchema | null>>;
   dbConvert(input: { id: string }): Promise<Result<DatabaseSchema>>;
+  dbRetire(input: { id: string }): Promise<Result<Page>>;
   dbDefineProperty(input: {
     databaseId: string;
     name: string;
@@ -316,6 +317,7 @@ export const api = {
   onChanged: (callback: (change: WorkspaceChange) => void) => window.knowtion.onChanged(callback),
   dbSchema: (id: string) => unwrap(window.knowtion.dbSchema({ id })),
   dbConvert: (id: string) => unwrap(window.knowtion.dbConvert({ id })),
+  dbRetire: (id: string) => unwrap(window.knowtion.dbRetire({ id })),
   dbDefineProperty: (
     databaseId: string,
     input: { name: string; type: PropertyType; options?: { name: string; color?: OptionColour }[] },

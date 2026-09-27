@@ -31,6 +31,7 @@ import { decodeView, type ViewDef } from './views.js';
 
 /** Keys on a node's data map. Permanent, per FORMAT.md section 10.1. */
 export const DB_KEY = 'db';
+export const DB_RETIRED_KEY = 'retired';
 export const DB_PROPS_KEY = 'props';
 export const DB_OPTIONS_KEY = 'options';
 export const DB_VIEWS_KEY = 'views';
@@ -147,9 +148,14 @@ function decodeOptions(raw: unknown, properties: Map<string, PropertyDef>): void
  * A property with an unknown type is skipped — a newer client defined it — and stays in
  * the log for that client. Options belong to select properties only; under any other
  * type they are kept but not shown, so a retype back restores them.
+ *
+ * A retired database reads as no database at all (ADR-0016). Everything under `db` stays
+ * exactly where it is, which is what lets the page become a database again with its
+ * schema, its views and every row's values intact.
  */
 export function decodeDatabaseSchema(raw: unknown): DatabaseSchema | undefined {
   if (!isRecord(raw)) return undefined;
+  if (raw[DB_RETIRED_KEY] === true) return undefined;
 
   const properties = new Map<string, PropertyDef>();
   if (isRecord(raw[DB_PROPS_KEY])) {

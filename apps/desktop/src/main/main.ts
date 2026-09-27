@@ -245,6 +245,10 @@ function registerDatabaseHandlers(): void {
     const { id } = record(input, 'input');
     return mustHost().databaseSchema(str(id, 'id') as never) ?? null;
   });
+  handle('db:retire', (input: unknown) => {
+    const { id } = record(input, 'input');
+    return mustHost().retireDatabase(str(id, 'id') as never);
+  });
   handle('db:convert', (input: unknown) => {
     const { id } = record(input, 'input');
     return mustHost().convertToDatabase(str(id, 'id') as never);

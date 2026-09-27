@@ -13,6 +13,7 @@ import {
   DB_KEY,
   DB_OPTIONS_KEY,
   DB_PROPS_KEY,
+  DB_RETIRED_KEY,
   DB_VIEWS_KEY,
   ROW_ORDER_KEY,
   ROW_PROPS_KEY,
@@ -446,7 +447,11 @@ export class Workspace {
 
   /** True when the page is a database. */
   isDatabase(id: NodeId): boolean {
-    return this.#databaseMap(this.#node(id)) !== undefined;
+    // Decoded rather than a test for the `db` map, because a retired database still has
+    // one (ADR-0016). Asking the decoder is what keeps this answer and `database()`'s
+    // from ever disagreeing about what a page is.
+    const db = this.#databaseMap(this.#node(id));
+    return db !== undefined && decodeDatabaseSchema(db.toJSON()) !== undefined;
   }
 
   /** The database's schema. Throws NOT_A_DATABASE for an ordinary page. */
@@ -465,6 +470,11 @@ export class Workspace {
     const node = this.#node(id);
     const now = this.#runtime.clock.now();
     const db = this.#ensureMap(node.data, DB_KEY);
+    // A database that was retired comes back exactly as it was: its schema, its views
+    // and every row's values were never touched (ADR-0016). Set false rather than
+    // deleting the key, so retiring and restoring are the same shape and converge by
+    // last-writer-wins like every other scalar on a node.
+    if (db.get(DB_RETIRED_KEY) === true) db.set(DB_RETIRED_KEY, false);
     if (typeof db.get('createdAt') !== 'number') db.set('createdAt', now);
     this.#ensureMap(db, DB_PROPS_KEY);
     this.#ensureMap(db, DB_OPTIONS_KEY);
@@ -475,6 +485,27 @@ export class Workspace {
     this.#touch(node);
     this.#doc.commit();
     return this.#databaseNode(id).schema;
+  }
+
+  /**
+   * Turn a database back into an ordinary page. Idempotent; the inverse of converting.
+   *
+   * Nothing is deleted. FORMAT.md section 10.1 forbids removing the `db` key at all — it
+   * holds mergeable children, and hiding one only means the next device to ensure it
+   * brings the old state back — and deleting what is inside would destroy the schema the
+   * rows' values are read through. A flag instead: the rows become child pages, their
+   * values stay in the log unread, and converting again gives all of it back.
+   */
+  retireDatabase(id: NodeId): Page {
+    const node = this.#node(id);
+    const db = this.#databaseMap(node);
+    if (db === undefined) {
+      throw new WorkspaceError('NOT_A_DATABASE', `page ${id} is not a database`);
+    }
+    db.set(DB_RETIRED_KEY, true);
+    this.#touch(node);
+    this.#doc.commit();
+    return this.#toPage(node);
   }
 
   #writeView(
