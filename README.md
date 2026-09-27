@@ -45,7 +45,9 @@ local files. Knowtion aims for both:
 - **Encrypted before it leaves your machine.** Your cloud provider stores ciphertext.
   On by default: a workspace will not open until you have written down its recovery
   phrase, because an append-only log cannot un-write a note saved in the clear.
-- **Your data stays yours.** Full export to Markdown and JSON, always, no lock-in.
+- **Your data stays yours.** Export the whole workspace to Markdown or JSON whenever you
+  like, no lock-in. The Markdown is a folder of files any editor opens; the JSON holds
+  everything, addressed by identifiers that mean something outside Knowtion.
 
 ## Roadmap
 

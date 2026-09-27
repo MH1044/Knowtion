@@ -216,6 +216,29 @@ synthesised fixtures, so this is the most valuable item in this document.
 - [ ] A corrupt or very large zip is refused with a message rather than a crash.
 - [ ] **Dismiss** closes the summary.
 
+## 7b. Export
+
+The whole point is that the files are still useful when Knowtion is not there, so check
+what you get in another program rather than just that a folder appeared.
+
+- [ ] **Export Markdown** opens a folder picker. Cancelling does nothing at all.
+- [ ] Both buttons read "Exporting…" and are disabled while one runs.
+- [ ] The folder mirrors the sidebar: a page is `<title>.md`, and a page with children has
+      a folder of the same name beside it.
+- [ ] A page's text is there, with headings, lists, todo checkboxes, quotes, code blocks,
+      dividers and links intact. **Open one in another Markdown editor** — Obsidian, VS
+      Code, GitHub — and check it renders rather than showing raw markup.
+- [ ] Two pages with the same title both exist, with the second numbered.
+- [ ] A page titled with a slash, a colon or a question mark still produces a file.
+- [ ] A database exports as `<name>.md`, a folder of its rows, and `<name>.csv` beside it.
+- [ ] **Open the CSV in Excel.** Accented characters and emoji are not mojibake, and a
+      title containing a comma stays in one cell.
+- [ ] A row's page lists its properties by name in the block at the top.
+- [ ] **Export JSON** writes one `workspace.json`. Open it: every page is there, each with
+      a uuid, and each child names its parent's uuid.
+- [ ] Exporting twice into the same folder overwrites rather than duplicating.
+- [ ] The summary says how many pages, and where they went.
+
 ## 8. Sync and multiple devices
 
 - [ ] A local-only workspace says "Stored on this device", worded as a finished state.
