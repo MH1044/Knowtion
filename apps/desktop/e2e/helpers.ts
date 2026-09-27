@@ -116,6 +116,12 @@ export async function dragOnto(
   clientY: number,
 ): Promise<void> {
   const dataTransfer = await window.evaluateHandle(() => new DataTransfer());
+  // Held from the start, because a successful drop re-renders: the card moves to the
+  // other column, and `source` — a locator relative to the column it came FROM — then
+  // matches nothing. Re-resolving it for the last event made this spec fail on whichever
+  // machine committed the move before the event was sent, which was a slow CI runner and
+  // never this one.
+  const handle = await source.elementHandle();
   try {
     await source.dispatchEvent('dragstart', { dataTransfer });
     await window.locator('.dragging').first().waitFor();
@@ -124,8 +130,11 @@ export async function dragOnto(
     await window.locator('.drop-before, .drop-after, .drop-target, .drop-end').first().waitFor();
 
     await list.dispatchEvent('drop', { dataTransfer });
-    await source.dispatchEvent('dragend', { dataTransfer });
+    // The drop handler clears the drag state itself, so this is the browser's courtesy
+    // event rather than the thing under test; a detached node still accepts it.
+    await handle?.dispatchEvent('dragend', { dataTransfer });
   } finally {
+    await handle?.dispose();
     await dataTransfer.dispose();
   }
 }
