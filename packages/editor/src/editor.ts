@@ -19,7 +19,9 @@ import { EditorState } from 'prosemirror-state';
 import { EditorView } from 'prosemirror-view';
 
 import { knowtionInputRules, knowtionKeymap } from './keymap.js';
+import { knowtionPlaceholder } from './placeholder.js';
 import { schema } from './schema.js';
+import { TodoItemView } from './todo-view.js';
 
 import type { LoroDoc } from 'loro-crdt';
 
@@ -72,8 +74,12 @@ export async function mountPageEditor(options: PageEditorOptions): Promise<PageE
         /* eslint-enable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment */
         knowtionInputRules(),
         knowtionKeymap(undo, redo),
+        knowtionPlaceholder(),
       ],
     }),
+    nodeViews: {
+      todo_item: (node, editorView, getPos) => new TodoItemView(node, editorView, getPos),
+    },
     dispatchTransaction(transaction) {
       view.updateState(view.state.apply(transaction));
       if (!transaction.docChanged || applyingRemote) return;

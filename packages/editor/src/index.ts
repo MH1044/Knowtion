@@ -7,5 +7,7 @@
 
 export { schema } from './schema.js';
 export { knowtionInputRules, knowtionKeymap } from './keymap.js';
+export { insertDivider, toggleTodo, toggleTodoChecked } from './blocks.js';
+export { knowtionPlaceholder } from './placeholder.js';
 export { mountPageEditor } from './editor.js';
 export type { PageEditor, PageEditorOptions } from './editor.js';

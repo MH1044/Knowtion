@@ -17,6 +17,7 @@ import { keymap } from 'prosemirror-keymap';
 import { liftListItem, sinkListItem, splitListItem } from 'prosemirror-schema-list';
 import type { Command, Plugin } from 'prosemirror-state';
 
+import { dividerRule, insertDivider, toggleTodo, toggleTodoChecked, todoRule } from './blocks.js';
 import { schema } from './schema.js';
 
 /** `marks`/`baseKeymap` are indexed by string key, so lookups are optional statically. */
@@ -36,6 +37,8 @@ export function knowtionInputRules(): Plugin {
       wrappingInputRule(/^\s*([-*+])\s$/, schema.nodes.bullet_list),
       wrappingInputRule(/^(\d+)\.\s$/, schema.nodes.ordered_list),
       wrappingInputRule(/^\s*>\s$/, schema.nodes.blockquote),
+      todoRule(),
+      dividerRule(),
     ],
   });
 }
@@ -60,6 +63,10 @@ export function knowtionKeymap(undo: Command, redo: Command): Plugin {
     ),
     Tab: sinkListItem(listItem),
     'Shift-Tab': liftListItem(listItem),
+    // A todo and a divider had no way in at all before these.
+    'Mod-Shift-9': toggleTodo,
+    'Mod-Enter': toggleTodoChecked,
+    'Mod-Shift-Minus': insertDivider,
     'Mod-z': undo,
     'Mod-y': redo,
     'Mod-Shift-z': redo,

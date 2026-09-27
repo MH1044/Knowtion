@@ -1235,3 +1235,31 @@ button.danger {
   min-width: 16px;
   text-align: right;
 }
+
+.editor .ProseMirror li[data-todo] {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.editor .ProseMirror li[data-todo] input[type='checkbox'] {
+  flex: none;
+  margin: 0;
+  cursor: pointer;
+}
+
+.editor .ProseMirror li[data-todo] .todo-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.editor .ProseMirror li[data-todo][data-checked='true'] .todo-content {
+  color: var(--muted);
+  text-decoration: line-through;
+}
+
+.editor .ProseMirror hr {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 16px 0;
+}
