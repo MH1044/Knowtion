@@ -33,6 +33,7 @@ import { clampPage, offsetOf, pageCount } from './paging.js';
 import { SchemaEditor } from './SchemaEditor.js';
 import { GroupEditor, SortEditor } from './SortGroupEditor.js';
 import { TableView } from './TableView.js';
+import { ViewSettings } from './ViewSettings.js';
 import { useRowDrag } from './useRowDrag.js';
 import { ViewToolbar } from './ViewToolbar.js';
 
@@ -202,6 +203,22 @@ export function DatabaseView({
       </ViewToolbar>
       {showControls && (
         <div className="view-controls">
+          <ViewSettings
+            view={view}
+            canDelete={schema.views.length > 1}
+            onRename={(name) => {
+              void run(() => api.dbUpdateView(databaseId, view.id, { name }));
+            }}
+            onDelete={() => {
+              void run(async () => {
+                await api.dbRemoveView(databaseId, view.id);
+                // The deleted view was the active one, so fall back to the first
+                // remaining rather than leaving the table pointed at nothing.
+                setActiveViewId(undefined);
+                setPageIndex(0);
+              });
+            }}
+          />
           <FilterEditor
             properties={schema.properties}
             filter={view.filter}
@@ -219,16 +236,18 @@ export function DatabaseView({
               void run(() => api.dbUpdateView(databaseId, view.id, { sorts }));
             }}
           />
-          {view.type === 'table' && (
-            <GroupEditor
-              properties={schema.properties}
-              groupBy={view.groupBy}
-              onChange={(groupBy) => {
-                setPageIndex(0);
-                void run(() => api.dbUpdateView(databaseId, view.id, { groupBy }));
-              }}
-            />
-          )}
+          {/* A board is defined by its columns, so it is grouped too — it simply
+              cannot be grouped by nothing. Until now a board's columns were fixed at
+              creation with no way to change them. */}
+          <GroupEditor
+            properties={schema.properties}
+            groupBy={view.groupBy}
+            required={view.type === 'board'}
+            onChange={(groupBy) => {
+              setPageIndex(0);
+              void run(() => api.dbUpdateView(databaseId, view.id, { groupBy }));
+            }}
+          />
           {columnToggles === 'view' && columnEditor}
         </div>
       )}
@@ -268,6 +287,11 @@ export function DatabaseView({
           onRename={(rowId, title) => void run(() => api.renamePage(rowId, title))}
           onAddOption={addOption}
           onOpenRow={onOpenRow}
+          onArchiveRow={(row) => {
+            if (window.confirm(`Move "${row.title || 'Untitled'}" to the trash?`)) {
+              void run(() => api.archivePage(row.id));
+            }
+          }}
           onNewRow={() => {
             newRow();
           }}

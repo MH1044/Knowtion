@@ -84,10 +84,13 @@ export function SortEditor({
 export function GroupEditor({
   properties,
   groupBy,
+  required = false,
   onChange,
 }: {
   properties: PropertyDef[];
   groupBy: string | undefined;
+  /** A board is defined by its columns, so it cannot be grouped by nothing. */
+  required?: boolean;
   onChange: (groupBy: string | null) => void;
 }): React.JSX.Element {
   const groupable = properties.filter((p) => GROUPABLE_TYPES.includes(p.type));
@@ -101,7 +104,8 @@ export function GroupEditor({
           onChange(e.target.value === '' ? null : e.target.value);
         }}
       >
-        <option value="">none</option>
+        {!required && <option value="">none</option>}
+        {required && groupBy === undefined && <option value="">choose a property…</option>}
         {groupBy !== undefined && !groupable.some((p) => p.id === groupBy) && (
           <option value={groupBy}>(removed property)</option>
         )}

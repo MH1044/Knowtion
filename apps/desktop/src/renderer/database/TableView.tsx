@@ -23,6 +23,8 @@ export interface TableViewProps {
   onRename: (rowId: string, title: string) => void;
   onAddOption: (propertyId: string, name: string) => Promise<string>;
   onOpenRow: (rowId: string) => void;
+  /** Send a row to the trash without opening it first. */
+  onArchiveRow: (row: RowView) => void;
   onNewRow: () => void;
   /** Zero-based page being shown, how many there are, and how big one is. */
   page: number;
@@ -40,10 +42,12 @@ function TitleCell({
   row,
   onRename,
   onOpen,
+  onArchive,
 }: {
   row: RowView;
   onRename: (title: string) => void;
   onOpen: () => void;
+  onArchive: () => void;
 }): React.JSX.Element {
   const [draft, setDraft] = useState(row.title);
   const [seen, setSeen] = useState(row.title);
@@ -75,6 +79,15 @@ function TitleCell({
         onClick={onOpen}
       >
         ↗
+      </button>
+      <button
+        type="button"
+        className="open-row"
+        aria-label={`Move ${row.title || 'Untitled'} to trash`}
+        title="Move to trash"
+        onClick={onArchive}
+      >
+        ×
       </button>
     </span>
   );
@@ -108,6 +121,9 @@ export function TableView(props: TableViewProps): React.JSX.Element {
           }}
           onOpen={() => {
             props.onOpenRow(row.id);
+          }}
+          onArchive={() => {
+            props.onArchiveRow(row);
           }}
         />
       </td>

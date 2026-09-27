@@ -1291,3 +1291,21 @@ button.danger {
   color: var(--accent);
   cursor: pointer;
 }
+
+.view-settings {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+.view-settings label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  color: var(--muted);
+}
+
+.view-settings input {
+  color: var(--text);
+}
