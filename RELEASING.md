@@ -12,11 +12,13 @@ Windows installer, creates the GitHub release and uploads the installer to it.
    installer. The first few lines also appear inside the application, in the banner that
    tells people a new version exists.
 3. Commit both: `chore(release): 0.4.0`.
-4. Tag and push:
+4. Tag and push. Push the tag explicitly: `--follow-tags` pushes only annotated tags, so
+   a plain `git tag` reaches nothing and no release runs.
 
    ```sh
    git tag v0.4.0
-   git push origin main --follow-tags
+   git push origin main
+   git push origin v0.4.0
    ```
 
 5. Watch the run under the repository's Actions tab. It refuses to publish if the tag and
