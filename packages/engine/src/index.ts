@@ -32,6 +32,24 @@ export type { ViewDef, ViewType } from './views.js';
 export { bytesToUuid, createIdGen, isUuid, uuidToBytes, uuidTimestamp } from './ids.js';
 export type { IdGen, Uuid } from './ids.js';
 
+export {
+  FORMULA_GRAMMAR,
+  FUNCTION_NAMES,
+  MAX_FORMULA_DEPTH,
+  MAX_FORMULA_LENGTH,
+  evaluateFormula,
+  parseFormula,
+  propertiesUsed,
+  usesToday,
+} from './formula.js';
+export type {
+  BinaryOp,
+  FormulaContext,
+  FormulaValue,
+  Node as FormulaNode,
+  ParseFailure,
+} from './formula.js';
+
 export { deterministicRuntime, systemRuntime } from './runtime.js';
 export type { Clock, Random, Runtime } from './runtime.js';
 
