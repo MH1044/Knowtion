@@ -42,12 +42,13 @@ Everything else below has no automated coverage at all.
 
 ## Known gaps, already scheduled
 
-Two remain, both being worked on. Skip them rather than reporting them.
+One remains. Skip it rather than reporting it. It needs a format decision first,
+because the rule that keeps concurrent edits safe also forbids simply removing the key
+that makes a page a database.
 
 | Area     | Gap                                                    |
 | -------- | ------------------------------------------------------ |
 | Database | A database cannot be turned back into an ordinary page |
-| Database | A board renders every row, however many there are      |
 
 ---
 
@@ -357,6 +358,8 @@ synthesised fixtures, so this is the most valuable item in this document.
 - [ ] Dragging a card to another column sets the property and moves the card together.
 - [ ] Dragging to the "no value" column clears the property.
 - [ ] Dropping a card where it already is writes nothing.
+- [ ] A column holding more than a hundred cards draws the first hundred and says so.
+      The rest are reachable from a table view.
 - [ ] A board's group property can be changed after it was created, and the columns
       follow. It cannot be set to none, because that is what makes it a board.
 - [ ] Deleting the property a board groups by leaves a message saying so, not a table

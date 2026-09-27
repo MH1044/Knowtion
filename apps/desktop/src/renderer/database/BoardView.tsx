@@ -12,6 +12,16 @@ import { cardMoveIsNoop, positionForDrop } from './dnd.js';
 import { formatDate, formatDateTime } from './format.js';
 import { useRowDrag } from './useRowDrag.js';
 
+/**
+ * Cards drawn per column.
+ *
+ * A grouped query returns every matching row, because the read model buckets in memory,
+ * so a board over a large database would otherwise render thousands of cards and stop
+ * responding. Capping what is drawn is not paging — the rows are all here — but it keeps
+ * the view usable and says so rather than pretending the rest do not exist.
+ */
+const CARDS_PER_COLUMN = 100;
+
 export interface BoardViewProps {
   properties: PropertyDef[];
   view: ViewDef;
@@ -99,7 +109,7 @@ export function BoardView({
               <span className="group-count">{group.rows.length}</span>
             </header>
             <div className="cards">
-              {group.rows.map((row, index) => (
+              {group.rows.slice(0, CARDS_PER_COLUMN).map((row, index) => (
                 <article
                   key={row.id}
                   className={`card${drag.dragging?.id === row.id ? ' dragging' : ''}${
@@ -128,6 +138,12 @@ export function BoardView({
               ))}
               {isTarget && drag.target?.index === group.rows.length && (
                 <div className="drop-end" aria-hidden="true" />
+              )}
+              {group.rows.length > CARDS_PER_COLUMN && (
+                <p className="db-note">
+                  Showing {CARDS_PER_COLUMN} of {group.rows.length}. Use a table view to see the
+                  rest.
+                </p>
               )}
             </div>
             <button
