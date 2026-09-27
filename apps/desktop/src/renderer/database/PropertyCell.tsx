@@ -41,6 +41,12 @@ export interface PropertyCellProps {
   compact?: boolean;
 }
 
+/** A chip in its option's colour, falling back to grey for an option that is gone. */
+function chipClass(def: PropertyDef, optionId: string | undefined): string {
+  const colour = def.options.find((o) => o.id === optionId)?.color ?? 'gray';
+  return `chip colour-${colour}`;
+}
+
 const sameValue = (a: PropertyValue | undefined, b: PropertyValue | undefined) =>
   JSON.stringify(a) === JSON.stringify(b);
 
@@ -151,7 +157,7 @@ function SelectCell({
   const current = value?.type === 'select' ? value.value : '';
   const name = (id: string) => def.options.find((o) => o.id === id)?.name ?? '';
 
-  if (readOnly) return <span className="chip">{name(current)}</span>;
+  if (readOnly) return <span className={chipClass(def, current)}>{name(current)}</span>;
 
   if (adding) {
     return (
@@ -211,7 +217,7 @@ function MultiSelectCell({ def, value, onCommit, readOnly }: PropertyCellProps):
   return (
     <span className="chips">
       {chosen.map((id) => (
-        <span key={id} className="chip">
+        <span key={id} className={chipClass(def, id)}>
           {name(id)}
           {!readOnly && (
             <button

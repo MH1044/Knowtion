@@ -11,7 +11,26 @@
  */
 import { useState } from 'react';
 
-import { api, type DatabaseSchema, type PropertyType } from '../api.js';
+import { api, type DatabaseSchema, type OptionColour, type PropertyType } from '../api.js';
+
+/**
+ * The nine colours an option may carry.
+ *
+ * They have existed in the format, the bridge and the main process since databases
+ * shipped, with nothing able to choose one, so every chip was the same. Listed here
+ * rather than imported because the renderer cannot import the engine.
+ */
+const COLOURS: OptionColour[] = [
+  'gray',
+  'brown',
+  'orange',
+  'yellow',
+  'green',
+  'blue',
+  'purple',
+  'pink',
+  'red',
+];
 
 const TYPES: { value: PropertyType; label: string }[] = [
   { value: 'text', label: 'Text' },
@@ -146,6 +165,24 @@ export function SchemaEditor({
                         );
                       }}
                     />
+                    <select
+                      className={`colour-picker colour-${option.color ?? 'gray'}`}
+                      value={option.color ?? 'gray'}
+                      aria-label={`Colour of ${option.name}`}
+                      onChange={(e) => {
+                        void run(() =>
+                          api.dbUpdateOption(databaseId, property.id, option.id, {
+                            color: e.target.value as OptionColour,
+                          }),
+                        );
+                      }}
+                    >
+                      {COLOURS.map((colour) => (
+                        <option key={colour} value={colour}>
+                          {colour}
+                        </option>
+                      ))}
+                    </select>
                     <button
                       type="button"
                       aria-label={`Remove option ${option.name}`}

@@ -258,6 +258,14 @@ export function DatabaseView({
       )}
       {result === undefined ? (
         <p className="placeholder">Loading…</p>
+      ) : view.type === 'board' && result.groups === undefined ? (
+        // Grouping is what makes a board a board. Without it the read model returns no
+        // buckets, and silently drawing a table under a tab labelled Board is worse than
+        // saying what happened.
+        <p className="placeholder">
+          This board grouped by a property that no longer exists. Choose another under Filter &amp;
+          sort, or delete the view.
+        </p>
       ) : view.type === 'board' && result.groups !== undefined ? (
         <BoardView
           properties={schema.properties}

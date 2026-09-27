@@ -85,6 +85,7 @@ export function BoardView({
             ? `No ${groupDef?.name ?? 'value'}`
             : (groupDef?.options.find((o) => o.id === group.key)?.name ?? '(removed option)');
         const isTarget = drag.target?.list === list;
+        const colour = groupDef?.options.find((o) => o.id === group.key)?.color ?? 'gray';
         return (
           <section
             key={list}
@@ -94,7 +95,7 @@ export function BoardView({
             {...drag.listProps(list, '.card')}
           >
             <header>
-              <h3>{label}</h3>
+              <h3 className={`colour-${colour}`}>{label}</h3>
               <span className="group-count">{group.rows.length}</span>
             </header>
             <div className="cards">

@@ -1331,3 +1331,46 @@ button.danger {
 .tree .row.drop-after {
   box-shadow: inset 0 -2px 0 0 var(--accent);
 }
+
+/* Option colours. Chosen to read on the dark ground without shouting. */
+.colour-gray {
+  --chip: 150 150 160;
+}
+.colour-brown {
+  --chip: 165 120 90;
+}
+.colour-orange {
+  --chip: 220 140 70;
+}
+.colour-yellow {
+  --chip: 215 190 80;
+}
+.colour-green {
+  --chip: 110 190 130;
+}
+.colour-blue {
+  --chip: 108 140 255;
+}
+.colour-purple {
+  --chip: 170 130 230;
+}
+.colour-pink {
+  --chip: 230 130 180;
+}
+.colour-red {
+  --chip: 230 110 110;
+}
+
+.chip {
+  background: rgb(var(--chip) / 20%);
+  color: rgb(var(--chip));
+}
+
+.board-column h3 {
+  color: rgb(var(--chip));
+}
+
+.colour-picker {
+  width: auto;
+  color: rgb(var(--chip));
+}
