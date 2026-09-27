@@ -169,7 +169,11 @@ describe(`queries over ${String(ROWS)} rows`, () => {
     console.log(`  paged query (limit 100 offset 5000) ${ms.toFixed(0)}ms`);
     expect(page.rows).toHaveLength(100);
     expect(page.total).toBe(ROWS);
-    expect(ms).toBeLessThan(750);
+    // This one measures around 650ms on an idle machine, so a 750ms ceiling was not the
+    // several-times-looser tripwire the header describes: it was a coin toss that a
+    // Windows runner lost. The number in the log above is what to watch; this is only
+    // here to catch something going quadratic.
+    expect(ms).toBeLessThan(5_000);
     model.close();
   }, 60_000);
 });

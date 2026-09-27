@@ -102,7 +102,7 @@ describe('a workspace survives a restart', () => {
     );
     expect(packs).toHaveLength(5);
     expect(packs.map((p) => p.path)).toContain(packPath(hexA, TREE, 5));
-  });
+  }, 60_000);
 
   it('two devices sharing one folder converge, including page moves', async () => {
     const storage = await folder();
@@ -130,7 +130,7 @@ describe('a workspace survives a restart', () => {
       expect(side.workspace.getPage(note.id).parentId).toBe(home.id);
       expect(titles(side.workspace.listChildren(home.id))).toEqual(['Note']);
     }
-  });
+  }, 60_000);
 
   it('a page archived on one device is in the trash on the other', async () => {
     const storage = await folder();

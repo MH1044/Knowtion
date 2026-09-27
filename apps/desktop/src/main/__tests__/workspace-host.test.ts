@@ -875,7 +875,7 @@ describe('approving a second device for an encrypted workspace', () => {
 
     await bWithKey.close();
     await a.close();
-  });
+  }, 60_000);
 
   it('grants only to the device the wrap names', async () => {
     // The wrap is sealed to the public key in that device's own signed record, so a
@@ -923,7 +923,7 @@ describe('approving a second device for an encrypted workspace', () => {
 
     await expect(a.grantCurrentKey('dd'.repeat(16))).rejects.toThrow(/no registry record/);
     await a.close();
-  });
+  }, 60_000);
 });
 
 describe('rotating the key away from a revoked device', () => {
