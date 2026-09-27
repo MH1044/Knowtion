@@ -6,6 +6,7 @@ import { DatabaseView } from './database/DatabaseView.js';
 import { RowProperties } from './database/RowProperties.js';
 import { RecoverySetup } from './RecoverySetup.js';
 import { Settings } from './Settings.js';
+import { UpdateBanner } from './UpdateBanner.js';
 import { PageBody } from './PageBody.js';
 import { PageTree, useTreeDrag } from './PageTree.js';
 import { Search } from './Search.js';
@@ -199,6 +200,7 @@ export function App(): React.JSX.Element {
       </aside>
 
       <main className="content">
+        <UpdateBanner />
         {error !== undefined && <div className="error">{error}</div>}
 
         {importReport !== undefined && (

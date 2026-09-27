@@ -13,6 +13,25 @@ already own. There is no Knowtion server, no account to create, and no subscript
 >
 > **Platform: Windows.** macOS and Linux are not supported at v1 — see _Platform support_.
 
+## Install it
+
+Windows only for now. Download **Knowtion Setup x.y.z.exe** from the
+[latest release](https://github.com/MH1044/Knowtion/releases/latest) and run it.
+
+Windows will show a blue "Windows protected your PC" box, because the installer is not
+signed by a certificate Microsoft recognises. Click **More info**, then **Run anyway**.
+Removing that warning means buying a code-signing certificate, which this project has not
+done. The installer needs no administrator password, and uninstalling leaves your notes
+where they are.
+
+Knowtion tells you when a newer version exists and links you to it; it never downloads or
+installs anything by itself. That check is the only request it makes on its own, it sends
+nothing about you, and you can turn it off under Settings. See
+[RELEASING.md](RELEASING.md) for why it works that way.
+
+**It is pre-alpha.** Keep a copy of anything you cannot lose. If you are testing it
+deliberately, [docs/TESTING.md](docs/TESTING.md) is a checklist of everything it can do.
+
 ## Why another Notion alternative
 
 Most alternatives ask you to trust their cloud, or give up databases and views to get

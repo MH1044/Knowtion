@@ -52,6 +52,7 @@ contextBridge.exposeInMainWorld('knowtion', {
   dbReorder: call('db:reorder'),
   dbMoveCard: call('db:moveCard'),
   dbQuery: call('db:query'),
+  checkForUpdate: call('updates:check'),
   // The one channel that flows from main to renderer. The renderer gets the payload and
   // nothing else: the IpcRendererEvent carries the sender and any transferred ports.
   onChanged: (callback) => {

@@ -8,8 +8,11 @@
 import {
   COLUMN_TOGGLES_KEY,
   COLUMN_TOGGLE_PLACES,
+  UPDATE_CHECKS,
+  UPDATE_CHECK_KEY,
   usePreference,
   type ColumnTogglePlace,
+  type UpdateChecks,
 } from './preferences.js';
 
 export function Settings(): React.JSX.Element {
@@ -17,6 +20,12 @@ export function Settings(): React.JSX.Element {
     COLUMN_TOGGLES_KEY,
     COLUMN_TOGGLE_PLACES,
     'view',
+  );
+
+  const [updateChecks, setUpdateChecks] = usePreference<UpdateChecks>(
+    UPDATE_CHECK_KEY,
+    UPDATE_CHECKS,
+    'on',
   );
 
   return (
@@ -35,6 +44,23 @@ export function Settings(): React.JSX.Element {
           <option value="properties">the Properties panel</option>
         </select>
       </label>
+      <label>
+        <span>Check for new versions</span>
+        <select
+          value={updateChecks}
+          aria-label="Check for new versions"
+          onChange={(e) => {
+            setUpdateChecks(e.target.value as UpdateChecks);
+          }}
+        >
+          <option value="on">on startup</option>
+          <option value="off">never</option>
+        </select>
+      </label>
+      <p className="settings-note">
+        The version check is the only request Knowtion makes on its own. It asks the public releases
+        page what the latest version is and sends nothing about you or your notes.
+      </p>
     </details>
   );
 }

@@ -1,0 +1,61 @@
+name: Release
+
+# Cutting a release is pushing a tag. Nothing else publishes, so an accidental push to
+# main can never ship a binary.
+on:
+  push:
+    tags: ['v*']
+
+# The only privileged workflow in the repository: it writes a release. Every action below
+# is therefore pinned to a full commit SHA rather than a mutable tag, as the note in
+# ci.yml requires. A tag can be moved by whoever owns the action; a SHA cannot.
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  windows:
+    name: Windows installer
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+
+      # The tag is what people will quote in a bug report, and the version compiled into
+      # the binary is what the update check compares against. If they disagree, the
+      # application tells everybody about an update that is already installed. Fail here
+      # rather than ship that.
+      - name: Tag must match the application version
+        shell: bash
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          pkg=$(node -p "require('./apps/desktop/package.json').version")
+          echo "tag=$tag package=$pkg"
+          if [ "$tag" != "$pkg" ]; then
+            echo "::error::tag $GITHUB_REF_NAME does not match apps/desktop/package.json version $pkg"
+            exit 1
+          fi
+
+      # Everything CI runs, before anything is published. A release is the one build that
+      # cannot be quietly fixed afterwards.
+      - run: npm run verify
+
+      - name: Build the installer
+        shell: bash
+        env:
+          # electron-builder creates the GitHub release and uploads to it.
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npm run release -w @knowtion/desktop
+        # The release itself is the artifact. A second upload step would mean a third
+        # action to pin in the one workflow that can publish, for a copy of a file that
+        # is already public.

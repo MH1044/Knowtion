@@ -69,6 +69,13 @@ export interface ImportReport {
   warnings: string[];
 }
 
+/** A release newer than the one running, as the main process found it. */
+export interface UpdateNotice {
+  version: string;
+  url: string;
+  notes: string;
+}
+
 export interface SyncInfo {
   /** Null when the log is local-only and nothing else can write to it. */
   folder: string | null;
@@ -245,6 +252,7 @@ interface Bridge {
     position: RowPosition;
   }): Promise<Result<{ keyed: string[] }>>;
   dbQuery(input: ViewQuery): Promise<Result<QueryResult>>;
+  checkForUpdate(): Promise<Result<UpdateNotice | null>>;
 }
 
 declare global {
@@ -345,4 +353,5 @@ export const api = {
     unwrap(window.knowtion.dbMoveCard({ rowId, viewId, option, position })),
   dbQuery: (query: ViewQuery & { overrides?: ViewOverrides }) =>
     unwrap(window.knowtion.dbQuery(query)),
+  checkForUpdate: () => unwrap(window.knowtion.checkForUpdate()),
 };

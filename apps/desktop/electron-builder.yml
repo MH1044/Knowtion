@@ -1,0 +1,54 @@
+# How the desktop application is packaged into something a person can install.
+#
+# Windows only, matching the platform tier in README.md. The installer is NSIS rather
+# than an appx or an MSI because it is the one Electron target that needs no store
+# account, no certificate to produce, and no administrator rights to run.
+#
+# There are no native modules to rebuild: ADR-0011 chose Node's built-in SQLite precisely
+# so an Electron upgrade could not break the database layer through an ABI mismatch, and
+# the CRDT is WebAssembly. That is why nothing here mentions rebuilding.
+
+appId: dev.knowtion.app
+productName: Knowtion
+copyright: Knowtion Contributors
+
+directories:
+  output: release
+  buildResources: build
+
+# The built application and the dependencies it loads at runtime. The test output under
+# dist/main/__tests__ is deliberately excluded: it is compiled alongside the sources and
+# has no business inside a shipped binary.
+files:
+  - dist/**/*
+  - '!dist/**/__tests__/**'
+  - '!dist/**/*.map'
+  - '!dist/**/*.tsbuildinfo'
+  - package.json
+
+win:
+  target:
+    - target: nsis
+      arch: [x64]
+  # Unsigned for now. Windows SmartScreen will warn on first run until the project has a
+  # code-signing certificate; RELEASING.md says what a tester should expect to see.
+  signAndEditExecutable: true
+
+nsis:
+  # A visible installer with a choosable location, rather than a one-click that drops the
+  # application somewhere without asking. Per-user, so no administrator prompt.
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  allowElevation: false
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: Knowtion
+  # Keep the user's workspace when they uninstall. Their notes are not ours to delete,
+  # and the application data directory is where the log and the index live.
+  deleteAppDataOnUninstall: false
+
+publish:
+  provider: github
+  owner: MH1044
+  repo: Knowtion

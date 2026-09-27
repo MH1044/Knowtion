@@ -23,6 +23,11 @@ export type ColumnTogglePlace = (typeof COLUMN_TOGGLE_PLACES)[number];
 
 export const COLUMN_TOGGLES_KEY = 'knowtion.pref.columnToggles';
 
+/** Whether to ask the releases page whether a newer version exists. */
+export const UPDATE_CHECKS = ['on', 'off'] as const;
+export type UpdateChecks = (typeof UPDATE_CHECKS)[number];
+export const UPDATE_CHECK_KEY = 'knowtion.pref.updateChecks';
+
 type Listener = (key: string) => void;
 const listeners = new Set<Listener>();
 

@@ -6,3 +6,4 @@ packages/format/fixtures/
 packages/engine/fixtures/
 .claude/
 coverage/
+apps/desktop/release/

@@ -75,6 +75,8 @@ export default tseslint.config(
       // .gitignore, so without this every coverage run leaves `npm run lint` failing on
       // the report's own bundled scripts.
       'coverage/**',
+      // The packaged application: hundreds of megabytes of Electron, none of it ours.
+      '**/release/**',
       // Local tool configuration. Not project source.
       '.claude/**',
       // Private working material beside the code, git-ignored and never published.

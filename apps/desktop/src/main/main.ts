@@ -31,6 +31,7 @@ import { checkSyncFolder, copyLog } from './sync-folder.js';
 import { DeviceRegistry, NodeStorage } from '@knowtion/sync';
 
 import { WorkspaceHost } from './workspace-host.js';
+import { findUpdate } from './updates.js';
 import {
   collectGrantedKeys,
   currentKey,
@@ -436,6 +437,20 @@ function registerHandlers(): void {
    * not open the workspace at all until it is done — so there is never a window in
    * which a note is written in the clear and has to be un-written afterwards.
    */
+  /**
+   * Is there a newer release? The only request this application makes on its own.
+   *
+   * Answered with null rather than an error when anything goes wrong, and never called
+   * unless the renderer asks — which it does not while the recovery ceremony is open.
+   */
+  handle('updates:check', async () => {
+    // Only a packaged build can act on the answer: a development run has no installer to
+    // replace, and telling a developer to download one would be nonsense. It also keeps
+    // the end-to-end suite and every `npm start` off the network entirely.
+    if (!app.isPackaged) return null;
+    return (await findUpdate(app.getVersion())) ?? null;
+  });
+
   ipcMain.handle('keys:status', () => ({
     ok: true,
     value: {

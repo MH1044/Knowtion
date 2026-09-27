@@ -1374,3 +1374,32 @@ button.danger {
   width: auto;
   color: rgb(var(--chip));
 }
+
+.update-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 16px;
+  padding: 10px 12px;
+  background: rgb(108 140 255 / 12%);
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  font-size: 13px;
+}
+
+.update-banner span {
+  flex: 1;
+  min-width: 200px;
+}
+
+.update-banner a {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.settings-note {
+  color: var(--muted);
+  font-size: 11px;
+  margin: 4px 0 2px;
+}

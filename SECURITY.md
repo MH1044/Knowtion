@@ -38,6 +38,11 @@ remembering that Knowtion users update manually, so a fix reaches them slowly.
 - Content is encrypted **before** it reaches the user's cloud folder.
 - The local database is derived and rebuildable. It is never the source of truth and is
   never synced.
+- The application makes **one** outbound request of its own: asking the public releases
+  page whether a newer version exists. It carries no identifier, no version of anything
+  but the application, and nothing about the workspace; it can be turned off; and it only
+  runs in a packaged build. Knowtion never downloads or applies an update itself — see
+  RELEASING.md for why that waits on the update-signing key described below.
 - Link previews and remote images are **never** fetched without explicit user action,
   and requests are validated against DNS-rebinding and private-address ranges. A desktop
   app fetches from inside the user's own network, so an unfurl is a real SSRF primitive.
