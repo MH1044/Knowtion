@@ -50,12 +50,48 @@ jobs:
       # cannot be quietly fixed afterwards.
       - run: npm run verify
 
+      # Create the draft first, so electron-builder has one to upload into.
+      #
+      # Left to itself it creates the release as part of publishing, and it uploads the
+      # installer, the blockmap and latest.yml concurrently: each upload looked for a
+      # release for this tag, none existed yet, and 0.3.0 ended up as two drafts with the
+      # artifacts split between them. Creating it here makes that race impossible.
+      #
+      # The notes are a file in the repository rather than generated, because these are
+      # read by someone deciding whether to run an unsigned installer. `gh` is already on
+      # the runner, so this needs no fourth action to pin.
+      - name: Create the draft release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          notes="docs/releases/$version.md"
+          if [ ! -f "$notes" ]; then
+            echo "::error::$notes is missing; a release nobody can read is not a release"
+            exit 1
+          fi
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            echo "release already exists, reusing it"
+          else
+            gh release create "$GITHUB_REF_NAME" --draft --title "Knowtion $version" --notes-file "$notes"
+          fi
+
       - name: Build the installer
         shell: bash
         env:
-          # electron-builder creates the GitHub release and uploads to it.
+          # electron-builder uploads into the draft created above.
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: npm run release -w @knowtion/desktop
         # The release itself is the artifact. A second upload step would mean a third
         # action to pin in the one workflow that can publish, for a copy of a file that
         # is already public.
+
+      # Only now, with the installer attached and the build green, does the release
+      # become visible. The update check ignores drafts, so nothing is offered an update
+      # it cannot download.
+      - name: Publish the release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release edit "$GITHUB_REF_NAME" --draft=false --latest
