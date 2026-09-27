@@ -109,6 +109,15 @@ Needs two profiles pointed at the same sync folder.
 - [ ] A page cannot be dropped onto itself, or onto anything already inside it.
 - [ ] A move survives a restart, and reaches a second device.
 
+### Page icons
+
+- [ ] A page with no icon shows a faint **+** beside its title; clicking it opens a grid.
+- [ ] Choosing an emoji sets it, closes the grid, and shows it in the sidebar too.
+- [ ] Pasting an emoji into the box and pressing Enter sets that one.
+- [ ] **Remove** takes it away, and is disabled when there is nothing to remove.
+- [ ] Clicking anywhere else closes the grid without changing anything.
+- [ ] The icon is still there after a restart, and reaches the other device on a sync.
+
 ## 4. The block editor
 
 ### Typing and structure

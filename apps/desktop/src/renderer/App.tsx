@@ -14,6 +14,7 @@ import { DatabaseView } from './database/DatabaseView.js';
 import { RowProperties } from './database/RowProperties.js';
 import { RecoverySetup } from './RecoverySetup.js';
 import { Settings } from './Settings.js';
+import { IconPicker } from './IconPicker.js';
 import { UpdateBanner } from './UpdateBanner.js';
 import { PageBody } from './PageBody.js';
 import { PageTree, useTreeDrag } from './PageTree.js';
@@ -460,21 +461,27 @@ function PageView({
 
   return (
     <article className="page">
-      <input
-        className="page-title"
-        value={title}
-        placeholder="Untitled"
-        aria-label="Page title"
-        onChange={(event) => {
-          setTitle(event.target.value);
-        }}
-        onBlur={() => {
-          if (title !== page.title) void run(() => api.renamePage(page.id, title));
-        }}
-        onKeyDown={(event) => {
-          if (event.key === 'Enter') event.currentTarget.blur();
-        }}
-      />
+      <div className="page-heading">
+        <IconPicker
+          icon={page.icon}
+          onChange={(icon) => void run(() => api.setIcon(page.id, icon))}
+        />
+        <input
+          className="page-title"
+          value={title}
+          placeholder="Untitled"
+          aria-label="Page title"
+          onChange={(event) => {
+            setTitle(event.target.value);
+          }}
+          onBlur={() => {
+            if (title !== page.title) void run(() => api.renamePage(page.id, title));
+          }}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter') event.currentTarget.blur();
+          }}
+        />
+      </div>
       <div className="page-actions">
         {page.database === undefined && (
           <button

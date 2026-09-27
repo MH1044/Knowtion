@@ -152,6 +152,7 @@ interface Bridge {
   page(input: { id: string }): Promise<Result<Page>>;
   createPage(input: { parentId?: string; title?: string }): Promise<Result<Page>>;
   renamePage(input: { id: string; title: string }): Promise<Result<Page>>;
+  setIcon(input: { id: string; icon: string | null }): Promise<Result<Page>>;
   // Explicitly `| undefined`: moving to the top level passes undefined on purpose,
   // and exactOptionalPropertyTypes treats that as different from an absent key.
   movePage(input: {
@@ -287,6 +288,8 @@ export const api = {
   createPage: (input: { parentId?: string; title?: string } = {}) =>
     unwrap(window.knowtion.createPage(input)),
   renamePage: (id: string, title: string) => unwrap(window.knowtion.renamePage({ id, title })),
+  setIcon: (id: string, icon: string | undefined) =>
+    unwrap(window.knowtion.setIcon({ id, icon: icon ?? null })),
   movePage: (id: string, parentId?: string, index?: number) =>
     unwrap(window.knowtion.movePage({ id, parentId, index })),
   archivePage: (id: string) => unwrap(window.knowtion.archivePage({ id })),

@@ -184,6 +184,11 @@ function PageTreeItem({
             onSelect(node.id);
           }}
         >
+          {node.icon !== undefined && (
+            <span className="row-icon" aria-hidden="true">
+              {node.icon}
+            </span>
+          )}
           {node.title || 'Untitled'}
         </button>
         <RowCount node={node} />

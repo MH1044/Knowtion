@@ -373,6 +373,18 @@ function registerHandlers(): void {
   handle('workspace:create', (input: { parentId?: string; title?: string }) =>
     mustHost().createPage(input as never),
   );
+  handle('workspace:icon', (input: unknown) => {
+    const { id, icon } = record(input, 'input');
+    // An empty string clears it, so "no icon" and "the empty string" cannot become two
+    // states in the log. The cap is generous for a grapheme cluster with modifiers and
+    // mean for anything trying to put a paragraph in the sidebar.
+    const trimmed = typeof icon === 'string' ? icon.trim() : '';
+    return mustHost().setIcon(
+      str(id, 'id') as never,
+      trimmed === '' ? undefined : trimmed.slice(0, 16),
+    );
+  });
+
   handle('workspace:rename', (input: { id: string; title: string }) =>
     mustHost().renamePage(input.id as never, input.title),
   );

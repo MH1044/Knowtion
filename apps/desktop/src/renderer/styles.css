@@ -322,6 +322,84 @@ input:focus-visible {
 }
 
 /* Import summary */
+.page-heading {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+}
+
+.icon-picker {
+  position: relative;
+}
+
+.icon-button {
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 26px;
+  line-height: 1;
+  padding: 4px 6px;
+}
+
+.icon-button:hover {
+  background: var(--bg-raised);
+  border-color: var(--border);
+}
+
+/* No icon yet: a quiet plus rather than an emoji competing with the title. */
+.icon-empty {
+  color: var(--muted);
+  font-size: 20px;
+}
+
+.icon-menu {
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgb(0 0 0 / 30%);
+  left: 0;
+  padding: 8px;
+  position: absolute;
+  top: 100%;
+  width: 260px;
+  z-index: 20;
+}
+
+.icon-grid {
+  display: grid;
+  gap: 2px;
+  grid-template-columns: repeat(8, 1fr);
+}
+
+.icon-grid button {
+  background: none;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 18px;
+  padding: 4px 0;
+}
+
+.icon-grid button:hover {
+  background: var(--bg);
+}
+
+.icon-custom {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.icon-custom input {
+  flex: 1;
+  min-width: 0;
+}
+
+.row-icon {
+  margin-right: 6px;
+}
+
 .export-buttons {
   display: flex;
   gap: 6px;

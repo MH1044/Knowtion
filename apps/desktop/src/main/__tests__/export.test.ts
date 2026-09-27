@@ -206,3 +206,26 @@ describe('exporting as JSON', () => {
     }
   }, 60_000);
 });
+
+describe('page icons', () => {
+  it('survive a round trip through the log and reach the export', async () => {
+    const host = await openHost();
+    try {
+      const page = host.createPage({ title: 'Recipes' });
+      expect(host.setIcon(page.id, '🍿').icon).toBe('🍿');
+      expect(host.page(page.id).icon).toBe('🍿');
+
+      const out = await tempDir();
+      await exportWorkspace(host, out, 'markdown');
+      expect(await readFile(join(out, 'Recipes.md'), 'utf8')).toContain('icon: "🍿"');
+
+      // Taking it away removes the key rather than storing an empty string.
+      expect(host.setIcon(page.id, undefined).icon).toBeUndefined();
+      const second = await tempDir();
+      await exportWorkspace(host, second, 'markdown');
+      expect(await readFile(join(second, 'Recipes.md'), 'utf8')).not.toContain('icon:');
+    } finally {
+      await host.close();
+    }
+  }, 60_000);
+});

@@ -466,6 +466,19 @@ export class WorkspaceHost {
     return page;
   }
 
+  /** An emoji beside the page's name, or undefined to take it away. */
+  setIcon(id: NodeId, icon: string | undefined): Page {
+    const page = this.#workspace.setIcon(id, icon);
+    this.#scheduleFlush();
+    this.#changed({
+      origin: 'local',
+      pages: [page.id],
+      bodies: [],
+      databases: this.#databaseOf(page),
+    });
+    return page;
+  }
+
   movePage(id: NodeId, parentId: NodeId | undefined, index?: number): Page {
     const page = this.#workspace.movePage(id, parentId, index);
     this.#reindexPages();

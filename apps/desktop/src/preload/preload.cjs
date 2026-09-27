@@ -17,6 +17,7 @@ contextBridge.exposeInMainWorld('knowtion', {
   page: call('workspace:page'),
   createPage: call('workspace:create'),
   renamePage: call('workspace:rename'),
+  setIcon: call('workspace:icon'),
   movePage: call('workspace:move'),
   archivePage: call('workspace:archive'),
   restorePage: call('workspace:restore'),
