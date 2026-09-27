@@ -42,17 +42,12 @@ Everything else below has no automated coverage at all.
 
 ## Known gaps, already scheduled
 
-These are known and being worked on. Skip them rather than reporting them.
+Two remain, both being worked on. Skip them rather than reporting them.
 
-| Area     | Gap                                                             |
-| -------- | --------------------------------------------------------------- |
-| Sidebar  | A page cannot be moved or reparented once created               |
-| Database | A row cannot be deleted from the table; open it as a page first |
-| Database | A view cannot be renamed, retyped or deleted                    |
-| Database | A board's group property cannot be changed after creation       |
-| Database | A database cannot be turned back into an ordinary page          |
-| Database | Option colours exist in the data but no colour can be chosen    |
-| Database | A board renders every row, however many there are               |
+| Area     | Gap                                                    |
+| -------- | ------------------------------------------------------ |
+| Database | A database cannot be turned back into an ordinary page |
+| Database | A board renders every row, however many there are      |
 
 ---
 
@@ -106,7 +101,12 @@ Needs two profiles pointed at the same sync folder.
 - [ ] Renaming the same page on another device updates your view if you have not typed.
 - [ ] If you have typed, your draft survives and wins when you blur.
 - [ ] **Move to trash** archives the page and its whole subtree.
-- [ ] A database's rows do not appear in the sidebar.
+- [ ] A database's rows do not appear in the sidebar, and the database shows a row count.
+- [ ] Dragging a page onto the middle of another nests it inside.
+- [ ] Dragging onto the top or bottom quarter of a row places it among that row's
+      siblings, in that position.
+- [ ] A page cannot be dropped onto itself, or onto anything already inside it.
+- [ ] A move survives a restart, and reaches a second device.
 
 ## 4. The block editor
 
@@ -248,6 +248,9 @@ synthesised fixtures, so this is the most valuable item in this document.
 ### 9.2 Views
 
 - [ ] View tabs switch views and the choice survives a restart.
+- [ ] A view can be renamed under Filter & sort, and the tab follows.
+- [ ] A view can be deleted, after a confirmation, and the table falls back to another.
+- [ ] The delete button is disabled on a database's last view, and says why.
 - [ ] **New view** asks for a name and a type.
 - [ ] A blank name is refused.
 - [ ] Board is offered only when a select property exists, and says so when it does not.
@@ -266,6 +269,8 @@ synthesised fixtures, so this is the most valuable item in this document.
 - [ ] Select and multi-select properties offer an option list.
 - [ ] An option can be renamed and removed.
 - [ ] Removing an option that rows use does not crash, and those cells read sensibly.
+- [ ] Each option can be given one of nine colours, and its chips change colour in cells,
+      in the table and on board cards.
 
 ### 9.4 Values, one row per type
 
@@ -294,6 +299,7 @@ synthesised fixtures, so this is the most valuable item in this document.
 - [ ] The row title is editable in the grid and renames the page.
 - [ ] The open arrow opens the row as a page.
 - [ ] **New row** appends a row.
+- [ ] The × beside a row title moves it to the trash, after asking.
 - [ ] An empty database reads "No rows yet"; a filter matching nothing reads "No rows
       match this view".
 - [ ] With more than five hundred matching rows a pager appears with the page number and
@@ -351,6 +357,10 @@ synthesised fixtures, so this is the most valuable item in this document.
 - [ ] Dragging a card to another column sets the property and moves the card together.
 - [ ] Dragging to the "no value" column clears the property.
 - [ ] Dropping a card where it already is writes nothing.
+- [ ] A board's group property can be changed after it was created, and the columns
+      follow. It cannot be set to none, because that is what makes it a board.
+- [ ] Deleting the property a board groups by leaves a message saying so, not a table
+      under a tab labelled Board.
 - [ ] **Drag a card with a real mouse.** The automated test dispatches the events directly
       and cannot prove a genuine gesture works.
 
