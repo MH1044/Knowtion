@@ -57,7 +57,8 @@ Requires Node 24+.
     git clone <repo-url>
     cd knowtion
     npm install
-    npm run verify     # typecheck, lint, licence gate, tests
+    npm run verify     # formatting, typecheck, lint, licence gate, tests
+    npm run format     # rewrite anything the formatting check objects to
     npm start          # build and launch the desktop app
 
 If `npm install` skips lifecycle scripts in your environment, Electron's binary will be

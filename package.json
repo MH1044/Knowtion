@@ -24,7 +24,7 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "licences": "node scripts/check-licences.mjs",
-    "verify": "npm run typecheck && npm run lint && npm run licences && npm run test",
+    "verify": "npm run format:check && npm run typecheck && npm run lint && npm run licences && npm run test",
     "licences:report": "node scripts/write-third-party.mjs",
     "fixtures": "npm run build && node packages/format/scripts/make-fixtures.mjs && node packages/engine/scripts/make-fixtures.mjs",
     "gates": "npm run build && node scripts/gates.mjs",
