@@ -454,8 +454,8 @@ export class WorkspaceHost {
     return page;
   }
 
-  movePage(id: NodeId, parentId: NodeId | undefined): Page {
-    const page = this.#workspace.movePage(id, parentId);
+  movePage(id: NodeId, parentId: NodeId | undefined, index?: number): Page {
+    const page = this.#workspace.movePage(id, parentId, index);
     this.#reindexPages();
     this.#scheduleFlush();
     this.#changed({ origin: 'local', pages: [page.id], bodies: [], databases: [] });

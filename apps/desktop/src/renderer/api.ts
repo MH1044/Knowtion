@@ -137,7 +137,12 @@ interface Bridge {
   renamePage(input: { id: string; title: string }): Promise<Result<Page>>;
   // Explicitly `| undefined`: moving to the top level passes undefined on purpose,
   // and exactOptionalPropertyTypes treats that as different from an absent key.
-  movePage(input: { id: string; parentId?: string | undefined }): Promise<Result<Page>>;
+  movePage(input: {
+    id: string;
+    parentId?: string | undefined;
+    /** Position among the new siblings. Appended when absent. */
+    index?: number | undefined;
+  }): Promise<Result<Page>>;
   archivePage(input: { id: string }): Promise<Result<Page>>;
   restorePage(input: { id: string }): Promise<Result<Page>>;
   deletePage(input: { id: string }): Promise<Result<null>>;
@@ -262,7 +267,8 @@ export const api = {
   createPage: (input: { parentId?: string; title?: string } = {}) =>
     unwrap(window.knowtion.createPage(input)),
   renamePage: (id: string, title: string) => unwrap(window.knowtion.renamePage({ id, title })),
-  movePage: (id: string, parentId?: string) => unwrap(window.knowtion.movePage({ id, parentId })),
+  movePage: (id: string, parentId?: string, index?: number) =>
+    unwrap(window.knowtion.movePage({ id, parentId, index })),
   archivePage: (id: string) => unwrap(window.knowtion.archivePage({ id })),
   restorePage: (id: string) => unwrap(window.knowtion.restorePage({ id })),
   deletePage: (id: string) => unwrap(window.knowtion.deletePage({ id })),

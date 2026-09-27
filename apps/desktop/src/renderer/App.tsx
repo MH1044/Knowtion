@@ -7,7 +7,7 @@ import { RowProperties } from './database/RowProperties.js';
 import { RecoverySetup } from './RecoverySetup.js';
 import { Settings } from './Settings.js';
 import { PageBody } from './PageBody.js';
-import { PageTree } from './PageTree.js';
+import { PageTree, useTreeDrag } from './PageTree.js';
 import { Search } from './Search.js';
 import { SyncPanel } from './SyncPanel.js';
 
@@ -109,6 +109,11 @@ export function App(): React.JSX.Element {
     };
   }, [selectedId, tree]);
 
+  // Declared before the early returns below, as hooks must be.
+  const treeDrag = useTreeDrag((id, move) => {
+    void run(() => api.movePage(id, move.parentId, move.index));
+  });
+
   if (keyStatus === undefined) return <div className="app loading">Starting Knowtion…</div>;
   if (keyStatus.needsSetup) {
     return <RecoverySetup status={keyStatus} onDone={() => void loadKeyStatus()} />;
@@ -147,6 +152,7 @@ export function App(): React.JSX.Element {
         <PageTree
           nodes={tree}
           selectedId={selectedId}
+          drag={treeDrag}
           onSelect={(id) => {
             setSelectedId(id);
             setShowTrash(false);

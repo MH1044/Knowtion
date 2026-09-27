@@ -374,8 +374,12 @@ function registerHandlers(): void {
   handle('workspace:rename', (input: { id: string; title: string }) =>
     mustHost().renamePage(input.id as never, input.title),
   );
-  handle('workspace:move', (input: { id: string; parentId?: string }) =>
-    mustHost().movePage(input.id as never, input.parentId as never),
+  handle('workspace:move', (input: { id: string; parentId?: string; index?: number }) =>
+    mustHost().movePage(
+      input.id as never,
+      input.parentId as never,
+      typeof input.index === 'number' ? input.index : undefined,
+    ),
   );
   handle('workspace:archive', (input: { id: string }) => mustHost().archivePage(input.id as never));
   handle('workspace:restore', (input: { id: string }) => mustHost().restorePage(input.id as never));

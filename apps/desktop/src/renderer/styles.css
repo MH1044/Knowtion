@@ -1309,3 +1309,25 @@ button.danger {
 .view-settings input {
   color: var(--text);
 }
+
+.tree .row {
+  cursor: grab;
+}
+
+.tree .row.dragging {
+  opacity: 0.4;
+}
+
+.tree .row.drop-inside {
+  outline: 1px solid var(--accent);
+  outline-offset: -1px;
+  border-radius: 4px;
+}
+
+.tree .row.drop-before {
+  box-shadow: inset 0 2px 0 0 var(--accent);
+}
+
+.tree .row.drop-after {
+  box-shadow: inset 0 -2px 0 0 var(--accent);
+}
