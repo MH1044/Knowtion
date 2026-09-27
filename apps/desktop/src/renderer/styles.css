@@ -322,6 +322,15 @@ input:focus-visible {
 }
 
 /* Import summary */
+.export-buttons {
+  display: flex;
+  gap: 6px;
+}
+
+.export-buttons button {
+  flex: 1;
+}
+
 .import-summary {
   background: var(--bg-raised);
   border: 1px solid var(--border);

@@ -30,6 +30,7 @@ import { readSettings, writeSettings } from './settings.js';
 import { checkSyncFolder, copyLog } from './sync-folder.js';
 import { DeviceRegistry, NodeStorage } from '@knowtion/sync';
 
+import { exportWorkspace, type ExportFormat } from './export.js';
 import { WorkspaceHost } from './workspace-host.js';
 import { findUpdate } from './updates.js';
 import {
@@ -404,6 +405,25 @@ function registerHandlers(): void {
       }
       const bytes = new Uint8Array(await readFile(chosen.filePaths[0]));
       return { ok: true, value: await mustHost().importNotion(bytes) };
+    } catch (error) {
+      return { ok: false, error: error instanceof Error ? error.message : String(error) };
+    }
+  });
+
+  ipcMain.handle('workspace:export', async (_event, input: unknown) => {
+    try {
+      // Anything but an explicit "json" is Markdown: a payload from a sandboxed
+      // renderer decides which files are written, not whether they are.
+      const format: ExportFormat = record(input, 'input').format === 'json' ? 'json' : 'markdown';
+      const chosen = await dialog.showOpenDialog({
+        title: format === 'json' ? 'Export as JSON' : 'Export as Markdown',
+        properties: ['openDirectory', 'createDirectory'],
+        buttonLabel: 'Export here',
+      });
+      if (chosen.canceled || chosen.filePaths[0] === undefined) {
+        return { ok: true, value: null };
+      }
+      return { ok: true, value: await exportWorkspace(mustHost(), chosen.filePaths[0], format) };
     } catch (error) {
       return { ok: false, error: error instanceof Error ? error.message : String(error) };
     }

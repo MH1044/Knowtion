@@ -23,6 +23,7 @@ contextBridge.exposeInMainWorld('knowtion', {
   deletePage: call('workspace:delete'),
   search: call('workspace:search'),
   importNotion: call('import:notion'),
+  exportWorkspace: call('workspace:export'),
   keyStatus: call('keys:status'),
   beginKeySetup: call('keys:begin'),
   confirmKeySetup: call('keys:confirm'),

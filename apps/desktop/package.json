@@ -14,6 +14,7 @@
   },
   "dependencies": {
     "@knowtion/editor": "*",
+    "@knowtion/exporters": "*",
     "@knowtion/engine": "*",
     "@knowtion/format": "*",
     "@knowtion/importers": "*",

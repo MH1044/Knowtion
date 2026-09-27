@@ -30,6 +30,9 @@
     },
     {
       "path": "../../packages/importers"
+    },
+    {
+      "path": "../../packages/exporters"
     }
   ]
 }

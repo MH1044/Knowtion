@@ -35,7 +35,7 @@ import {
   type ViewId,
   type ViewType,
 } from '@knowtion/engine';
-import { loroDocFromJson, plainTextFromJson } from '@knowtion/editor/headless';
+import { jsonFromLoroDoc, loroDocFromJson, plainTextFromJson } from '@knowtion/editor/headless';
 import {
   importNotionArchive,
   type ImportReport,
@@ -416,6 +416,18 @@ export class WorkspaceHost {
   /** The sidebar's tree. Rows stay out of it and are counted; a table shows them. */
   tree(): PageNode[] {
     return this.#workspace.tree({ collapseDatabases: true });
+  }
+
+  /**
+   * The whole hierarchy, a database's rows included.
+   *
+   * `tree()` collapses them, because neither the sidebar nor the payload that carries it
+   * after every change wants ten thousand children. An export does want them: a row is a
+   * page, with a title and a body of its own, and leaving them out writes a database as
+   * a single empty file.
+   */
+  fullTree(): PageNode[] {
+    return this.#workspace.tree();
   }
 
   trash(): Page[] {
@@ -821,6 +833,32 @@ export class WorkspaceHost {
     this.#bodies.set(id, { doc, store, dirty: false });
     this.#indexBody(id, doc);
     return doc.export({ mode: 'snapshot' });
+  }
+
+  /**
+   * A page's document as ProseMirror JSON, without keeping it open.
+   *
+   * `openBody` caches the document because the editor is about to keep asking about it.
+   * An export asks once, about every page in the workspace, so the same cache would hold
+   * ten thousand documents at the end of it. A page already open is read from the cache;
+   * anything else is replayed, converted and dropped.
+   */
+  async readBodyJson(id: NodeId): Promise<unknown> {
+    const open = this.#bodies.get(id);
+    if (open) return jsonFromLoroDoc(open.doc);
+
+    const page = this.#workspace.getPage(id);
+    const doc = new LoroDoc();
+    doc.setPeerId(this.#options.peerId);
+    const store = new PackStore({
+      storage: this.#storage,
+      workspaceId: this.#options.workspaceId,
+      deviceId: this.#options.deviceId,
+      documentId: uuidToBytes(page.uuid),
+      ...(this.#crypto === undefined ? {} : { crypto: this.#crypto }),
+    });
+    await store.pull(doc);
+    return jsonFromLoroDoc(doc);
   }
 
   /** Merge an edit made in the renderer into the page's document. */

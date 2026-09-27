@@ -55,6 +55,16 @@ export interface SearchHit {
   score: number;
 }
 
+export type ExportFormat = 'markdown' | 'json';
+
+/** Mirrors ExportResult in the main process; the drift test holds the two together. */
+export interface ExportReport {
+  format: ExportFormat;
+  directory: string;
+  pages: number;
+  unreadableBodies: number;
+}
+
 export interface ImportReport {
   pagesImported: number;
   /** Databases found beside the pages, with the type inferred for each property. */
@@ -156,6 +166,8 @@ interface Bridge {
   search(input: { query: string; limit?: number | undefined }): Promise<Result<SearchHit[]>>;
   /** Resolves to null when the user cancels the file picker. */
   importNotion(): Promise<Result<ImportReport | null>>;
+  /** Resolves to null when the user cancels the folder picker. */
+  exportWorkspace(input: { format: ExportFormat }): Promise<Result<ExportReport | null>>;
   keyStatus(): Promise<Result<KeyStatus>>;
   beginKeySetup(): Promise<Result<PhraseChallenge>>;
   confirmKeySetup(input: { answers: string[] }): Promise<Result<null>>;
@@ -282,6 +294,7 @@ export const api = {
   deletePage: (id: string) => unwrap(window.knowtion.deletePage({ id })),
   search: (query: string, limit?: number) => unwrap(window.knowtion.search({ query, limit })),
   importNotion: () => unwrap(window.knowtion.importNotion()),
+  exportWorkspace: (format: ExportFormat) => unwrap(window.knowtion.exportWorkspace({ format })),
   keyStatus: () => unwrap(window.knowtion.keyStatus()),
   beginKeySetup: () => unwrap(window.knowtion.beginKeySetup()),
   confirmKeySetup: (answers: string[]) => unwrap(window.knowtion.confirmKeySetup({ answers })),

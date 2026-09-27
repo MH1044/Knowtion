@@ -1,6 +1,14 @@
 import { useCallback, useEffect, useState } from 'react';
 
-import { api, type ImportReport, type KeyStatus, type Page, type PageNode } from './api.js';
+import {
+  api,
+  type ExportFormat,
+  type ExportReport,
+  type ImportReport,
+  type KeyStatus,
+  type Page,
+  type PageNode,
+} from './api.js';
 import { useWorkspaceChanges } from './changes.js';
 import { DatabaseView } from './database/DatabaseView.js';
 import { RowProperties } from './database/RowProperties.js';
@@ -30,6 +38,8 @@ export function App(): React.JSX.Element {
   const [error, setError] = useState<string>();
   const [importReport, setImportReport] = useState<ImportReport>();
   const [importing, setImporting] = useState(false);
+  const [exportReport, setExportReport] = useState<ExportReport>();
+  const [exporting, setExporting] = useState(false);
   const [keyStatus, setKeyStatus] = useState<KeyStatus>();
   /**
    * The open page. Usually found in the tree; a database's rows are left out of the tree
@@ -195,6 +205,20 @@ export function App(): React.JSX.Element {
           >
             {importing ? 'Importing…' : 'Import from Notion'}
           </button>
+          <ExportButtons
+            busy={exporting}
+            onExport={(format) =>
+              void (async () => {
+                setExporting(true);
+                await run(async () => {
+                  const report = await api.exportWorkspace(format);
+                  // null means the folder picker was closed, which is not news.
+                  if (report) setExportReport(report);
+                });
+                setExporting(false);
+              })()
+            }
+          />
           <Settings />
         </footer>
       </aside>
@@ -202,6 +226,15 @@ export function App(): React.JSX.Element {
       <main className="content">
         <UpdateBanner />
         {error !== undefined && <div className="error">{error}</div>}
+
+        {exportReport !== undefined && (
+          <ExportSummary
+            report={exportReport}
+            onDismiss={() => {
+              setExportReport(undefined);
+            }}
+          />
+        )}
 
         {importReport !== undefined && (
           <ImportSummary
@@ -249,6 +282,68 @@ function importedCounts(report: ImportReport): string {
   const count = report.databases.length;
   if (count === 0) return pages;
   return `${pages} and ${String(count)} ${count === 1 ? 'database' : 'databases'}`;
+}
+
+/** Two buttons rather than a menu: there are two formats and there will not be five. */
+function ExportButtons({
+  busy,
+  onExport,
+}: {
+  busy: boolean;
+  onExport: (format: ExportFormat) => void;
+}): React.JSX.Element {
+  return (
+    <div className="export-buttons">
+      <button
+        type="button"
+        disabled={busy}
+        title="A folder of .md files mirroring your pages, with a .csv beside every database"
+        onClick={() => {
+          onExport('markdown');
+        }}
+      >
+        {busy ? 'Exporting…' : 'Export Markdown'}
+      </button>
+      <button
+        type="button"
+        disabled={busy}
+        title="One workspace.json holding everything, including what Markdown cannot carry"
+        onClick={() => {
+          onExport('json');
+        }}
+      >
+        Export JSON
+      </button>
+    </div>
+  );
+}
+
+function ExportSummary({
+  report,
+  onDismiss,
+}: {
+  report: ExportReport;
+  onDismiss: () => void;
+}): React.JSX.Element {
+  return (
+    <section className="import-summary">
+      <h2>Exported {report.pages} pages</h2>
+      <p>
+        {report.format === 'json' ? 'workspace.json is in' : 'The Markdown is in'}{' '}
+        <code>{report.directory}</code>.
+      </p>
+      {report.unreadableBodies > 0 && (
+        <p className="warning">
+          {report.unreadableBodies} {report.unreadableBodies === 1 ? 'page' : 'pages'} had text that
+          could not be read; everything else about {report.unreadableBodies === 1 ? 'it' : 'them'}{' '}
+          was still written.
+        </p>
+      )}
+      <button type="button" onClick={onDismiss}>
+        Close
+      </button>
+    </section>
+  );
 }
 
 function ImportSummary({
