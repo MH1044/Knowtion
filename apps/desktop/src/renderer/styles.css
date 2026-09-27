@@ -1263,3 +1263,31 @@ button.danger {
   border-top: 1px solid var(--border);
   margin: 16px 0;
 }
+
+.link-dialog {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 12px;
+  padding: 8px;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.link-dialog input {
+  flex: 1;
+  min-width: 180px;
+}
+
+.link-dialog-note {
+  flex-basis: 100%;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.editor .ProseMirror a {
+  color: var(--accent);
+  cursor: pointer;
+}

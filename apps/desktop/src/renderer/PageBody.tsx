@@ -1,8 +1,56 @@
 import { useEffect, useRef, useState } from 'react';
 
-import { mountPageEditor, type PageEditor } from '@knowtion/editor';
+import { isAllowedHref, mountPageEditor, type PageEditor } from '@knowtion/editor';
 
 import { api } from './api.js';
+
+/**
+ * The link prompt.
+ *
+ * Electron has no `window.prompt`, so asking for a URL has to be real interface. It is
+ * deliberately small: a field, an explanation of what is refused, and two buttons.
+ */
+function LinkDialog({
+  onCancel,
+  onApply,
+}: {
+  onCancel: () => void;
+  onApply: (href: string) => void;
+}): React.JSX.Element {
+  const [href, setHref] = useState('');
+  const allowed = isAllowedHref(href);
+  return (
+    <form
+      className="link-dialog"
+      onSubmit={(e) => {
+        e.preventDefault();
+        if (allowed) onApply(href.trim());
+      }}
+    >
+      <input
+        autoFocus
+        value={href}
+        placeholder="https://"
+        aria-label="Link address"
+        onChange={(e) => {
+          setHref(e.target.value);
+        }}
+        onKeyDown={(e) => {
+          if (e.key === 'Escape') onCancel();
+        }}
+      />
+      <button type="submit" disabled={!allowed}>
+        Link
+      </button>
+      <button type="button" onClick={onCancel}>
+        Cancel
+      </button>
+      {href.trim() !== '' && !allowed && (
+        <span className="link-dialog-note">Only web, mail and in-page addresses.</span>
+      )}
+    </form>
+  );
+}
 
 /**
  * The block editor for one page.
@@ -14,6 +62,9 @@ import { api } from './api.js';
 export function PageBody({ pageId }: { pageId: string }): React.JSX.Element {
   const holder = useRef<HTMLDivElement>(null);
   const [error, setError] = useState<string>();
+  // Set while the editor is waiting for a URL. Holding the editor's own callback rather
+  // than a boolean keeps the answer going back to the selection that asked for it.
+  const [linkApply, setLinkApply] = useState<{ apply: (href: string) => void }>();
 
   useEffect(() => {
     let editor: PageEditor | undefined;
@@ -54,6 +105,9 @@ export function PageBody({ pageId }: { pageId: string }): React.JSX.Element {
             if (pending) clearTimeout(pending);
             pending = setTimeout(flush, 300);
           },
+          onRequestLink: (apply) => {
+            setLinkApply({ apply });
+          },
         });
         // mountPageEditor awaits its own dynamic import of the Loro binding, so the
         // component may have been torn down (and its cleanup already run, before
@@ -85,6 +139,17 @@ export function PageBody({ pageId }: { pageId: string }): React.JSX.Element {
   return (
     <>
       {error !== undefined && <div className="error">{error}</div>}
+      {linkApply !== undefined && (
+        <LinkDialog
+          onCancel={() => {
+            setLinkApply(undefined);
+          }}
+          onApply={(href) => {
+            linkApply.apply(href);
+            setLinkApply(undefined);
+          }}
+        />
+      )}
       <div className="editor" ref={holder} />
     </>
   );

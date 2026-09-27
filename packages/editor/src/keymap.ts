@@ -18,6 +18,7 @@ import { liftListItem, sinkListItem, splitListItem } from 'prosemirror-schema-li
 import type { Command, Plugin } from 'prosemirror-state';
 
 import { dividerRule, insertDivider, toggleTodo, toggleTodoChecked, todoRule } from './blocks.js';
+import { autolinkRule, removeLink } from './links.js';
 import { schema } from './schema.js';
 
 /** `marks`/`baseKeymap` are indexed by string key, so lookups are optional statically. */
@@ -39,11 +40,12 @@ export function knowtionInputRules(): Plugin {
       wrappingInputRule(/^\s*>\s$/, schema.nodes.blockquote),
       todoRule(),
       dividerRule(),
+      autolinkRule(),
     ],
   });
 }
 
-export function knowtionKeymap(undo: Command, redo: Command): Plugin {
+export function knowtionKeymap(undo: Command, redo: Command, addLink?: Command): Plugin {
   const listItem = schema.nodes.list_item;
 
   const bindings: Record<string, Command> = {
@@ -67,6 +69,10 @@ export function knowtionKeymap(undo: Command, redo: Command): Plugin {
     'Mod-Shift-9': toggleTodo,
     'Mod-Enter': toggleTodoChecked,
     'Mod-Shift-Minus': insertDivider,
+    // Making a link needs a URL from somewhere, so the host supplies the command that
+    // asks for one. Removing a link needs nothing, so it lives here unconditionally.
+    'Mod-Shift-k': removeLink,
+    ...(addLink === undefined ? {} : { 'Mod-k': addLink }),
     'Mod-z': undo,
     'Mod-y': redo,
     'Mod-Shift-z': redo,
