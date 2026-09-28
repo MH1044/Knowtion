@@ -57,6 +57,14 @@ describe('front matter', () => {
     expect(out).not.toContain('database:');
   });
 
+  it('writes a checkbox nobody ticked as false, not as missing', () => {
+    const done = def(4, 'Done', 'checkbox');
+    const schema: DatabaseSchema = { createdAt: 0, properties: [done], views: [] };
+    const row = page({ title: 'Row' });
+    expect(markdownPage({ page: row, rowOf: schema })).toContain('"Done": "false"');
+    expect(csvFromRows(schema, [row])).toContain('Row,false');
+  });
+
   it('names a row’s properties, not their ids', () => {
     const status = def(2, 'Status', 'select', ['Doing']);
     const tags = def(3, 'Tags', 'multi-select', ['a', 'b']);

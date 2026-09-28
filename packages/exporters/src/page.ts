@@ -57,6 +57,18 @@ export function displayValue(def: PropertyDef, value: PropertyValue): string | s
   }
 }
 
+/**
+ * A value as a reader of the export should see it. A checkbox nobody ticked has no stored
+ * value, but it is not unknown: it is unticked, and a spreadsheet should say false.
+ */
+function valueOrDefault(
+  def: PropertyDef,
+  value: PropertyValue | undefined,
+): PropertyValue | undefined {
+  if (value === undefined && def.type === 'checkbox') return { type: 'checkbox', value: false };
+  return value;
+}
+
 function yamlScalar(value: string): string {
   return JSON.stringify(value);
 }
@@ -85,10 +97,9 @@ function frontMatter({ page, rowOf }: PageExport): string {
   if (archived !== undefined) lines.push(`archived: ${yamlScalar(archived)}`);
   if (page.database !== undefined) lines.push('database: true');
 
-  const values = Object.entries(page.properties ?? {});
-  if (rowOf !== undefined && values.length > 0) {
+  if (rowOf !== undefined) {
     const named = rowOf.properties
-      .map((def) => [def, page.properties?.[def.id]] as const)
+      .map((def) => [def, valueOrDefault(def, page.properties?.[def.id])] as const)
       .filter((pair): pair is [PropertyDef, PropertyValue] => pair[1] !== undefined);
     if (named.length > 0) {
       lines.push('properties:');
@@ -141,7 +152,7 @@ export function csvFromRows(schema: DatabaseSchema, rows: readonly Page[]): stri
     const cells = [
       row.title,
       ...schema.properties.map((def) => {
-        const value = row.properties?.[def.id];
+        const value = valueOrDefault(def, row.properties?.[def.id]);
         if (value === undefined) return '';
         const display = displayValue(def, value);
         return Array.isArray(display) ? display.join(', ') : display;

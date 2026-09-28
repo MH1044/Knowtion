@@ -117,13 +117,37 @@ function fenceFor(code: string): string {
   return '`'.repeat(Math.max(3, longest + 1));
 }
 
-function blocks(nodes: readonly PmNode[], depth: number): string[] {
-  return nodes.map((node) => block(node, depth)).filter((text) => text !== '');
+/**
+ * Blocks as Markdown, a blank line apart, except that a run of to-dos stays one tight list
+ * as bullets do. Blank lines between them made a loose list, which most tools space out.
+ */
+function joined(nodes: readonly PmNode[], depth: number): string {
+  let out = '';
+  let previous: PmNode | undefined;
+  for (const node of nodes) {
+    const text = block(node, depth);
+    if (text === '') continue;
+    if (previous !== undefined) {
+      out += previous.type === 'todo_item' && node.type === 'todo_item' ? '\n' : '\n\n';
+    }
+    out += text;
+    previous = node;
+  }
+  return out;
 }
 
-function listBody(item: PmNode, marker: string, depth: number): string {
-  const inner = blocks(childrenOf(item), depth + 1).join('\n\n');
-  return indent(inner, marker, ' '.repeat(marker.length));
+/**
+ * A list item: its marker, then what hangs under it indented to match. A to-do's `[ ] `
+ * is text inside the item, not part of its marker, so what nests under a to-do is indented
+ * two spaces like a bullet's; six made CommonMark read it as an indented code block.
+ */
+function listBody(
+  item: PmNode,
+  marker: string,
+  depth: number,
+  rest = ' '.repeat(marker.length),
+): string {
+  return indent(joined(childrenOf(item), depth + 1), marker, rest);
 }
 
 function block(node: PmNode, depth: number): string {
@@ -150,9 +174,9 @@ function block(node: PmNode, depth: number): string {
       // cannot produce; treat it as a bullet rather than dropping the text.
       return listBody(node, '- ', depth);
     case 'todo_item':
-      return listBody(node, node.attrs?.checked === true ? '- [x] ' : '- [ ] ', depth);
+      return listBody(node, node.attrs?.checked === true ? '- [x] ' : '- [ ] ', depth, '  ');
     case 'blockquote':
-      return indent(blocks(childrenOf(node), depth + 1).join('\n\n'), '> ', '> ');
+      return indent(joined(childrenOf(node), depth + 1), '> ', '> ');
     case 'code_block': {
       const code = childrenOf(node)
         .map((child) => (typeof child.text === 'string' ? child.text : ''))
@@ -166,21 +190,21 @@ function block(node: PmNode, depth: number): string {
       // A quote led by its icon: Markdown has no callout, and a quote is how every
       // viewer already shows text that has been set apart.
       const icon = typeof node.attrs?.icon === 'string' ? node.attrs.icon : '💡';
-      const body = blocks(childrenOf(node), depth + 1).join('\n\n');
+      const body = joined(childrenOf(node), depth + 1);
       return indent(body === '' ? icon : `${icon} ${body}`, '> ', '> ');
     }
     case 'toggle': {
       // HTML's own disclosure element, which GitHub and most Markdown viewers render as a
       // real toggle. The blank lines let the Markdown inside it be read as Markdown.
       const [summary, ...inside] = childrenOf(node);
-      const body = blocks(inside, depth + 1).join('\n\n');
+      const body = joined(inside, depth + 1);
       const head = `<details>\n<summary>${summary === undefined ? '' : inline(summary)}</summary>`;
       return body === '' ? `${head}\n</details>` : `${head}\n\n${body}\n\n</details>`;
     }
     default:
       // A node type this build does not know: descend, so its text survives even though
       // its structure cannot.
-      return blocks(childrenOf(node), depth + 1).join('\n\n');
+      return joined(childrenOf(node), depth + 1);
   }
 }
 
@@ -188,5 +212,5 @@ function block(node: PmNode, depth: number): string {
 export function markdownFromDoc(doc: unknown): string {
   const root = asNode(doc);
   if (root === undefined) return '';
-  return blocks(childrenOf(root), 0).join('\n\n');
+  return joined(childrenOf(root), 0);
 }

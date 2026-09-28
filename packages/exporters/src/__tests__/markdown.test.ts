@@ -60,7 +60,20 @@ describe('blocks', () => {
       { type: 'todo_item', attrs: { checked: false }, content: [para(text('open'))] },
       { type: 'todo_item', attrs: { checked: true }, content: [para(text('done'))] },
     );
-    expect(markdownFromDoc(todos)).toBe('- [ ] open\n\n- [x] done');
+    // One tight list, as bullets are, rather than a loose one with a blank line between.
+    expect(markdownFromDoc(todos)).toBe('- [ ] open\n- [x] done');
+  });
+
+  it('nests under a to-do by two spaces, so the nested item is not read as code', () => {
+    const nested = doc({
+      type: 'todo_item',
+      attrs: { checked: false },
+      content: [
+        para(text('One')),
+        { type: 'todo_item', attrs: { checked: true }, content: [para(text('Nested'))] },
+      ],
+    });
+    expect(markdownFromDoc(nested)).toBe('- [ ] One\n\n  - [x] Nested');
   });
 
   it('fences a code block wide enough that its content cannot close it', () => {
