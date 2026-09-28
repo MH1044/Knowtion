@@ -216,6 +216,8 @@ function SelectCell({
     <select
       value={current}
       aria-label={def.name}
+      // The chosen option as its coloured chip, as a read-only cell and a board show it.
+      className={current === '' ? 'select-chip empty' : `select-chip ${chipClass(def, current)}`}
       onChange={(e) => {
         const chosen = e.target.value;
         if (chosen === '') onCommit(null);

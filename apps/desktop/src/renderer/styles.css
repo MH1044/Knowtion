@@ -1985,3 +1985,39 @@ button.danger {
   min-height: 30vh;
   cursor: text;
 }
+
+/* An editable select cell drawn as its option's chip; it still opens the native list. */
+select.select-chip {
+  max-width: 100%;
+  padding: 1px 8px;
+  font: inherit;
+  font-size: 12px;
+  border: none;
+  border-radius: 10px;
+  cursor: pointer;
+  appearance: none;
+}
+
+select.select-chip.empty {
+  color: var(--muted);
+  background: transparent;
+}
+
+/* More specific than the table's own transparent, full-width selects. */
+.db-table select.select-chip,
+.row-properties select.select-chip {
+  width: auto;
+  padding: 1px 8px;
+  border: none;
+}
+
+.db-table select.select-chip.chip,
+.row-properties select.select-chip.chip {
+  color: rgb(var(--chip));
+  background: rgb(var(--chip) / 20%);
+}
+
+select.select-chip option {
+  color: var(--text);
+  background: var(--bg-raised);
+}
