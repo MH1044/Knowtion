@@ -16,6 +16,7 @@
  */
 
 import { dropCursor } from 'prosemirror-dropcursor';
+import { Node } from 'prosemirror-model';
 import { EditorState, Selection, type Command } from 'prosemirror-state';
 import { EditorView } from 'prosemirror-view';
 
@@ -36,6 +37,7 @@ import { knowtionPlaceholder } from './placeholder.js';
 import { schema } from './schema.js';
 import { slashMenu, type BlockChoice, type SlashMenu } from './slash.js';
 import { formatToolbar, type FormatToolbar } from './toolbar.js';
+import { BINDING_KEYS, unknownContent } from './vocabulary.js';
 import { TodoItemView } from './todo-view.js';
 
 import type { LoroDoc } from 'loro-crdt';
@@ -82,6 +84,13 @@ export interface BlockSpot {
 export interface PageEditor {
   readonly doc: LoroDoc;
   readonly view: EditorView;
+  /**
+   * What in this page this build does not know, or empty when the page is editable.
+   *
+   * Non-empty means the page is shown read-only, because editing it would delete what
+   * this build cannot represent from every device (ADR-0017).
+   */
+  readonly unknown: readonly string[];
   /** The block at a height in the viewport, or undefined over nothing. */
   blockAt(clientY: number): BlockSpot | undefined;
   insertBlockAfter(pos: number): void;
@@ -90,8 +99,12 @@ export interface PageEditor {
   turnBlockInto(pos: number, choice: BlockChoice): void;
   startBlockDrag(pos: number, event: DragEvent): void;
   endBlockDrag(): void;
-  /** Merge another device's operations. */
-  applyRemote(update: Uint8Array): void;
+  /**
+   * Merge another device's operations. Returns false, merging nothing, when the update
+   * carries content this build does not know into an editable page: the host must then
+   * remount the page, which opens it read-only.
+   */
+  applyRemote(update: Uint8Array): boolean;
   /** Everything needed to reconstruct this document from nothing. */
   snapshot(): Uint8Array;
   destroy(): void;
@@ -116,10 +129,11 @@ function linkCommand(options: PageEditorOptions): Command | undefined {
 }
 
 export async function mountPageEditor(options: PageEditorOptions): Promise<PageEditor> {
-  const [{ LoroDoc }, { LoroSyncPlugin, LoroUndoPlugin, undo, redo }] = await Promise.all([
+  const [{ LoroDoc }, binding] = await Promise.all([
     import('loro-crdt'),
     import('loro-prosemirror'),
   ]);
+  const { LoroSyncPlugin, LoroUndoPlugin, undo, redo } = binding;
 
   const doc = new LoroDoc();
   doc.setPeerId(options.peerId);
@@ -128,29 +142,55 @@ export async function mountPageEditor(options: PageEditorOptions): Promise<PageE
   let applyingRemote = false;
   let lastExported = doc.version();
 
-  const view = new EditorView(options.element, {
-    state: EditorState.create({
+  /**
+   * A page holding content this build does not know is built once from the CRDT and
+   * never bound to it. The sync plugin cannot be attached even with editing switched
+   * off: it writes the editor's state back into the log after every change to the
+   * document, including its own first load, and that state is missing exactly the
+   * content it could not build. Opening the page would delete it (ADR-0017).
+   */
+  const unknown = unknownContent(doc);
+  const readOnly = unknown.length > 0;
+  const staticState = (): EditorState => {
+    /* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-argument -- pre-1.0 generic container and mapping types */
+    const built: any = binding.createNodeFromLoroObj(
       schema,
-      plugins: [
-        /* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment -- pre-1.0 generic doc type */
-        LoroSyncPlugin({ doc: doc as any }),
-        LoroUndoPlugin({ doc: doc }),
-        /* eslint-enable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment */
-        // Before the keymap, so an open menu gets Enter and the arrows first.
-        ...(options.onSlashMenu === undefined ? [] : [slashMenu(options.onSlashMenu)]),
-        knowtionInputRules(),
-        knowtionKeymap(undo, redo, linkCommand(options)),
-        knowtionPlaceholder(),
-        // The line that shows where a dragged block will land. Coloured by the host's
-        // stylesheet through the class, so it follows the theme.
-        // Before the drop cursor, so a block dragged from its handle is handled here.
-        blockDrop(),
-        dropCursor({ class: 'knowtion-drop-cursor', color: false, width: 2 }),
-        ...(options.onFormatToolbar === undefined
-          ? []
-          : [formatToolbar(options.onFormatToolbar, linkCommand(options))]),
-      ],
-    }),
+      doc.getMap(BINDING_KEYS.root) as any,
+      new Map() as any,
+    );
+    /* eslint-enable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-argument */
+    return EditorState.create({
+      schema,
+      ...(built instanceof Node && built.type === schema.topNodeType ? { doc: built } : {}),
+    });
+  };
+
+  const view = new EditorView(options.element, {
+    editable: () => !readOnly,
+    state: readOnly
+      ? staticState()
+      : EditorState.create({
+          schema,
+          plugins: [
+            /* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment -- pre-1.0 generic doc type */
+            LoroSyncPlugin({ doc: doc as any }),
+            LoroUndoPlugin({ doc: doc }),
+            /* eslint-enable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment */
+            // Before the keymap, so an open menu gets Enter and the arrows first.
+            ...(options.onSlashMenu === undefined ? [] : [slashMenu(options.onSlashMenu)]),
+            knowtionInputRules(),
+            knowtionKeymap(undo, redo, linkCommand(options)),
+            knowtionPlaceholder(),
+            // Before the drop cursor, so a block dragged from its handle is handled here.
+            blockDrop(),
+            // The caret that shows where dragged text will land. Coloured by the host's
+            // stylesheet through the class, so it follows the theme.
+            dropCursor({ class: 'knowtion-drop-cursor', color: false, width: 2 }),
+            ...(options.onFormatToolbar === undefined
+              ? []
+              : [formatToolbar(options.onFormatToolbar, linkCommand(options))]),
+          ],
+        }),
     nodeViews: {
       todo_item: (node, editorView, getPos) => new TodoItemView(node, editorView, getPos),
     },
@@ -168,8 +208,9 @@ export async function mountPageEditor(options: PageEditorOptions): Promise<PageE
       return true;
     },
     dispatchTransaction(transaction) {
+      if (readOnly && transaction.docChanged) return;
       view.updateState(view.state.apply(transaction));
-      if (!transaction.docChanged || applyingRemote) return;
+      if (readOnly || !transaction.docChanged || applyingRemote) return;
 
       doc.commit();
       const update = doc.export({ mode: 'update', from: lastExported });
@@ -179,6 +220,7 @@ export async function mountPageEditor(options: PageEditorOptions): Promise<PageE
   });
 
   const run = (command: Command): void => {
+    if (readOnly) return;
     command(view.state, view.dispatch, view);
     view.focus();
   };
@@ -186,7 +228,9 @@ export async function mountPageEditor(options: PageEditorOptions): Promise<PageE
   return {
     doc,
     view,
+    unknown,
     blockAt(clientY) {
+      if (readOnly) return undefined;
       const box = view.dom.getBoundingClientRect();
       const hit = view.posAtCoords({ left: box.left + box.width / 2, top: clientY });
       if (hit === null) return undefined;
@@ -222,16 +266,25 @@ export async function mountPageEditor(options: PageEditorOptions): Promise<PageE
       run(duplicateBlock(pos));
     },
     turnBlockInto: (pos, choice) => {
+      if (readOnly) return;
       turnBlockInto(view, pos, choice);
       view.focus();
     },
     startBlockDrag: (pos, event) => {
+      if (readOnly) return;
       startBlockDrag(view, pos, event);
     },
     endBlockDrag: () => {
       endBlockDrag(view);
     },
     applyRemote(update) {
+      if (!readOnly) {
+        // Tried on a copy first: once imported into the bound document, the binding
+        // would rebuild the editor without the unknown content and write that back.
+        const probe = doc.fork();
+        probe.import(update);
+        if (unknownContent(probe).length > 0) return false;
+      }
       // Guarded so the resulting editor transaction is not mistaken for a local edit
       // and echoed straight back out as another write.
       applyingRemote = true;
@@ -241,6 +294,8 @@ export async function mountPageEditor(options: PageEditorOptions): Promise<PageE
       } finally {
         applyingRemote = false;
       }
+      if (readOnly) view.updateState(staticState());
+      return true;
     },
     snapshot: () => doc.export({ mode: 'snapshot' }),
     destroy: () => {

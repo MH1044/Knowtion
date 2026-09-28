@@ -80,6 +80,8 @@ export function PageBody({ pageId }: { pageId: string }): React.JSX.Element {
   // State rather than a ref so the block handle renders once the editor exists.
   const [live, setLive] = useState<PageEditor>();
   const [spot, setSpot] = useState<BlockSpot>();
+  // What this build could not read in the page, when it opened read-only (ADR-0017).
+  const [unknown, setUnknown] = useState<readonly string[]>([]);
 
   useEffect(() => {
     let editor: PageEditor | undefined;
@@ -138,6 +140,7 @@ export function PageBody({ pageId }: { pageId: string }): React.JSX.Element {
         }
         editor = mounted;
         setLive(mounted);
+        setUnknown(mounted.unknown);
         editor.view.focus();
       } catch (cause) {
         setError(cause instanceof Error ? cause.message : String(cause));
@@ -153,12 +156,19 @@ export function PageBody({ pageId }: { pageId: string }): React.JSX.Element {
       editor?.destroy();
       setLive(undefined);
       setSpot(undefined);
+      setUnknown([]);
     };
   }, [pageId]);
 
   return (
     <>
       {error !== undefined && <div className="error">{error}</div>}
+      {unknown.length > 0 && (
+        <div className="read-only-note" title={unknown.join(', ')}>
+          A newer version of Knowtion wrote parts of this page that this version cannot show, so it
+          is read-only here. Update Knowtion to edit it. Nothing has been changed.
+        </div>
+      )}
       {linkApply !== undefined && (
         <LinkDialog
           onCancel={() => {

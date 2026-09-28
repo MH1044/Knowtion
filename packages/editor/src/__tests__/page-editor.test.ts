@@ -5,11 +5,16 @@
  * Complements the binding spike, which proved the library integration. These test our
  * own schema and the mount contract on top of it.
  */
-import { LoroDoc } from 'loro-crdt';
+import { LoroDoc, LoroList, LoroMap, LoroText } from 'loro-crdt';
+import { LoroSyncPlugin } from 'loro-prosemirror';
 import { DOMParser as PMDOMParser } from 'prosemirror-model';
+import { EditorState } from 'prosemirror-state';
+import { EditorView } from 'prosemirror-view';
 import { afterEach, describe, expect, it } from 'vitest';
 
+import { loroDocFromJson } from '../headless.js';
 import { mountPageEditor, schema } from '../index.js';
+import { unknownContent } from '../vocabulary.js';
 
 const settle = () => new Promise((resolve) => setTimeout(resolve, 30));
 const editors: { destroy(): void }[] = [];
@@ -161,5 +166,62 @@ describe('mountPageEditor', () => {
     a.applyRemote(b.doc.export({ mode: 'update' }));
     await settle();
     expect(a.view.state.doc.textContent).toBe(b.view.state.doc.textContent);
+  });
+});
+
+describe('a page written by a newer build', () => {
+  /** A page with a paragraph and a node this schema does not have (ADR-0017). */
+  function newerPage(): LoroDoc {
+    const doc = loroDocFromJson(
+      { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'hi' }] }] },
+      9n,
+    );
+    const children = doc.getMap('doc').get('children') as LoroList;
+    const node = children.insertContainer(children.length, new LoroMap());
+    node.set('nodeName', 'hologram');
+    node.setContainer('attributes', new LoroMap());
+    const inner = node.setContainer('children', new LoroList());
+    inner.insertContainer(0, new LoroText()).insert(0, 'from the future');
+    doc.commit();
+    return doc;
+  }
+
+  it('is deleted by the unguarded binding just by opening it', async () => {
+    // The reason for the guard, kept as a test so the claim in ADR-0017 stays true to
+    // the binding actually installed.
+    const doc = newerPage();
+    const view = new EditorView(document.body.appendChild(document.createElement('div')), {
+      state: EditorState.create({
+        schema,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment -- pre-1.0 generic doc type
+        plugins: [LoroSyncPlugin({ doc: doc as any })],
+      }),
+    });
+    await settle();
+    view.destroy();
+    expect(unknownContent(doc)).toEqual([]);
+  });
+
+  it('opens read-only, keeps the content, and writes nothing', async () => {
+    const writes: Uint8Array[] = [];
+    const editor = await open(1n, newerPage().export({ mode: 'snapshot' }), (u) => writes.push(u));
+    await settle();
+
+    expect(editor.unknown).toEqual(['node hologram']);
+    expect(editor.view.editable).toBe(false);
+    expect(editor.view.state.doc.textContent).toBe('hi');
+    expect(unknownContent(editor.doc)).toEqual(['node hologram']);
+    expect(writes).toEqual([]);
+    // Nothing the handle offers can change it either.
+    editor.deleteBlock(0);
+    expect(editor.view.state.doc.textContent).toBe('hi');
+  });
+
+  it('refuses a remote update that would bring such content into an editable page', async () => {
+    const editor = await open(1n);
+    await settle();
+    const newer = newerPage();
+    expect(editor.applyRemote(newer.export({ mode: 'snapshot' }))).toBe(false);
+    expect(unknownContent(editor.doc)).toEqual([]);
   });
 });

@@ -528,6 +528,45 @@ added in v0.4 are pinned by `packages/engine/fixtures/v1/database.loro`.
 as keys, and MUST preserve unknown fields byte-for-byte rather than dropping them on
 rewrite.
 
+### 10.2 Page bodies
+
+Applies to every page body document (ADR-0010). A body is a ProseMirror document held in
+the CRDT by `loro-prosemirror`: a root map `doc`, and beneath it one map per node carrying
+`nodeName`, an `attributes` map and a `children` list. Text is a Loro text, with marks as
+text styles. See ADR-0003 and ADR-0009.
+
+**A reader that finds a node type, a mark, or an attribute not declared by its schema
+MUST open that page read-only and MUST NOT write to it** (ADR-0017). Dropping such content
+on read is forbidden, because the binding then deletes it from the log. The reader SHOULD
+say that the page was written by a newer build.
+
+The vocabulary grows by addition only. An entry is never removed or reinterpreted. Each
+version's vocabulary is pinned by a fixture in `packages/editor/fixtures/<version>/`.
+
+| Node         | Attributes          | Content                | Since |
+| ------------ | ------------------- | ---------------------- | ----- |
+| doc          |                     | block+                 | v0    |
+| paragraph    |                     | inline text            | v0    |
+| heading      | level: 1 to 3       | inline text            | v0    |
+| bullet_list  |                     | list_item+             | v0    |
+| ordered_list | order: first number | list_item+             | v0    |
+| list_item    |                     | paragraph, then blocks | v0    |
+| todo_item    | checked: boolean    | paragraph, then blocks | v0    |
+| blockquote   |                     | block+                 | v0    |
+| code_block   |                     | plain text, no marks   | v0    |
+| divider      |                     | none                   | v0    |
+
+| Mark   | Attributes                                 | Since |
+| ------ | ------------------------------------------ | ----- |
+| strong |                                            | v0    |
+| em     |                                            | v0    |
+| strike |                                            | v0    |
+| code   |                                            | v0    |
+| link   | href: http, https, mailto, `#` or `/` only | v0    |
+
+An attribute at its default value is not stored. What is on screen but not in this table,
+such as whether a toggle is open, is local state and never reaches the log.
+
 ---
 
 ## 11. Key hierarchy and key wraps

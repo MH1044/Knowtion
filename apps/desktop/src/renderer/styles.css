@@ -1723,3 +1723,13 @@ button.danger {
   border-radius: 1px;
   pointer-events: none;
 }
+
+.read-only-note {
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  color: var(--text);
+  background: var(--bg-raised);
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  line-height: 1.5;
+}
