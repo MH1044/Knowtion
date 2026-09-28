@@ -27,6 +27,7 @@ import {
 } from './blocks.js';
 import { arrowOutOfLastBlock, exitCode, exitCodeOnTripleEnter } from './leave-block.js';
 import { autolinkRule, removeLink } from './links.js';
+import { markInputRules } from './mark-rules.js';
 import { joinIntoBlockAbove, liftTodo, sinkTodo, splitTodo, unwrapAtStart } from './todo-keys.js';
 import { schema } from './schema.js';
 
@@ -50,6 +51,7 @@ export function knowtionInputRules(): Plugin {
       todoRule(),
       dividerRule(),
       autolinkRule(),
+      ...markInputRules(),
     ],
   });
 }
