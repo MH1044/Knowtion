@@ -19,7 +19,7 @@ import type { Command, Plugin } from 'prosemirror-state';
 
 import { dividerRule, insertDivider, toggleTodo, toggleTodoChecked, todoRule } from './blocks.js';
 import { autolinkRule, removeLink } from './links.js';
-import { liftTodo, sinkTodo, splitTodo, unwrapAtStart } from './todo-keys.js';
+import { joinIntoBlockAbove, liftTodo, sinkTodo, splitTodo, unwrapAtStart } from './todo-keys.js';
 import { schema } from './schema.js';
 
 /** `marks`/`baseKeymap` are indexed by string key, so lookups are optional statically. */
@@ -68,6 +68,7 @@ export function knowtionKeymap(undo: Command, redo: Command, addLink?: Command):
     ),
     Backspace: chainCommands(
       unwrapAtStart,
+      joinIntoBlockAbove,
       must(baseKeymap.Backspace, 'baseKeymap binding "Backspace"'),
     ),
     // Tab is always the editor's. Letting it through would move focus out of the page

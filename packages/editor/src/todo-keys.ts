@@ -114,6 +114,60 @@ export const unwrapAtStart: Command = (state, dispatch) => {
   return false;
 };
 
+/** Blocks that hold other blocks, which Backspace joins into from below. */
+const CONTAINERS = new Set([
+  'todo_item',
+  'bullet_list',
+  'ordered_list',
+  'toggle',
+  'callout',
+  'blockquote',
+]);
+
+/**
+ * Backspace at the start of a line just below a to-do, list, toggle, callout or quote:
+ * join the line onto the end of the last line inside that block, as Notion does. An empty
+ * line simply goes, leaving the caret at the end of the line above it.
+ *
+ * ProseMirror's own joinBackward instead moves the line inside the block as a new child,
+ * which in a to-do list showed as an indented line with no checkbox. It could also carry
+ * the following to-do in with it.
+ */
+export const joinIntoBlockAbove: Command = (state, dispatch) => {
+  const { $from, empty } = state.selection;
+  if (!empty || $from.parentOffset !== 0 || !$from.parent.isTextblock) return false;
+  if ($from.parent.type.spec.code === true || $from.depth < 1) return false;
+  const index = $from.index($from.depth - 1);
+  if (index === 0) return false;
+  const above = $from.node($from.depth - 1).child(index - 1);
+  if (!CONTAINERS.has(above.type.name)) return false;
+
+  const lineStart = $from.before();
+  const aboveStart = lineStart - above.nodeSize;
+  // The last line inside the block above, however deeply it is nested.
+  let target: { pos: number; size: number; code: boolean } | undefined;
+  above.descendants((child, pos) => {
+    if (!child.isTextblock) return true;
+    target = {
+      pos: aboveStart + 1 + pos,
+      size: child.content.size,
+      code: child.type.spec.code === true,
+    };
+    return false;
+  });
+  if (target === undefined || target.code) return false;
+
+  if (dispatch) {
+    const line = $from.parent;
+    const end = target.pos + 1 + target.size;
+    // The line sits after the target, so deleting it first leaves `end` where it was.
+    const tr = state.tr.delete(lineStart, lineStart + line.nodeSize);
+    if (line.content.size > 0) tr.insert(end, line.content);
+    dispatch(tr.setSelection(TextSelection.create(tr.doc, end)).scrollIntoView());
+  }
+  return true;
+};
+
 /** Tab: nest this to-do as the last thing inside the to-do just above it. */
 export const sinkTodo: Command = (state, dispatch) => {
   const depth = todoDepthAtCaret(state);

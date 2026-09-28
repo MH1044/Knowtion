@@ -9,7 +9,7 @@ import type { Node } from 'prosemirror-model';
 import { describe, expect, it } from 'vitest';
 
 import { schema } from '../schema.js';
-import { liftTodo, sinkTodo, splitTodo, unwrapAtStart } from '../todo-keys.js';
+import { joinIntoBlockAbove, liftTodo, sinkTodo, splitTodo, unwrapAtStart } from '../todo-keys.js';
 
 const p = (text: string) => schema.node('paragraph', null, text === '' ? [] : [schema.text(text)]);
 const todo = (text: string, checked = false, ...inside: Node[]) =>
@@ -121,5 +121,72 @@ describe('Tab and Shift-Tab', () => {
 
   it('will not nest the first to-do, which has nothing above it', () => {
     expect(run(at(schema.node('doc', null, [todo('Only')]), 2), sinkTodo)).toBeUndefined();
+  });
+});
+
+describe('Backspace on the line below a to-do list', () => {
+  // The report's steps: Enter after a to-do, Backspace (the new to-do becomes a line),
+  // Backspace again. The line must go, and the caret land at the end of the to-do.
+  const afterEnterAndBackspace = (doc: Node, todoText: string) => {
+    let pos = -1;
+    doc.descendants((node, offset) => {
+      if (node.isTextblock && node.textContent === todoText) pos = offset + 1 + node.content.size;
+    });
+    let state: EditorState | undefined = at(doc, pos);
+    state = run(state, splitTodo);
+    state = state && run(state, unwrapAtStart);
+    return state;
+  };
+
+  it('removes the empty line and puts the caret at the end of the to-do above', () => {
+    const doc = schema.node('doc', null, [
+      todo('Buy milk'),
+      todo('Pay rent'),
+      todo('Book train'),
+      p('Plain paragraph after the list'),
+    ]);
+    const before = afterEnterAndBackspace(doc, 'Pay rent');
+    expect(before && outline(before)).toEqual([
+      '[ ] Buy milk',
+      '[ ] Pay rent',
+      'paragraph:',
+      '[ ] Book train',
+      'paragraph:Plain paragraph after the list',
+    ]);
+    const next = before && run(before, joinIntoBlockAbove);
+    expect(next && outline(next)).toEqual([
+      '[ ] Buy milk',
+      '[ ] Pay rent',
+      '[ ] Book train',
+      'paragraph:Plain paragraph after the list',
+    ]);
+    expect(next?.selection.$from.parent.textContent).toBe('Pay rent');
+    expect(next?.selection.$from.parentOffset).toBe('Pay rent'.length);
+  });
+
+  it('does the same after the last to-do, instead of nesting the line inside it', () => {
+    const doc = schema.node('doc', null, [todo('Book train'), p('Plain paragraph')]);
+    const before = afterEnterAndBackspace(doc, 'Book train');
+    const next = before && run(before, joinIntoBlockAbove);
+    expect(next && outline(next)).toEqual(['[ ] Book train', 'paragraph:Plain paragraph']);
+    expect(next?.selection.$from.parent.textContent).toBe('Book train');
+  });
+
+  it('joins a line with text onto the end of the last line inside the block above', () => {
+    const doc = schema.node('doc', null, [
+      schema.node('bullet_list', null, [li('one'), li('two')]),
+      p('more'),
+    ]);
+    const lineStart = doc.child(0).nodeSize + 1;
+    const next = run(at(doc, lineStart), joinIntoBlockAbove);
+    expect(next && outline(next)).toEqual(['bullet_list:onetwomore']);
+    expect(next?.selection.$from.parentOffset).toBe('two'.length);
+  });
+
+  it('leaves Backspace alone below ordinary blocks and in the middle of a line', () => {
+    const plain = schema.node('doc', null, [p('one'), p('two')]);
+    expect(run(at(plain, p('one').nodeSize + 1), joinIntoBlockAbove)).toBeUndefined();
+    const mid = schema.node('doc', null, [todo('a'), p('two')]);
+    expect(run(at(mid, todo('a').nodeSize + 2), joinIntoBlockAbove)).toBeUndefined();
   });
 });
