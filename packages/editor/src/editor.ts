@@ -23,6 +23,7 @@ import { isAllowedHref, linkAt, setLink } from './links.js';
 import { knowtionPlaceholder } from './placeholder.js';
 import { schema } from './schema.js';
 import { slashMenu, type SlashMenu } from './slash.js';
+import { formatToolbar, type FormatToolbar } from './toolbar.js';
 import { TodoItemView } from './todo-view.js';
 
 import type { LoroDoc } from 'loro-crdt';
@@ -51,6 +52,8 @@ export interface PageEditorOptions {
   onRequestLink?: ((apply: (href: string) => void) => void) | undefined;
   /** Draw the `/` menu, or hide it on null. Without it, a slash is only a character. */
   onSlashMenu?: ((menu: SlashMenu | null) => void) | undefined;
+  /** Draw the toolbar over selected text, or hide it on null. */
+  onFormatToolbar?: ((toolbar: FormatToolbar | null) => void) | undefined;
 }
 
 export interface PageEditor {
@@ -107,6 +110,9 @@ export async function mountPageEditor(options: PageEditorOptions): Promise<PageE
         knowtionInputRules(),
         knowtionKeymap(undo, redo, linkCommand(options)),
         knowtionPlaceholder(),
+        ...(options.onFormatToolbar === undefined
+          ? []
+          : [formatToolbar(options.onFormatToolbar, linkCommand(options))]),
       ],
     }),
     nodeViews: {

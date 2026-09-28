@@ -1555,3 +1555,80 @@ button.danger {
   font-family: ui-monospace, Consolas, monospace;
   font-size: 12px;
 }
+
+/* The toolbar over selected text. */
+.format-bar {
+  position: fixed;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  height: 36px;
+  padding: 3px;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgb(0 0 0 / 45%);
+}
+
+.format-bar button {
+  height: 28px;
+  min-width: 28px;
+  padding: 0 8px;
+  color: var(--text);
+  background: none;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+.format-bar button:hover {
+  background: var(--border);
+}
+
+.format-bar button.active {
+  color: var(--accent);
+}
+
+.format-bar .fmt-bold {
+  font-weight: 700;
+}
+
+.format-bar .fmt-italic {
+  font-style: italic;
+  font-family: Georgia, serif;
+}
+
+.format-bar .fmt-strike {
+  text-decoration: line-through;
+}
+
+.format-bar .fmt-code {
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 12px;
+}
+
+.format-turn-into {
+  position: relative;
+  margin-right: 2px;
+  padding-right: 2px;
+  border-right: 1px solid var(--border);
+}
+
+.format-turn-into-menu {
+  position: absolute;
+  top: 34px;
+  left: 0;
+  display: flex;
+  flex-direction: column;
+  width: 140px;
+  padding: 4px;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgb(0 0 0 / 45%);
+}
+
+.format-turn-into-menu button {
+  text-align: left;
+}

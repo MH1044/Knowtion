@@ -1,9 +1,16 @@
 import { useEffect, useRef, useState } from 'react';
 
-import { isAllowedHref, mountPageEditor, type PageEditor, type SlashMenu } from '@knowtion/editor';
+import {
+  isAllowedHref,
+  mountPageEditor,
+  type FormatToolbar,
+  type PageEditor,
+  type SlashMenu,
+} from '@knowtion/editor';
 
 import { api } from './api.js';
 import { BlockMenu } from './BlockMenu.js';
+import { FormatBar } from './FormatBar.js';
 
 /**
  * The link prompt.
@@ -67,6 +74,7 @@ export function PageBody({ pageId }: { pageId: string }): React.JSX.Element {
   // than a boolean keeps the answer going back to the selection that asked for it.
   const [linkApply, setLinkApply] = useState<{ apply: (href: string) => void }>();
   const [slash, setSlash] = useState<SlashMenu | null>(null);
+  const [format, setFormat] = useState<FormatToolbar | null>(null);
 
   useEffect(() => {
     let editor: PageEditor | undefined;
@@ -111,6 +119,7 @@ export function PageBody({ pageId }: { pageId: string }): React.JSX.Element {
             setLinkApply({ apply });
           },
           onSlashMenu: setSlash,
+          onFormatToolbar: setFormat,
         });
         // mountPageEditor awaits its own dynamic import of the Loro binding, so the
         // component may have been torn down (and its cleanup already run, before
@@ -155,6 +164,7 @@ export function PageBody({ pageId }: { pageId: string }): React.JSX.Element {
       )}
       <div className="editor" ref={holder} />
       {slash !== null && <BlockMenu menu={slash} />}
+      {format !== null && linkApply === undefined && <FormatBar bar={format} />}
     </>
   );
 }
