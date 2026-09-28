@@ -4,6 +4,14 @@ Everything a person can do in Knowtion, with what should happen. Automated tests
 engine, the sync layer and the read model thoroughly, and cover the user interface barely
 at all — two end-to-end specs, listed below. This document is the other half.
 
+A tick records a check made by hand in the running app. The ticks below were made on
+Windows 11 on 2026-09-28, against a development build of `27da031`. Anything covered only by
+unit tests is left unticked here.
+
+A tick records a check made by hand in the running app. The ticks below were made on
+Windows 11 on 2026-09-28, against a development build of `27da031`. Anything covered only by
+unit tests is left unticked here.
+
 ## How to use it
 
 Build and launch:
@@ -115,67 +123,67 @@ be run from the app.
 
 ### Typing and structure
 
-- [ ] A brand new page shows the prompt "Start writing, or type '/' for blocks", and it
+- [x] A brand new page shows the prompt "Start writing, or type '/' for blocks", and it
       disappears as soon as you type.
-- [ ] `# `, `## `, `### ` at the start of a line make headings one to three.
-- [ ] Three backticks make a code block, and marks do not apply inside it.
-- [ ] `- `, `* ` and `+ ` each start a bullet list.
-- [ ] `1. ` starts a numbered list.
-- [ ] `> ` starts a toggle and `" ` starts a quote, as in Notion.
-- [ ] `---`, `___` or `***` make a divider, and the cursor lands on a line after it so
+- [x] `# `, `## `, `### ` at the start of a line make headings one to three.
+- [x] Three backticks make a code block, and marks do not apply inside it.
+- [x] `- `, `* ` and `+ ` each start a bullet list.
+- [x] `1. ` starts a numbered list.
+- [x] `> ` starts a toggle and `" ` starts a quote, as in Notion.
+- [x] `---`, `___` or `***` make a divider, and the cursor lands on a line after it so
       typing continues.
-- [ ] `[] `, `[ ] ` and `[x] ` make a todo, the last already ticked.
-- [ ] A todo shows a checkbox that ticks and unticks on click, and ticked text is struck
+- [x] `[] `, `[ ] ` and `[x] ` make a todo, the last already ticked.
+- [x] A todo shows a checkbox that ticks and unticks on click, and ticked text is struck
       through.
 - [ ] Ticking a todo on one device ticks it on the other.
 - [ ] Enter inside a list item splits it; Tab indents; Shift-Tab outdents.
 
 ### The / menu
 
-- [ ] Typing `/` at the start of a line, or after a space, opens a menu of every block.
-- [ ] Typing after the slash narrows it: `/head` shows the three headings, `/list` the
+- [x] Typing `/` at the start of a line, or after a space, opens a menu of every block.
+- [x] Typing after the slash narrows it: `/head` shows the three headings, `/list` the
       lists.
-- [ ] Arrow keys move the highlight, and Enter or a click turns the line into that block,
+- [x] Arrow keys move the highlight, and Enter or a click turns the line into that block,
       removing the `/query` you typed.
-- [ ] Escape closes it and leaves the `/` as text.
+- [x] Escape closes it and leaves the `/` as text.
 - [ ] A slash in the middle of a word, such as "and/or", or inside a code block, never
       opens it.
 - [ ] Typing something that matches nothing closes it.
-- [ ] Each entry shows its markdown shortcut on the right.
+- [x] Each entry shows its markdown shortcut on the right.
 
 ### The toolbar over selected text
 
-- [ ] Selecting text with the mouse shows a bar above it once the mouse is released.
-- [ ] Bold, italic, strikethrough and code each toggle, and show as active when the
+- [x] Selecting text with the mouse shows a bar above it once the mouse is released.
+- [x] Bold, italic, strikethrough and code each toggle, and show as active when the
       selection has them.
 - [ ] Link asks for an address; on text that is already a link it removes the link.
 - [ ] The Text menu turns the line into a heading and back.
-- [ ] Clicking a button keeps the selection, so several can be applied in a row.
+- [x] Clicking a button keeps the selection, so several can be applied in a row.
 - [ ] The bar never appears inside a code block or for a selection of blank space.
 
 ### The handle beside each block
 
-- [ ] Hovering a block shows `+` and a grip in the margin to its left; typing hides them.
-- [ ] `+` adds an empty line below with the `/` menu open.
-- [ ] Clicking the grip offers Duplicate, Delete and Turn into.
+- [x] Hovering a block shows `+` and a grip in the margin to its left; typing hides them.
+- [x] `+` adds an empty line below with the `/` menu open.
+- [x] Clicking the grip offers Duplicate, Delete and Turn into.
 - [ ] Turn into works on a list item, a to-do, a quote, a toggle and a callout, not only
       on a plain line.
-- [ ] Dragging the grip moves the block, with a line showing where it will land. It
+- [x] Dragging the grip moves the block, with a line showing where it will land. It
       always lands between blocks, never splitting one.
-- [ ] Dragging a numbered item out of its list keeps it numbered, and dropping it beside
+- [x] Dragging a numbered item out of its list keeps it numbered, and dropping it beside
       another numbered list joins that list.
 - [ ] Inside a list, the handle belongs to one item, not the whole list.
 
 ### Toggles, callouts and dates
 
-- [ ] `/toggle` makes a toggle. Enter at the end of its first line adds a line inside it.
-- [ ] The arrow folds and unfolds everything but the first line.
-- [ ] Reopening the page shows toggles with something inside them folded.
-- [ ] `/callout` makes a box with 💡. Clicking the icon offers others, or any pasted emoji.
-- [ ] Typing `@` after a space offers Today, Tomorrow, Yesterday and Next week, each with
+- [x] `/toggle` makes a toggle. Enter at the end of its first line adds a line inside it.
+- [x] The arrow folds and unfolds everything but the first line.
+- [x] Reopening the page shows toggles with something inside them folded.
+- [x] `/callout` makes a box with 💡. Clicking the icon offers others, or any pasted emoji.
+- [x] Typing `@` after a space offers Today, Tomorrow, Yesterday and Next week, each with
       its full date.
-- [ ] Choosing one puts a chip in the line that reads "Tomorrow", "Oct 15" and so on.
-- [ ] Clicking the chip opens a calendar on that month; picking a day changes the chip.
+- [x] Choosing one puts a chip in the line that reads "Tomorrow", "Oct 15" and so on.
+- [x] Clicking the chip opens a calendar on that month; picking a day changes the chip.
 - [ ] Searching for a date, as `2026-10-15`, finds the page it is in.
 - [ ] An email address such as `me@example.com` never opens the date menu.
 
@@ -199,7 +207,7 @@ Needs a page written by a newer build than the one under test.
 
 ### Links
 
-- [ ] Typing a web address followed by a space turns it into a link.
+- [x] Typing a web address followed by a space turns it into a link.
 - [ ] A trailing full stop or closing bracket stays out of the link.
 - [ ] Selecting text and pressing Ctrl/Cmd-K opens a field for the address.
 - [ ] The field refuses anything that is not a web, mail or in-page address, and says so.
@@ -210,10 +218,10 @@ Needs a page written by a newer build than the one under test.
 
 ### Undo
 
-- [ ] Ctrl/Cmd-Z undoes your own edits.
+- [x] Ctrl/Cmd-Z undoes your own edits.
 - [ ] With two devices editing the same page, undo never reverts the **other** device's
       work. This is the one that matters most.
-- [ ] Ctrl/Cmd-Y and Ctrl/Cmd-Shift-Z redo.
+- [x] Ctrl/Cmd-Y and Ctrl/Cmd-Shift-Z redo.
 
 ### Pasting
 
