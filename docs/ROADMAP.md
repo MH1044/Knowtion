@@ -14,27 +14,44 @@ rule in CONTRIBUTING.md still applies: no reading Notion's code or formula gramm
 
 ## M1. An editor you can use without knowing the shortcuts
 
-The controls that make the editor's blocks reachable are in: the `/` menu, the handle
-beside each block, and the toolbar over selected text. What remains is the rest of
-Notion's block and inline types.
+The controls that make the editor's blocks reachable are in, and 0.4.1 fixed what the
+first Notion-user test (28 September) found while typing. The order of what is left
+comes from that test's "top ten missing features", the first evidence of what a person
+reaches for, rather than from the order the features were listed in.
 
-| Feature                                                       | Status  |
-| ------------------------------------------------------------- | ------- |
-| `/` command menu to insert any block                          | Have    |
-| `+` button beside a line to insert a block                    | Have    |
-| Drag handle on each block: move, delete, duplicate, turn into | Have    |
-| Toolbar on text selection: bold, italic, strike, code, link   | Have    |
-| Text colour and highlight                                     | Missing |
-| Paragraph, headings 1-3, bullet, numbered, to-do, quote, code | Have    |
-| Divider                                                       | Have    |
-| Markdown shortcuts (`# `, `- `, `[] `, `> `, triple backtick) | Have    |
-| Toggle list and toggle headings                               | Partial |
-| Callout                                                       | Have    |
-| Link to another page, and `@` mention of a page               | Missing |
-| `@` date and reminder, with a calendar picker                 | Partial |
-| Emoji picker in text (`:` shortcut)                           | Missing |
-| Code block language and syntax highlighting                   | Missing |
-| Keyboard shortcut reference                                   | Missing |
+Done:
+
+| Feature                                                                   | Status |
+| ------------------------------------------------------------------------- | ------ |
+| `/` command menu, `+` beside each block, drag handle with turn into       | Have   |
+| Toolbar on text selection: bold, italic, underline, strike, code, link    | Have   |
+| Paragraph, headings 1-3, bullet, numbered, to-do, quote, code, divider    | Have   |
+| Block shortcuts as in Notion (`# `, `- `, `[] `, `> ` toggle, `" ` quote) | Have   |
+| `**bold**`, `*italic*`, `` `code` ``, `~strike~` while typing             | Have   |
+| Shift+Enter line break; Ctrl+U underline; Ctrl+Shift+S strikethrough      | Have   |
+| Toggle list and callout                                                   | Have   |
+| `@` dates (today, tomorrow, yesterday, next week) with a calendar picker  | Have   |
+
+Next, in this order:
+
+| #   | Feature                                                                          | Status  |
+| --- | -------------------------------------------------------------------------------- | ------- |
+| 1   | Sub-pages from inside a page: `/page`, child-page blocks, a breadcrumb           | Missing |
+| 2   | Links to other pages and `@` mentions of pages                                   | Missing |
+| 3   | `@` dates typed in words (`@Oct 3`, `@next friday`), times, end dates, reminders | Partial |
+| 4   | Notion's block keys: Ctrl+D duplicate, Ctrl+Shift+arrows move, Esc selects       | Missing |
+| 5   | Quick Find on Ctrl+P, and Ctrl+N, Ctrl+[ and Ctrl+\ for new page, back, sidebar  | Missing |
+| 6   | Text colour and highlight                                                        | Missing |
+| 7   | Link hover card, `www.` addresses linked, pasted Markdown converted to blocks    | Missing |
+| 8   | Turn into every block type from the selection toolbar                            | Partial |
+| 9   | Code block language and syntax highlighting                                      | Missing |
+| 10  | Toggle headings                                                                  | Missing |
+| 11  | Emoji picker in text (`:` shortcut)                                              | Missing |
+| 12  | Keyboard shortcut reference                                                      | Missing |
+
+"Partial" on dates means the canned choices and the calendar work, but a date typed in
+words is not understood. On the toolbar it means text and headings only; the block handle
+already turns a block into any type.
 
 ## M2. Images and files
 
@@ -63,6 +80,7 @@ collection. It needs an ADR and a FORMAT.md amendment before any code.
 | Timeline view                                                   | Missing |
 | Inline database inside a page, and linked views of one database | Missing |
 | Status property                                                 | Missing |
+| Column header menus: sort, rename, hide, resize, reorder        | Missing |
 | Email and phone properties                                      | Missing |
 | Created time, edited time and unique ID properties              | Missing |
 | Relations                                                       | Partial |
@@ -82,7 +100,6 @@ dependency-aware invalidation.
 | Columns                                    | Missing |
 | Simple tables (not databases)              | Missing |
 | Table of contents block                    | Missing |
-| Breadcrumbs                                | Missing |
 | Synced blocks                              | Missing |
 | Equations                                  | Missing |
 | Bookmarks and embeds                       | Missing |
@@ -94,7 +111,6 @@ dependency-aware invalidation.
 | Feature                                   | Status  |
 | ----------------------------------------- | ------- |
 | Full-text search                          | Have    |
-| Quick find with a keyboard shortcut       | Missing |
 | Trash, restore, permanent delete          | Have    |
 | Duplicate a page                          | Missing |
 | Move a page to another parent from a menu | Missing |
