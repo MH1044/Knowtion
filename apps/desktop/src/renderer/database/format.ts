@@ -138,3 +138,13 @@ export function zoneChoices(current: string): string[] {
   if (!set.has('UTC')) set.add('UTC');
   return [...set];
 }
+
+/**
+ * What an optimistic control shows: the value just chosen, until the store has caught up
+ * with it. Without this a checkbox showed its click, snapped back to the stored value
+ * for a frame, then showed the click again once the store replied.
+ */
+export function optimistic<T>(stored: T, pending: T | undefined): { shown: T; settled: boolean } {
+  if (pending === undefined) return { shown: stored, settled: true };
+  return { shown: pending, settled: pending === stored };
+}

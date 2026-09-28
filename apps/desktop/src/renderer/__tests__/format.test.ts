@@ -16,6 +16,7 @@ import {
   parseNumber,
   wallTimeToInstant,
   zoneChoices,
+  optimistic,
 } from '../database/format.js';
 
 describe('dates', () => {
@@ -107,5 +108,16 @@ describe('urls', () => {
     expect(isHttpUrl('javascript:alert(1)')).toBe(false);
     expect(isHttpUrl('example.test')).toBe(false);
     expect(isHttpUrl('https://exa mple.test')).toBe(false);
+  });
+});
+
+describe('an optimistic control', () => {
+  it('shows the stored value when nothing is pending', () => {
+    expect(optimistic(false, undefined)).toEqual({ shown: false, settled: true });
+  });
+
+  it('keeps showing the click until the store agrees, then settles', () => {
+    expect(optimistic(false, true)).toEqual({ shown: true, settled: false });
+    expect(optimistic(true, true)).toEqual({ shown: true, settled: true });
   });
 });

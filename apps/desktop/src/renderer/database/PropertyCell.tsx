@@ -24,6 +24,7 @@ import {
   formatDateTime,
   instantToWallTime,
   isHttpUrl,
+  optimistic,
   parseNumber,
   wallTimeToInstant,
   zoneChoices,
@@ -147,6 +148,26 @@ function TextLikeCell({ def, value, onCommit, readOnly }: PropertyCellProps): Re
         </a>
       )}
     </span>
+  );
+}
+
+/** A checkbox that shows its click at once, without flickering while the store catches up. */
+function CheckboxCell({ def, value, onCommit, readOnly }: PropertyCellProps): React.JSX.Element {
+  const stored = value?.type === 'checkbox' && value.value;
+  const [pending, setPending] = useState<boolean>();
+  const { shown, settled } = optimistic(stored, pending);
+  if (pending !== undefined && settled) setPending(undefined);
+  return (
+    <input
+      type="checkbox"
+      aria-label={def.name}
+      checked={shown}
+      disabled={readOnly}
+      onChange={(e) => {
+        setPending(e.target.checked);
+        onCommit({ type: 'checkbox', value: e.target.checked });
+      }}
+    />
   );
 }
 
@@ -319,17 +340,7 @@ export function PropertyCell(props: PropertyCellProps): React.JSX.Element {
     case 'url':
       return <TextLikeCell {...props} />;
     case 'checkbox':
-      return (
-        <input
-          type="checkbox"
-          aria-label={def.name}
-          checked={value?.type === 'checkbox' && value.value}
-          disabled={readOnly}
-          onChange={(e) => {
-            onCommit({ type: 'checkbox', value: e.target.checked });
-          }}
-        />
-      );
+      return <CheckboxCell {...props} />;
     case 'select':
       return <SelectCell {...props} />;
     case 'multi-select':
