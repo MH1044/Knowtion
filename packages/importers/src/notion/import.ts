@@ -1,8 +1,9 @@
 /**
  * Turn a Notion export archive into pages.
  *
- * Structure this relies on, all of it observable in an export:
- *   Export-<uuid>/Page Title <32hex>.html
+ * Notion exports as HTML or as Markdown & CSV, with the same layout either way, and both
+ * are read. Structure this relies on, all of it observable in an export:
+ *   Export-<uuid>/Page Title <32hex>.html        or .md
  *   Export-<uuid>/Page Title <32hex>/Child <32hex>.html
  *   Export-<uuid>/Database <32hex>_all.csv
  *
@@ -13,6 +14,7 @@
 import { readArchive, type ZipEntry } from '../zip.js';
 import { parseDatabaseCsv, type ImportedDatabase } from './database.js';
 import { decodeHref, normaliseId, parseNotionPage } from './html.js';
+import { parseNotionMarkdown } from './markdown.js';
 import type { BrokenLink, ImportReport, ImportedPage } from './types.js';
 
 export interface NotionImport {
@@ -46,7 +48,8 @@ export function splitNotionName(fileName: string): { title: string; id: string |
  * The archive path of a page's parent, if it is nested.
  *
  * A child lives in a directory named after its parent, so the parent's own file is that
- * directory's path with .html appended.
+ * directory's path with the child's own extension appended: an export is all HTML or all
+ * Markdown.
  */
 function parentPathOf(path: string): string | undefined {
   const segments = path.split('/');
@@ -54,8 +57,11 @@ function parentPathOf(path: string): string | undefined {
   const directory = segments.slice(0, -1).join('/');
   // The export root is a directory too, and it is not a page.
   if (splitNotionName(segments[segments.length - 2] ?? '').id === undefined) return undefined;
-  return `${directory}.html`;
+  const extension = /\.[a-z0-9]+$/i.exec(path)?.[0] ?? '.html';
+  return `${directory}${extension}`;
 }
+
+const isPagePath = (path: string) => /\.(html|md)$/i.test(path);
 
 export function importNotionArchive(archive: Uint8Array): NotionImport {
   const entries = readArchive(archive);
@@ -73,20 +79,22 @@ export function importNotionEntries(entries: ZipEntry[]): NotionImport {
   };
   const decoder = new TextDecoder();
 
-  const htmlEntries = entries.filter((e) => e.path.toLowerCase().endsWith('.html'));
+  const pageEntries = entries.filter((e) => isPagePath(e.path));
   const csvEntries = entries.filter((e) => e.path.toLowerCase().endsWith('.csv'));
   const pages: ImportedPage[] = [];
 
   for (const entry of entries) {
-    const lower = entry.path.toLowerCase();
-    if (lower.endsWith('.html') || lower.endsWith('.csv')) continue;
+    if (isPagePath(entry.path) || entry.path.toLowerCase().endsWith('.csv')) continue;
     report.skipped.push({ path: entry.path, reason: 'attachment — needs asset support' });
   }
 
-  for (const entry of htmlEntries) {
+  for (const entry of pageEntries) {
     const fileName = entry.path.split('/').pop() ?? entry.path;
     const fromName = splitNotionName(fileName);
-    const parsed = parseNotionPage(decoder.decode(entry.bytes));
+    const source = decoder.decode(entry.bytes);
+    const parsed = /\.md$/i.test(entry.path)
+      ? parseNotionMarkdown(source)
+      : parseNotionPage(source);
 
     // Prefer the identifier inside the document; fall back to the filename. A Windows
     // path truncated during extraction loses the suffix, and the article element is
@@ -104,13 +112,16 @@ export function importNotionEntries(entries: ZipEntry[]): NotionImport {
       parentPath: parentPathOf(entry.path),
       doc: parsed.doc,
       links: parsed.links,
+      ...('leadingProperties' in parsed && parsed.leadingProperties
+        ? { leadingProperties: true }
+        : {}),
     });
   }
 
+  const databases = importDatabases(csvEntries, pages, decoder, report);
+  // Both after the databases, which can add the page a database's rows belong to.
   resolveLinks(pages, report);
   report.pagesImported = pages.length;
-
-  const databases = importDatabases(csvEntries, pages, decoder, report);
   if (databases.length > 0) {
     // Notion exports a single view and drops its filters, sorts and grouping. The user
     // will otherwise assume we lost them.
@@ -147,7 +158,29 @@ function importDatabases(
     const fileName = (entry.path.split('/').pop() ?? entry.path).replace(/_all(?=\.csv$)/i, '');
     const fromName = splitNotionName(fileName);
     const notionId = normaliseId(fromName.id);
-    const page = notionId === undefined ? undefined : pageById.get(notionId);
+    let page = notionId === undefined ? undefined : pageById.get(notionId);
+
+    // Rows exported as pages sit in a folder named after the database. When there is no
+    // page file for the database itself, those rows still need a parent to belong to, or
+    // they arrive as loose pages and the database as a second, bodiless copy of them.
+    if (page === undefined) {
+      const base = entry.path.replace(/(_all)?\.csv$/i, '');
+      const path = [`${base}.md`, `${base}.html`].find((candidate) =>
+        pages.some((p) => p.parentPath === candidate),
+      );
+      if (path !== undefined) {
+        page = {
+          notionId: notionId ?? `csv:${entry.path}`,
+          title: fromName.title || 'Untitled',
+          path,
+          parentPath: parentPathOf(path),
+          doc: { type: 'doc', content: [{ type: 'paragraph' }] },
+          links: [],
+        };
+        pages.push(page);
+        pageById.set(page.notionId, page);
+      }
+    }
 
     const database = parseDatabaseCsv(decoder.decode(entry.bytes), {
       path: entry.path,
@@ -169,6 +202,11 @@ function importDatabases(
         if (claimed === undefined) continue;
         row.pagePath = claimed.path;
         unclaimed.splice(index, 1);
+        // A Markdown row page opens with its properties as "Name: value" lines, which
+        // the CSV has just supplied properly. Kept, they would be a second copy.
+        if (claimed.leadingProperties === true && (claimed.doc.content?.length ?? 0) > 1) {
+          claimed.doc.content?.shift();
+        }
       }
     }
 

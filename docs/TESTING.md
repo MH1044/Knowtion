@@ -258,13 +258,16 @@ Needs a page written by a newer build than the one under test.
 
 ## 7. Notion import
 
-Needs a real Notion export as a zip. The importer has only ever been tested against
-synthesised fixtures, so this is the most valuable item in this document.
+Needs a real Notion export as a zip, in each of Notion's two formats: HTML, and Markdown &
+CSV. The importer has only ever been tested against synthesised fixtures, so this is the
+most valuable item in this document.
 
 - [ ] **Import from Notion** opens a file picker filtered to zip files.
 - [ ] Cancelling the picker does nothing at all.
 - [ ] The button reads "Importing…" and is disabled while it runs.
 - [ ] The summary names both pages and databases, with correct singulars.
+- [ ] A Markdown & CSV export imports its pages, not only its databases, and lists only
+      real attachments as not imported.
 - [ ] Nested pages arrive nested.
 - [ ] Internal links between imported pages still work.
 - [ ] Links that could not be resolved are listed with a reason.

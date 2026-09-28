@@ -428,6 +428,22 @@ describe('Notion import', () => {
     await host.close();
   });
 
+  it('imports a Markdown & CSV export: pages, their tree, and a database with its rows', async () => {
+    // The importer's output has to survive the real schema here; its own tests do not
+    // build documents through the editor.
+    const { readFileSync } = await import('node:fs');
+    const zip = readFileSync(
+      join(process.cwd(), 'packages', 'importers', 'fixtures', 'notion-markdown', 'export.zip'),
+    );
+    const host = await open(await dataDir());
+    const report = await host.importNotion(new Uint8Array(zip));
+    expect(report.pagesImported).toBe(6);
+    expect(titles(host.tree())).toEqual(['Books', 'Home']);
+    expect(host.search('milk').map((h) => h.title)).toEqual(['Home']);
+    expect(host.search('twice').map((h) => h.title)).toEqual(['Dune']);
+    await host.close();
+  });
+
   it('persists imported content across a restart', async () => {
     const dir = await dataDir();
     {

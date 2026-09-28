@@ -27,6 +27,8 @@ export interface ImportedPage {
   doc: DocNode;
   /** Internal links found in the body, for reporting the ones that cannot resolve. */
   links: string[];
+  /** A Markdown page that opens with "Name: value" lines, as a database row's does. */
+  leadingProperties?: boolean;
 }
 
 export interface BrokenLink {

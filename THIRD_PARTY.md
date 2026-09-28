@@ -20,7 +20,7 @@ covering prior art we may read but not copy.
 
 <!-- GENERATED: dependency table below is written by scripts/write-third-party.mjs -->
 
-## Shipped dependencies (32)
+## Shipped dependencies (33)
 
 Dependencies that are distributed with the application. Development-only tooling is
 excluded: it is not redistributed. Workspace packages are our own and are covered by
@@ -47,6 +47,7 @@ the repository LICENSE.
 | lib0 | 0.2.117 | MIT |
 | loro-crdt | 1.16.0 | MIT |
 | loro-prosemirror | 0.4.4 | MIT |
+| marked | 18.0.14 | MIT |
 | node-gyp-build-optional-packages | 5.1.1 | MIT |
 | orderedmap | 2.1.1 | MIT |
 | parse5 | 8.0.1 | MIT |
