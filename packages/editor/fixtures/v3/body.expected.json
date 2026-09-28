@@ -1,0 +1,41 @@
+{
+  "type": "doc",
+  "content": [
+    {
+      "type": "paragraph",
+      "content": [
+        {
+          "type": "text",
+          "text": "See "
+        },
+        {
+          "type": "page_mention",
+          "attrs": {
+            "page": "01900000-0000-7000-8000-000000000001"
+          }
+        },
+        {
+          "type": "text",
+          "text": " and "
+        },
+        {
+          "type": "page_mention",
+          "attrs": {
+            "page": "01900000-0000-7000-8000-000000000002"
+          }
+        }
+      ]
+    },
+    {
+      "type": "paragraph",
+      "content": [
+        {
+          "type": "page_mention",
+          "attrs": {
+            "page": "01900000-0000-7000-8000-000000000003"
+          }
+        }
+      ]
+    }
+  ]
+}
