@@ -1744,6 +1744,12 @@ button.danger {
   color: var(--danger);
 }
 
+/* Near the bottom of the window, the menu opens upwards instead of running off it. */
+.block-handle-menu.up {
+  top: auto;
+  bottom: 28px;
+}
+
 .block-handle-menu-heading {
   padding: 8px 8px 4px;
   color: var(--muted);

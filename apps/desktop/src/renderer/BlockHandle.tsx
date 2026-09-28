@@ -5,6 +5,18 @@ import { BLOCK_CHOICES, type BlockSpot, type PageEditor } from '@knowtion/editor
 /** How far left of the text the handle sits, in pixels. */
 export const HANDLE_GUTTER = 46;
 
+/** The block menu's tallest; it scrolls beyond this. */
+const MENU_HEIGHT = 360;
+
+/**
+ * Whether the block menu should open upwards: when it would run off the bottom of the
+ * window below the handle and there is more room above.
+ */
+export function menuOpensUp(handleTop: number, viewportHeight: number): boolean {
+  const below = viewportHeight - (handleTop + 28);
+  return below < MENU_HEIGHT && handleTop > below;
+}
+
 /**
  * The `+` and grip beside the block under the pointer.
  *
@@ -93,7 +105,11 @@ export function BlockHandle({
         ⋮⋮
       </button>
       {menu && (
-        <div ref={menuRef} className="block-handle-menu" role="menu">
+        <div
+          ref={menuRef}
+          className={`block-handle-menu${menuOpensUp(lineMiddle - 12, window.innerHeight) ? ' up' : ''}`}
+          role="menu"
+        >
           <button
             type="button"
             role="menuitem"
