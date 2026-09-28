@@ -74,7 +74,17 @@ function LinkDialog({
  * one document for its lifetime and swapping the document underneath it is exactly the
  * kind of state confusion that produces content from the wrong page.
  */
-export function PageBody({ pageId }: { pageId: string }): React.JSX.Element {
+export function PageBody({
+  pageId,
+  onCreateSubpage,
+}: {
+  pageId: string;
+  /** Make a page inside this one and open it; offered as /page. */
+  onCreateSubpage?: () => void;
+}): React.JSX.Element {
+  // The latest callback, read when /page is chosen, so the editor is not remounted for it.
+  const createSubpage = useRef(onCreateSubpage);
+  createSubpage.current = onCreateSubpage;
   const holder = useRef<HTMLDivElement>(null);
   const [error, setError] = useState<string>();
   // Set while the editor is waiting for a URL. Holding the editor's own callback rather
@@ -137,6 +147,13 @@ export function PageBody({ pageId }: { pageId: string }): React.JSX.Element {
           onPickCalloutIcon: setCalloutPick,
           dates: dateHost(),
           onPickDate: setDatePick,
+          ...(createSubpage.current === undefined
+            ? {}
+            : {
+                onCreateSubpage: () => {
+                  createSubpage.current?.();
+                },
+              }),
         });
         // mountPageEditor awaits its own dynamic import of the Loro binding, so the
         // component may have been torn down (and its cleanup already run, before

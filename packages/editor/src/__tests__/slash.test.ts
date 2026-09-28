@@ -11,17 +11,19 @@ import {
   chooseBlock,
   filterChoices,
   openSlash,
+  pageChoice,
   slashKey,
   slashMenu,
+  type BlockChoice,
 } from '../slash.js';
 
 /** One paragraph holding `text`, caret at its end, with the menu plugin installed. */
-function stateWith(text: string): EditorState {
+function stateWith(text: string, extra: BlockChoice[] = []): EditorState {
   const paragraph = schema.node('paragraph', null, text === '' ? [] : [schema.text(text)]);
   const state = EditorState.create({
     schema,
     doc: schema.node('doc', null, [paragraph]),
-    plugins: [slashMenu(() => undefined)],
+    plugins: [slashMenu(() => undefined, extra)],
   });
   return state.apply(state.tr.setSelection(TextSelection.create(state.doc, 1 + text.length)));
 }
@@ -148,5 +150,22 @@ describe('choosing a block', () => {
     const names: string[] = [];
     state.doc.forEach((child) => names.push(child.type.name));
     expect(names).toEqual(['divider', 'paragraph']);
+  });
+});
+
+describe('the Page choice', () => {
+  it('is offered only when the host can make pages, and removes the typed /page', () => {
+    expect(filterChoices('page').map((c) => c.id)).not.toContain('page');
+    let created = 0;
+    const page = pageChoice(() => {
+      created += 1;
+    });
+    expect(filterChoices('pag', [...BLOCK_CHOICES, page]).map((c) => c.id)).toContain('page');
+
+    // The menu stays open on /page only because the host's choice is in it.
+    const view = fakeView(type(typeSlash(stateWith('', [page])), 'page'));
+    chooseBlock(view, page);
+    expect(created).toBe(1);
+    expect(view.state.doc.textContent).toBe('');
   });
 });

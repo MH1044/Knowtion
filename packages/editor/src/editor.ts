@@ -36,7 +36,7 @@ import { focusEnd } from './leave-block.js';
 import { isAllowedHref, linkAt, setLink } from './links.js';
 import { knowtionPlaceholder } from './placeholder.js';
 import { schema } from './schema.js';
-import { slashMenu, type BlockChoice, type SlashMenu } from './slash.js';
+import { pageChoice, slashMenu, type BlockChoice, type SlashMenu } from './slash.js';
 import { formatToolbar, type FormatToolbar } from './toolbar.js';
 import { BINDING_KEYS, unknownContent } from './vocabulary.js';
 import { CalloutView, type CalloutIconRequest } from './callout-view.js';
@@ -82,6 +82,8 @@ export interface PageEditorOptions {
   dates?: DateHost | undefined;
   /** Open a calendar for a date chip. Without it, a chip's date is fixed. */
   onPickDate?: DatePickRequest | undefined;
+  /** Make a page inside this one and open it, for `/page`. Without it, no Page choice. */
+  onCreateSubpage?: (() => void) | undefined;
 }
 
 /** A block under the pointer, for placing its handle. */
@@ -193,7 +195,16 @@ export async function mountPageEditor(options: PageEditorOptions): Promise<PageE
             LoroUndoPlugin({ doc: doc }),
             /* eslint-enable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment */
             // Before the keymap, so an open menu gets Enter and the arrows first.
-            ...(options.onSlashMenu === undefined ? [] : [slashMenu(options.onSlashMenu)]),
+            ...(options.onSlashMenu === undefined
+              ? []
+              : [
+                  slashMenu(
+                    options.onSlashMenu,
+                    options.onCreateSubpage === undefined
+                      ? []
+                      : [pageChoice(options.onCreateSubpage)],
+                  ),
+                ]),
             // The @ menu draws through the same host callback: the two cannot be open at once,
             // since each opens only at the start of a line or after a space.
             ...(options.onSlashMenu === undefined || options.dates === undefined

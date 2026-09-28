@@ -110,6 +110,15 @@ be run from the app.
 - [ ] A page cannot be dropped onto itself, or onto anything already inside it.
 - [ ] A move survives a restart, and reaches a second device.
 
+### Pages inside pages
+
+- [ ] `/page` makes a page inside the current one and opens it, with the caret in its
+      title.
+- [ ] A page inside another shows the pages above it, each a link, above its title.
+- [ ] A page with pages inside it lists them after its text, each opening with a click,
+      with "Add a page inside" at the end.
+- [ ] A page moved in the sidebar leaves its old parent's list and joins its new one.
+
 ### Page icons
 
 - [ ] A page with no icon shows a faint **+** beside its title; clicking it opens a grid.

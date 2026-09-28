@@ -2027,3 +2027,86 @@ select.select-chip option {
   color: var(--text);
   background: var(--bg-raised);
 }
+
+/* The pages above this one, above its title. */
+.breadcrumb {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px;
+  margin-bottom: 8px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.breadcrumb button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 6px;
+  color: var(--muted);
+  font: inherit;
+  background: none;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.breadcrumb button:hover {
+  color: var(--text);
+  background: var(--border);
+}
+
+.breadcrumb-separator {
+  padding: 0 2px;
+}
+
+/* The pages inside this one, below its text. */
+.child-pages {
+  display: flex;
+  flex-direction: column;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+
+.child-page {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 6px;
+  color: var(--text);
+  font: inherit;
+  font-size: 16px;
+  text-align: left;
+  background: none;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.child-page:hover {
+  background: var(--border);
+}
+
+.child-page-title {
+  border-bottom: 1px solid var(--border);
+}
+
+.child-page.add {
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.child-page.add .child-page-title {
+  border-bottom: none;
+}
+
+/* A page with pages inside it lists them right after its text, not a screen below it. */
+.page:has(.child-pages) .editor .ProseMirror {
+  min-height: 0;
+}
+
+.page:has(.child-pages) .editor-tail {
+  min-height: 24px;
+}

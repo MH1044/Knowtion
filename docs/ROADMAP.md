@@ -36,7 +36,7 @@ Next, in this order:
 
 | #   | Feature                                                                          | Status  |
 | --- | -------------------------------------------------------------------------------- | ------- |
-| 1   | Sub-pages from inside a page: `/page`, child-page blocks, a breadcrumb           | Missing |
+| 1   | Sub-pages from inside a page: `/page`, child-page blocks, a breadcrumb           | Have    |
 | 2   | Links to other pages and `@` mentions of pages                                   | Missing |
 | 3   | `@` dates typed in words (`@Oct 3`, `@next friday`), times, end dates, reminders | Partial |
 | 4   | Notion's block keys: Ctrl+D duplicate, Ctrl+Shift+arrows move, Esc selects       | Missing |

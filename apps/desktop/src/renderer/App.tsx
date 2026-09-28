@@ -19,6 +19,7 @@ import { UpdateBanner } from './UpdateBanner.js';
 import { PageBody } from './PageBody.js';
 import { PageTree, useTreeDrag } from './PageTree.js';
 import { Search } from './Search.js';
+import { Breadcrumb, ChildPages } from './PageNav.js';
 import { SyncPanel } from './SyncPanel.js';
 
 /** Find a page anywhere in the tree, since the sidebar only holds the nested shape. */
@@ -254,6 +255,7 @@ export function App(): React.JSX.Element {
           <PageView
             key={selected.id}
             page={selected}
+            tree={tree}
             run={run}
             onOpen={(id) => {
               setSelectedId(id);
@@ -435,11 +437,13 @@ function ImportSummary({
 
 function PageView({
   page,
+  tree,
   run,
   onOpen,
   onArchived,
 }: {
   page: Page;
+  tree: PageNode[];
   run: (action: () => Promise<unknown>) => Promise<void>;
   onOpen: (id: string) => void;
   onArchived: () => void;
@@ -461,8 +465,16 @@ function PageView({
     if (title === seenTitle) setTitle(page.title);
   }
 
+  // A page inside this one, opened straight away, from /page or the list below the text.
+  const addPage = () =>
+    void run(async () => {
+      const child = await api.createPage({ parentId: page.id, title: '' });
+      onOpen(child.id);
+    });
+
   return (
     <article className="page">
+      <Breadcrumb tree={tree} pageId={page.id} onOpen={onOpen} />
       <div className="page-heading">
         <IconPicker
           icon={page.icon}
@@ -548,7 +560,14 @@ function PageView({
           </details>
         </>
       ) : (
-        <PageBody pageId={page.id} />
+        <>
+          <PageBody pageId={page.id} onCreateSubpage={addPage} />
+          <ChildPages
+            pages={findPage(tree, page.id)?.children ?? []}
+            onOpen={onOpen}
+            onAdd={addPage}
+          />
+        </>
       )}
     </article>
   );

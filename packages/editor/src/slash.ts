@@ -174,10 +174,13 @@ export const BLOCK_CHOICES: readonly BlockChoice[] = [
  * the headings and "list" finds all three lists. Order stays fixed rather than ranked:
  * a menu whose entries jump around as you type is harder to aim at than a longer one.
  */
-export function filterChoices(query: string): BlockChoice[] {
+export function filterChoices(
+  query: string,
+  choices: readonly BlockChoice[] = BLOCK_CHOICES,
+): BlockChoice[] {
   const q = query.trim().toLowerCase();
-  if (q === '') return [...BLOCK_CHOICES];
-  return BLOCK_CHOICES.filter((choice) => {
+  if (q === '') return [...choices];
+  return choices.filter((choice) => {
     const words = [...choice.label.toLowerCase().split(/[\s-]+/), ...choice.keywords];
     return choice.label.toLowerCase().startsWith(q) || words.some((word) => word.startsWith(q));
   });
@@ -212,7 +215,7 @@ const SLASH: TriggerMenuConfig = {
   key: slashKey,
   trigger: '/',
   title: 'Blocks',
-  filter: filterChoices,
+  filter: (query) => filterChoices(query),
 };
 
 /**
@@ -417,6 +420,32 @@ export function triggerMenu(
 }
 
 /** The `/` menu. */
-export function slashMenu(onChange: (menu: SlashMenu | null) => void): Plugin {
-  return triggerMenu(SLASH, onChange);
+/**
+ * The `/` menu. `extra` are choices only the host can carry out, such as making a page,
+ * listed after the blocks.
+ */
+export function slashMenu(
+  onChange: (menu: SlashMenu | null) => void,
+  extra: readonly BlockChoice[] = [],
+): Plugin {
+  if (extra.length === 0) return triggerMenu(SLASH, onChange);
+  const choices = [...BLOCK_CHOICES, ...extra];
+  return triggerMenu({ ...SLASH, filter: (query) => filterChoices(query, choices) }, onChange);
+}
+
+/**
+ * The `/page` choice: the typed `/page` is removed, then the host makes a page inside this
+ * one and opens it, as Notion's does.
+ */
+export function pageChoice(onCreate: () => void): BlockChoice {
+  return {
+    id: 'page',
+    label: 'Page',
+    hint: '',
+    keywords: ['subpage', 'child', 'new', 'nested'],
+    command: (_state, dispatch) => {
+      if (dispatch) onCreate();
+      return true;
+    },
+  };
 }
