@@ -86,7 +86,12 @@ export function ViewToolbar({
               value={viewType}
               aria-label="View type"
               onChange={(e) => {
-                setViewType(e.target.value as ViewDef['type']);
+                const type = e.target.value as ViewDef['type'];
+                setViewType(type);
+                // A board needs a property to group by. Start with the first one, so Add
+                // works at once and the choice can still be changed, rather than leaving
+                // Add greyed out with nothing to say why.
+                if (type === 'board' && groupBy === '') setGroupBy(selects[0]?.id ?? '');
               }}
             >
               <option value="table">Table</option>
