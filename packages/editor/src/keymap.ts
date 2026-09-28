@@ -25,6 +25,7 @@ import {
   toggleTodoChecked,
   todoRule,
 } from './blocks.js';
+import { arrowOutOfLastBlock, exitCode, exitCodeOnTripleEnter } from './leave-block.js';
 import { autolinkRule, removeLink } from './links.js';
 import { joinIntoBlockAbove, liftTodo, sinkTodo, splitTodo, unwrapAtStart } from './todo-keys.js';
 import { schema } from './schema.js';
@@ -69,6 +70,7 @@ export function knowtionKeymap(undo: Command, redo: Command, addLink?: Command):
     // In a list or a run of to-dos, Enter starts the next item; elsewhere it falls through
     // to the default.
     Enter: chainCommands(
+      exitCodeOnTripleEnter,
       splitTodo,
       splitListItem(listItem),
       must(baseKeymap.Enter, 'baseKeymap binding "Enter"'),
@@ -85,7 +87,9 @@ export function knowtionKeymap(undo: Command, redo: Command, addLink?: Command):
     'Shift-Tab': chainCommands(liftListItem(listItem), liftTodo, () => true),
     // A todo and a divider had no way in at all before these.
     'Mod-Shift-9': toggleTodo,
-    'Mod-Enter': toggleTodoChecked,
+    // Ticks a to-do; in a code block, leaves it.
+    'Mod-Enter': chainCommands(toggleTodoChecked, exitCode),
+    ArrowDown: arrowOutOfLastBlock,
     'Mod-Shift-Minus': insertDivider,
     // Making a link needs a URL from somewhere, so the host supplies the command that
     // asks for one. Removing a link needs nothing, so it lives here unconditionally.

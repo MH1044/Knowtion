@@ -208,6 +208,16 @@ export function PageBody({ pageId }: { pageId: string }): React.JSX.Element {
         }}
       >
         <div className="editor" ref={holder} />
+        {/* The space below the last block: a click here writes at the end of the page,
+            as in Notion, rather than focusing nothing. */}
+        <div
+          className="editor-tail"
+          aria-hidden="true"
+          onMouseDown={(e) => {
+            e.preventDefault();
+            live?.focusEnd();
+          }}
+        />
         {live !== undefined && spot !== undefined && (
           <BlockHandle
             editor={live}

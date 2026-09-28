@@ -32,6 +32,7 @@ import {
   turnBlockInto,
 } from './handle.js';
 import { knowtionInputRules, knowtionKeymap } from './keymap.js';
+import { focusEnd } from './leave-block.js';
 import { isAllowedHref, linkAt, setLink } from './links.js';
 import { knowtionPlaceholder } from './placeholder.js';
 import { schema } from './schema.js';
@@ -112,6 +113,8 @@ export interface PageEditor {
   turnBlockInto(pos: number, choice: BlockChoice): void;
   startBlockDrag(pos: number, event: DragEvent): void;
   endBlockDrag(): void;
+  /** Put the caret on an empty line at the end of the page, adding one if needed. */
+  focusEnd(): void;
   /**
    * Merge another device's operations. Returns false, merging nothing, when the update
    * carries content this build does not know into an editable page: the host must then
@@ -299,6 +302,9 @@ export async function mountPageEditor(options: PageEditorOptions): Promise<PageE
     },
     endBlockDrag: () => {
       endBlockDrag(view);
+    },
+    focusEnd: () => {
+      run(focusEnd);
     },
     applyRemote(update) {
       if (!readOnly) {

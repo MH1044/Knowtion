@@ -1976,3 +1976,8 @@ button.danger {
   padding: 4px 10px;
   color: var(--accent);
 }
+
+.editor-tail {
+  min-height: 30vh;
+  cursor: text;
+}
