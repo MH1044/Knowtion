@@ -29,6 +29,8 @@ const PINNED: Record<string, { size: number; sha256: string }> = {
   v0: { size: 3936, sha256: '0af5ff9244abd87ef1589e86e33c1e10decbf93eedc017910e08cf39ccd461b3' },
   // Toggles, callouts with and without their own icon, and dates in a line.
   v1: { size: 2545, sha256: '269d5e92f28d93abd3e7e1d8f7e0801c02246354a48bf4af52333497042c6d94' },
+  // Line breaks inside a paragraph, one at its very end, and underline alone and with bold.
+  v2: { size: 1263, sha256: 'f8b4551a08480f58d9ddca0fefa35ec032906270d3a5d8088f1d74f751bfcb4b' },
 };
 
 describe.each(Object.keys(PINNED))('page body fixture %s', (version) => {

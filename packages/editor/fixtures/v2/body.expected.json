@@ -1,0 +1,57 @@
+{
+  "type": "doc",
+  "content": [
+    {
+      "type": "paragraph",
+      "content": [
+        {
+          "type": "text",
+          "text": "line one"
+        },
+        {
+          "type": "hard_break"
+        },
+        {
+          "type": "text",
+          "text": "line two"
+        },
+        {
+          "type": "hard_break"
+        },
+        {
+          "type": "text",
+          "marks": [
+            {
+              "type": "underline"
+            }
+          ],
+          "text": "underlined"
+        }
+      ]
+    },
+    {
+      "type": "paragraph",
+      "content": [
+        {
+          "type": "text",
+          "marks": [
+            {
+              "type": "strong"
+            },
+            {
+              "type": "underline"
+            }
+          ],
+          "text": "both"
+        },
+        {
+          "type": "text",
+          "text": " and a break at the end"
+        },
+        {
+          "type": "hard_break"
+        }
+      ]
+    }
+  ]
+}
