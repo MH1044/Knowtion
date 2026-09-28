@@ -193,9 +193,29 @@ input:focus-visible {
 
 /* Block editor */
 .editor .ProseMirror {
+  position: relative;
   line-height: 1.65;
   min-height: 40vh;
   outline: none;
+  /* ProseMirror's own required rules. Without them a second space, or a space at the end
+     of a line, collapses on screen while it is still in the document. */
+  white-space: pre-wrap;
+  white-space: break-spaces;
+  word-wrap: break-word;
+  font-variant-ligatures: none;
+  font-feature-settings: 'liga' 0;
+}
+
+.editor .ProseMirror pre {
+  white-space: pre-wrap;
+}
+
+.editor .ProseMirror-hideselection *::selection {
+  background: transparent;
+}
+
+.editor .ProseMirror-selectednode {
+  outline: 2px solid var(--accent);
 }
 
 .editor .ProseMirror > * + * {
