@@ -15,6 +15,8 @@ import { PropertyCell } from './PropertyCell.js';
 export interface TableViewProps {
   properties: PropertyDef[];
   view: ViewDef;
+  /** The row just created, whose title cell takes the caret. */
+  focusRowId?: string | undefined;
   rows: RowView[];
   /** Present when the view groups; rows are then drawn under a header per bucket. */
   groups?: { key: string | null; rows: RowView[] }[] | undefined;
@@ -40,11 +42,14 @@ export interface TableViewProps {
 
 function TitleCell({
   row,
+  focus,
   onRename,
   onOpen,
   onArchive,
 }: {
   row: RowView;
+  /** Take the caret on first render: this row was just created. */
+  focus: boolean;
   onRename: (title: string) => void;
   onOpen: () => void;
   onArchive: () => void;
@@ -61,6 +66,7 @@ function TitleCell({
         value={draft}
         placeholder="Untitled"
         aria-label="Row title"
+        autoFocus={focus}
         onChange={(e) => {
           setDraft(e.target.value);
         }}
@@ -116,6 +122,7 @@ export function TableView(props: TableViewProps): React.JSX.Element {
       <td>
         <TitleCell
           row={row}
+          focus={row.id === props.focusRowId}
           onRename={(title) => {
             props.onRename(row.id, title);
           }}

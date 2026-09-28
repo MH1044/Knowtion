@@ -140,7 +140,9 @@ export function App(): React.JSX.Element {
             type="button"
             onClick={() =>
               void run(async () => {
-                const page = await api.createPage({});
+                // An empty title, shown as the "Untitled" placeholder, so typing a name
+                // replaces it rather than landing in the middle of the word.
+                const page = await api.createPage({ title: '' });
                 setSelectedId(page.id);
                 setShowTrash(false);
               })
@@ -171,7 +173,7 @@ export function App(): React.JSX.Element {
           }}
           onCreateChild={(parentId) =>
             void run(async () => {
-              const page = await api.createPage({ parentId });
+              const page = await api.createPage({ parentId, title: '' });
               setSelectedId(page.id);
               setShowTrash(false);
             })
@@ -471,6 +473,9 @@ function PageView({
           value={title}
           placeholder="Untitled"
           aria-label="Page title"
+          // A page without a name opens with the caret in its title, as a new page does in
+          // Notion; the body does not take focus while the title has it.
+          autoFocus={page.title === ''}
           onChange={(event) => {
             setTitle(event.target.value);
           }}
@@ -478,7 +483,12 @@ function PageView({
             if (title !== page.title) void run(() => api.renamePage(page.id, title));
           }}
           onKeyDown={(event) => {
-            if (event.key === 'Enter') event.currentTarget.blur();
+            // Enter moves on into the page, where the writing is.
+            if (event.key === 'Enter') {
+              event.preventDefault();
+              event.currentTarget.blur();
+              document.querySelector<HTMLElement>('.editor .ProseMirror')?.focus();
+            }
           }}
         />
       </div>

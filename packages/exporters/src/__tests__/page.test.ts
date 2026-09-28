@@ -81,6 +81,11 @@ describe('front matter', () => {
     });
     expect(out.endsWith('# Notes\n\nhi\n')).toBe(true);
   });
+
+  it('heads a page nobody named "Untitled", as the app shows it', () => {
+    const out = markdownPage({ page: page({ title: '' }) });
+    expect(out).toContain('# Untitled');
+  });
 });
 
 describe('displayValue', () => {

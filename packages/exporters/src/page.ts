@@ -103,7 +103,8 @@ function frontMatter({ page, rowOf }: PageExport): string {
 /** A page as a Markdown file: front matter, the title as a heading, then the body. */
 export function markdownPage(input: PageExport): string {
   const body = markdownFromDoc(input.body);
-  const heading = `# ${input.page.title.replace(/\r?\n/g, ' ')}`;
+  // An empty title is a page nobody named; the app shows it as "Untitled", so does this.
+  const heading = `# ${input.page.title.replace(/\r?\n/g, ' ') || 'Untitled'}`;
   const parts = [frontMatter(input), heading, body].filter((part) => part !== '');
   return `${parts.join('\n\n')}\n`;
 }

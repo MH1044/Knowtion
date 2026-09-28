@@ -151,7 +151,8 @@ export function PageBody({ pageId }: { pageId: string }): React.JSX.Element {
         editor = mounted;
         setLive(mounted);
         setUnknown(mounted.unknown);
-        editor.view.focus();
+        // Not while the title has the caret: a page with no name is waiting for one.
+        if (!document.activeElement?.classList.contains('page-title')) editor.view.focus();
       } catch (cause) {
         setError(cause instanceof Error ? cause.message : String(cause));
       }

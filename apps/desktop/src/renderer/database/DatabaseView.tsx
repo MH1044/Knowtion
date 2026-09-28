@@ -66,6 +66,8 @@ export function DatabaseView({
   const [result, setResult] = useState<QueryResult>();
   const [pageIndex, setPageIndex] = useState(0);
   const [showSchema, setShowSchema] = useState(false);
+  // The row just created, whose title takes the caret once it appears.
+  const [focusRowId, setFocusRowId] = useState<string>();
   const [showControls, setShowControls] = useState(false);
   const [columnToggles] = usePreference<ColumnTogglePlace>(
     COLUMN_TOGGLES_KEY,
@@ -158,7 +160,9 @@ export function DatabaseView({
    */
   const newRow = (input?: Parameters<typeof api.dbCreateRow>[1]) =>
     void run(async () => {
-      await api.dbCreateRow(databaseId, input);
+      // An empty title, so "Untitled" is only the placeholder, and the caret waits in it.
+      const created = await api.dbCreateRow(databaseId, { title: '', ...input });
+      setFocusRowId(created.id);
       if (paged && view.sorts.length === 0) {
         setPageIndex(pageCount(result.total + 1, MAX_QUERY_ROWS) - 1);
       }
@@ -288,6 +292,7 @@ export function DatabaseView({
         <TableView
           properties={schema.properties}
           view={view}
+          focusRowId={focusRowId}
           rows={result.rows}
           groups={result.groups}
           total={result.total}
