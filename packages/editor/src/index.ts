@@ -9,6 +9,8 @@ export { schema } from './schema.js';
 export { knowtionInputRules, knowtionKeymap } from './keymap.js';
 export { insertDivider, toggleTodo, toggleTodoChecked } from './blocks.js';
 export { knowtionPlaceholder } from './placeholder.js';
+export { BLOCK_CHOICES, filterChoices } from './slash.js';
+export type { BlockChoice, SlashMenu } from './slash.js';
 export {
   autolinkRule,
   isAllowedHref,

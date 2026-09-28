@@ -22,6 +22,7 @@ import { knowtionInputRules, knowtionKeymap } from './keymap.js';
 import { isAllowedHref, linkAt, setLink } from './links.js';
 import { knowtionPlaceholder } from './placeholder.js';
 import { schema } from './schema.js';
+import { slashMenu, type SlashMenu } from './slash.js';
 import { TodoItemView } from './todo-view.js';
 
 import type { LoroDoc } from 'loro-crdt';
@@ -48,6 +49,8 @@ export interface PageEditorOptions {
    * and links can still be made by typing one and pressing space.
    */
   onRequestLink?: ((apply: (href: string) => void) => void) | undefined;
+  /** Draw the `/` menu, or hide it on null. Without it, a slash is only a character. */
+  onSlashMenu?: ((menu: SlashMenu | null) => void) | undefined;
 }
 
 export interface PageEditor {
@@ -99,6 +102,8 @@ export async function mountPageEditor(options: PageEditorOptions): Promise<PageE
         LoroSyncPlugin({ doc: doc as any }),
         LoroUndoPlugin({ doc: doc }),
         /* eslint-enable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment */
+        // Before the keymap, so an open menu gets Enter and the arrows first.
+        ...(options.onSlashMenu === undefined ? [] : [slashMenu(options.onSlashMenu)]),
         knowtionInputRules(),
         knowtionKeymap(undo, redo, linkCommand(options)),
         knowtionPlaceholder(),

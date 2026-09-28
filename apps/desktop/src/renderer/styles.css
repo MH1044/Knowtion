@@ -260,7 +260,7 @@ input:focus-visible {
 /* Shown only when the document is empty, so a new page is not a blank void. */
 .editor .ProseMirror p.is-empty:first-child::before {
   color: var(--muted);
-  content: 'Start writing, or type # for a heading';
+  content: "Start writing, or type '/' for blocks";
   float: left;
   height: 0;
   pointer-events: none;
@@ -1489,4 +1489,49 @@ button.danger {
   color: var(--muted);
   font-size: 11px;
   margin: 4px 0 2px;
+}
+
+/* The / menu. Fixed so it can overhang the editor column near the window's edges. */
+.block-menu {
+  position: fixed;
+  z-index: 50;
+  width: 280px;
+  overflow-y: auto;
+  padding: 6px;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgb(0 0 0 / 45%);
+}
+
+.block-menu-heading {
+  padding: 4px 8px 6px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.block-menu-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  height: 36px;
+  padding: 0 8px;
+  color: var(--text);
+  text-align: left;
+  background: none;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.block-menu-item.selected,
+.block-menu-item:hover {
+  background: var(--border);
+}
+
+.block-menu-hint {
+  color: var(--muted);
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 12px;
 }
