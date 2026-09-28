@@ -1639,6 +1639,10 @@ button.danger {
   text-decoration: line-through;
 }
 
+.format-bar .fmt-underline {
+  text-decoration: underline;
+}
+
 .format-bar .fmt-code {
   font-family: ui-monospace, Consolas, monospace;
   font-size: 12px;

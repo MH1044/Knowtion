@@ -2,7 +2,7 @@ import { useState } from 'react';
 
 import type { FormatBlock, FormatMark, FormatToolbar } from '@knowtion/editor';
 
-const BAR_WIDTH = 330;
+const BAR_WIDTH = 360;
 const BAR_HEIGHT = 36;
 
 /**
@@ -22,7 +22,8 @@ export function barPlacement(
 const MARK_BUTTONS: { mark: FormatMark; label: string; title: string; className: string }[] = [
   { mark: 'strong', label: 'B', title: 'Bold (Ctrl+B)', className: 'fmt-bold' },
   { mark: 'em', label: 'i', title: 'Italic (Ctrl+I)', className: 'fmt-italic' },
-  { mark: 'strike', label: 'S', title: 'Strikethrough (Ctrl+Shift+X)', className: 'fmt-strike' },
+  { mark: 'underline', label: 'U', title: 'Underline (Ctrl+U)', className: 'fmt-underline' },
+  { mark: 'strike', label: 'S', title: 'Strikethrough (Ctrl+Shift+S)', className: 'fmt-strike' },
   { mark: 'code', label: '</>', title: 'Code (Ctrl+E)', className: 'fmt-code' },
 ];
 

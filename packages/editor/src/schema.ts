@@ -231,6 +231,10 @@ const marks: Record<string, MarkSpec> = {
     parseDOM: [{ tag: 's' }, { tag: 'del' }, { style: 'text-decoration=line-through' }],
     toDOM: (): DOMOutputSpec => ['s', 0],
   },
+  underline: {
+    parseDOM: [{ tag: 'u' }, { style: 'text-decoration=underline' }],
+    toDOM: (): DOMOutputSpec => ['u', 0],
+  },
   code: {
     parseDOM: [{ tag: 'code' }],
     toDOM: (): DOMOutputSpec => ['code', 0],

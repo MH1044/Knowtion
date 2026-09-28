@@ -25,7 +25,7 @@ function node(name: string): NodeType {
   return found;
 }
 
-export type FormatMark = 'strong' | 'em' | 'strike' | 'code';
+export type FormatMark = 'strong' | 'em' | 'underline' | 'strike' | 'code';
 export type FormatBlock = 'text' | 'heading1' | 'heading2' | 'heading3';
 
 export interface FormatState {
@@ -37,7 +37,7 @@ export interface FormatState {
   block: FormatBlock | undefined;
 }
 
-const MARKS: readonly FormatMark[] = ['strong', 'em', 'strike', 'code'];
+const MARKS: readonly FormatMark[] = ['strong', 'em', 'underline', 'strike', 'code'];
 
 /**
  * What the toolbar should show for this state, or undefined when it should not show.
@@ -55,6 +55,7 @@ export function formatStateOf(state: EditorState): FormatState | undefined {
   const active = {
     strong: false,
     em: false,
+    underline: false,
     strike: false,
     code: false,
     link: linkAt(state) !== undefined || state.doc.rangeHasMark(from, to, mark('link')),

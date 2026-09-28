@@ -58,6 +58,7 @@ const MARK_FOR_TAG: Record<string, string> = {
   i: 'em',
   s: 'strike',
   del: 'strike',
+  u: 'underline',
   code: 'code',
 };
 

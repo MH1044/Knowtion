@@ -16,7 +16,7 @@ describe('where the format bar sits', () => {
   it('stays inside the window at both edges', () => {
     expect(barPlacement({ left: 5, top: 300, bottom: 320 }, 1200).left).toBeGreaterThanOrEqual(4);
     expect(barPlacement({ left: 1195, top: 300, bottom: 320 }, 1200).left).toBeLessThanOrEqual(
-      1200 - 330 - 4,
+      1200 - 360 - 4,
     );
   });
 });

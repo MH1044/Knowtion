@@ -64,6 +64,9 @@ export function knowtionKeymap(undo: Command, redo: Command, addLink?: Command):
     'Mod-b': toggleMark(must(schema.marks.strong, 'mark "strong"')),
     'Mod-i': toggleMark(must(schema.marks.em, 'mark "em"')),
     'Mod-Shift-x': toggleMark(must(schema.marks.strike, 'mark "strike"')),
+    // Notion's keys for strikethrough and underline.
+    'Mod-Shift-s': toggleMark(must(schema.marks.strike, 'mark "strike"')),
+    'Mod-u': toggleMark(must(schema.marks.underline, 'mark "underline"')),
     'Mod-e': toggleMark(must(schema.marks.code, 'mark "code"')),
     'Mod-Alt-0': setBlockType(schema.nodes.paragraph),
     'Mod-Alt-1': setBlockType(schema.nodes.heading, { level: 1 }),

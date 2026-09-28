@@ -560,13 +560,14 @@ version's vocabulary is pinned by a fixture in `packages/editor/fixtures/<versio
 | date         | date: `YYYY-MM-DD`  | none; inline, an atom  | v1    |
 | hard_break   |                     | none; inline           | v2    |
 
-| Mark   | Attributes                                 | Since |
-| ------ | ------------------------------------------ | ----- |
-| strong |                                            | v0    |
-| em     |                                            | v0    |
-| strike |                                            | v0    |
-| code   |                                            | v0    |
-| link   | href: http, https, mailto, `#` or `/` only | v0    |
+| Mark      | Attributes                                 | Since |
+| --------- | ------------------------------------------ | ----- |
+| strong    |                                            | v0    |
+| em        |                                            | v0    |
+| strike    |                                            | v0    |
+| code      |                                            | v0    |
+| link      | href: http, https, mailto, `#` or `/` only | v0    |
+| underline |                                            | v2    |
 
 Every attribute is stored with its node, defaults included, except one whose value is
 null, which is left out. So an attribute meaning "use the default", such as a callout

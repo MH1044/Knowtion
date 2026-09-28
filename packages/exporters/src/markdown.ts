@@ -73,6 +73,8 @@ function inlineText(node: PmNode): string {
   if (marks.includes('strong')) out = `**${out}**`;
   if (marks.includes('em')) out = `*${out}*`;
   if (marks.includes('strike')) out = `~~${out}~~`;
+  // Markdown has no underline; HTML's is what CommonMark passes through.
+  if (marks.includes('underline')) out = `<u>${out}</u>`;
   const link = (node.marks ?? []).find((mark) => mark.type === 'link');
   if (link !== undefined) {
     const href = typeof link.attrs?.href === 'string' ? link.attrs.href : '';

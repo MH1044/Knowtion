@@ -43,6 +43,11 @@ describe('the buttons', () => {
     expect(formatStateOf(plain)?.active.strong).toBe(false);
   });
 
+  it('underlines, as Ctrl+U does', () => {
+    const underlined = run(selected('hello world', 0, 5), toggleFormat('underline'));
+    expect(formatStateOf(underlined)?.active.underline).toBe(true);
+  });
+
   it('reports the block and can switch it to a heading and back', () => {
     const state = selected('Title', 0, 5);
     expect(formatStateOf(state)?.block).toBe('text');
