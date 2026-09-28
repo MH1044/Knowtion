@@ -60,6 +60,11 @@ Everything else below has no automated coverage at all.
 
 Needs two profiles pointed at the same sync folder.
 
+**Blocked for now.** A second device has no way into an existing workspace: joining needs
+that workspace's key granted to the new device, and that step is not built, so choosing
+a folder that already holds a workspace is refused. Until it lands, this section cannot
+be run from the app.
+
 - [ ] The sync panel lists devices behind a toggle, with a fingerprint for each and
       "this device" marked.
 - [ ] A second device appears with an **Approve** button until it is approved.
@@ -243,9 +248,8 @@ what you get in another program rather than just that a folder appeared.
 - [ ] Cancelling changes nothing.
 - [ ] Choosing an empty folder copies the log there and keeps the original.
 - [ ] Choosing a folder inside the application's own data directory is refused.
-- [ ] Choosing a folder that already holds a workspace, while you have pages, is refused
-      with an explanation that your notes are untouched.
-- [ ] Choosing an existing workspace from an empty device joins it.
+- [ ] Choosing a folder that already holds a workspace is refused, saying nothing was
+      changed.
 - [ ] After choosing, the button says "Change folder" and **Sync now** appears.
 - [ ] Two devices editing different pages both end up with both pages.
 - [ ] Two devices editing the same title converge, and the rule matches section 3.

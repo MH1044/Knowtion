@@ -24,11 +24,11 @@ import {
   RECOVERY_PHRASE_WORDS,
 } from '@knowtion/format';
 
-import { adoptWorkspace, loadOrCreateIdentity, saveIdentity, type Identity } from './identity.js';
+import { loadOrCreateIdentity, type Identity } from './identity.js';
 import { chooseProtector } from './secret-protector.js';
 import { readSettings, writeSettings } from './settings.js';
 import { checkSyncFolder, copyLog } from './sync-folder.js';
-import { DeviceRegistry, NodeStorage } from '@knowtion/sync';
+import { NodeStorage } from '@knowtion/sync';
 
 import { exportWorkspace, type ExportFormat } from './export.js';
 import { WorkspaceHost } from './workspace-host.js';
@@ -622,11 +622,14 @@ function registerHandlers(): void {
   /**
    * Point the log at a folder the user's cloud client already syncs.
    *
-   * Two quite different operations behind one button. An empty folder means "move my
-   * workspace there", and the existing log is COPIED rather than moved so a mistake is
-   * recoverable. A folder that already holds a workspace means "join it", which is
-   * pairing: this device adopts that workspace's identifier and mints a fresh log
-   * prefix, keeping its own keys.
+   * An empty folder means "move my workspace there", and the existing log is COPIED
+   * rather than moved so a mistake is recoverable.
+   *
+   * A folder that already holds a workspace is refused. Joining one needs that
+   * workspace's key, which only another device can grant, and this device's own keys
+   * belong to a different workspace: reopening with them would seal packs no other
+   * device can open, and reopening without them wrote every edit in the clear. Until
+   * a pending-approval state exists, refusing is the only safe answer.
    */
   ipcMain.handle('sync:choose', async () => {
     try {
@@ -643,34 +646,17 @@ function registerHandlers(): void {
       const check = await checkSyncFolder(dataDir, folder);
       if (!check.ok) return { ok: false, error: check.reason };
 
-      const protector = chooseProtector().protector;
-
       if (check.existingWorkspace) {
-        const remote = await readWorkspaceIdFrom(folder);
-        if (remote === undefined) {
-          return {
-            ok: false,
-            error:
-              'That folder looks like a Knowtion workspace but no readable device ' +
-              'record could be found in it, so there is no way to tell which workspace ' +
-              'it is. Check that it has finished syncing.',
-          };
-        }
-
-        // Joining replaces this device's workspace. Merging two independently created
-        // workspaces is not possible — each has its own root document, and combining
-        // them keeps one and silently discards the other (ADR-0009). Refusing while
-        // there is anything to lose is the only honest option.
-        if (mustHost().tree().length > 0 || mustHost().trash().length > 0) {
-          return {
-            ok: false,
-            error:
-              'This device already has its own pages, and joining another workspace ' +
-              'would replace them. Export them first, or join from a device with an ' +
-              'empty workspace. Your existing notes are untouched.',
-          };
-        }
+        return {
+          ok: false,
+          error:
+            'That folder already holds a Knowtion workspace. Joining one from another ' +
+            'device is not available yet: it needs the key of that workspace to be granted ' +
+            'to this device first, and that step has not been built. Nothing was ' +
+            'changed. To sync this workspace, choose an empty folder.',
+        };
       }
+      const keys = must(workspaceKeys, 'workspace keys');
 
       // Detach the current host and its timer BEFORE any teardown or reopen I/O below.
       // Both the poll timer and the renderer's "sync now" button call runSync(), whose
@@ -684,19 +670,10 @@ function registerHandlers(): void {
       const previousIdentity = must(identity, 'identity');
       host = undefined;
 
-      let nextIdentity = previousIdentity;
       try {
-        if (check.existingWorkspace) {
-          // re-checked above, folder unchanged
-          const remote = must(await readWorkspaceIdFrom(folder), 'workspace id in folder');
-          await closingHost.close();
-          nextIdentity = await adoptWorkspace(dataDir, previousIdentity, remote, protector);
-        } else {
-          // Taking our own workspace with us.
-          await closingHost.close();
-          const sourceLogDir = previousLogDir === '' ? join(dataDir, 'log') : previousLogDir;
-          await copyLog(sourceLogDir, folder);
-        }
+        await closingHost.close();
+        const sourceLogDir = previousLogDir === '' ? join(dataDir, 'log') : previousLogDir;
+        await copyLog(sourceLogDir, folder);
 
         // Settings and currentLogDir are only committed once the new host actually
         // opens — otherwise a failure below would leave disk state pointing at a
@@ -704,24 +681,19 @@ function registerHandlers(): void {
         const opened = await WorkspaceHost.open({
           dataDir,
           logDir: folder,
-          workspaceId: nextIdentity.workspaceId,
-          deviceId: nextIdentity.deviceId,
-          peerId: nextIdentity.peerId,
-          deviceKeys: nextIdentity.keys,
-          deviceLabel: nextIdentity.label,
+          workspaceId: previousIdentity.workspaceId,
+          deviceId: previousIdentity.deviceId,
+          peerId: previousIdentity.peerId,
+          deviceKeys: previousIdentity.keys,
+          deviceLabel: previousIdentity.label,
+          workspaceKeys: keys,
         });
         await writeSettings(dataDir, { syncFolder: folder });
         currentLogDir = folder;
-        identity = nextIdentity;
         attachHost(opened);
       } catch (error) {
         // The switch failed partway through. The user's previous workspace must not be
-        // stranded until a restart: put back whatever this attempt changed, and reopen
-        // it exactly as it was.
-        if (check.existingWorkspace && nextIdentity !== previousIdentity) {
-          await saveIdentity(dataDir, previousIdentity, protector);
-        }
-        identity = previousIdentity;
+        // stranded until a restart: reopen it exactly as it was.
         currentLogDir = previousLogDir;
         try {
           attachHost(
@@ -733,6 +705,7 @@ function registerHandlers(): void {
               peerId: previousIdentity.peerId,
               deviceKeys: previousIdentity.keys,
               deviceLabel: previousIdentity.label,
+              workspaceKeys: keys,
             }),
           );
           scheduleSync();
@@ -750,9 +723,7 @@ function registerHandlers(): void {
         throw error;
       }
 
-      // The wraps travel with the log, but a folder the user JOINED will not have one
-      // for this device until another device grants it. Publishing ours is a no-op
-      // where it already exists.
+      // The wraps travel with the log; publishing ours is a no-op where they exist.
       await publishOwnWraps();
       await runSync();
       scheduleSync();
@@ -760,7 +731,7 @@ function registerHandlers(): void {
 
       return {
         ok: true,
-        value: { folder, joined: check.existingWorkspace, fingerprint: mustHost().fingerprint },
+        value: { folder, fingerprint: mustHost().fingerprint },
       };
     } catch (error) {
       return { ok: false, error: error instanceof Error ? error.message : String(error) };
@@ -790,19 +761,6 @@ function registerHandlers(): void {
       return { ok: false, error: error instanceof Error ? error.message : String(error) };
     }
   });
-}
-
-/**
- * Which workspace a folder belongs to, read from any device record in it.
- *
- * Every record carries the workspace identifier and is self-signed, so one readable
- * record is enough — and an unreadable one is not fatal, because another device's
- * record will usually still be there.
- */
-async function readWorkspaceIdFrom(folder: string): Promise<Uint8Array | undefined> {
-  const registry = new DeviceRegistry(new NodeStorage(folder));
-  const { devices } = await registry.list();
-  return devices[0]?.workspaceId;
 }
 
 /**
@@ -917,7 +875,8 @@ async function openWorkspace(): Promise<void> {
       peerId: must(identity, 'identity').peerId,
       deviceKeys: must(identity, 'identity').keys,
       deviceLabel: must(identity, 'identity').label,
-      ...(workspaceKeys === undefined ? {} : { workspaceKeys }),
+      // Never opened before setup: the caller checks, and must() makes it loud if not.
+      workspaceKeys: must(workspaceKeys, 'workspace keys'),
     }),
   );
   scheduleSync();

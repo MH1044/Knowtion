@@ -63,11 +63,7 @@ export function SyncPanel({ onChanged }: { onChanged: () => void }): React.JSX.E
     try {
       const result = await api.chooseSyncFolder();
       if (result) {
-        setMessage(
-          result.joined
-            ? `Joined the workspace in ${shortPath(result.folder)}`
-            : `Now syncing through ${shortPath(result.folder)}`,
-        );
+        setMessage(`Now syncing through ${shortPath(result.folder)}`);
         onChanged();
       }
     } catch (cause) {

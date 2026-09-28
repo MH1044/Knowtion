@@ -184,9 +184,7 @@ interface Bridge {
   }): Promise<Result<{ deleted: number; remaining: number; done: boolean }>>;
   syncNow(): Promise<Result<null>>;
   /** Resolves to null when the user cancels the folder picker. */
-  chooseSyncFolder(): Promise<
-    Result<{ folder: string; joined: boolean; fingerprint: string } | null>
-  >;
+  chooseSyncFolder(): Promise<Result<{ folder: string; fingerprint: string } | null>>;
   flush(): Promise<Result<null>>;
   openBody(input: { id: string }): Promise<Result<Uint8Array>>;
   updateBody(input: { id: string; update: Uint8Array }): Promise<Result<null>>;

@@ -45,6 +45,7 @@ async function openHost(): Promise<WorkspaceHost> {
     deviceId: DEVICE,
     peerId: 1n,
     deviceKeys,
+    workspaceKeys: 'plaintext',
     flushDelayMs: 0,
   });
 }

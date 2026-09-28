@@ -61,6 +61,7 @@ const open = (dir: string, deviceId = DEVICE_A, peerId = 1n) =>
     deviceId,
     peerId,
     deviceKeys: keysFor(deviceId),
+    workspaceKeys: 'plaintext',
     // Flush on the next tick so tests never wait on a real debounce.
     flushDelayMs: 0,
   });
@@ -97,6 +98,7 @@ async function pair() {
       deviceId,
       peerId,
       deviceKeys: keysFor(deviceId),
+      workspaceKeys: 'plaintext',
       flushDelayMs: 0,
       // The settle rule is exercised directly in the storage tests with a controlled
       // clock. Here it would only make every assertion wait on real time.
@@ -631,6 +633,7 @@ describe('sync between two devices sharing a folder', () => {
         deviceId: DEVICE_A,
         peerId: 1n,
         deviceKeys: keysFor(DEVICE_A),
+        workspaceKeys: 'plaintext',
       }),
     ).rejects.toThrow(/corrupt|inside the sync folder/i);
   });
@@ -648,6 +651,7 @@ describe('compaction', () => {
         deviceId,
         peerId,
         deviceKeys: keysFor(deviceId),
+        workspaceKeys: 'plaintext',
         flushDelayMs: 0,
         settleMs: 0,
       });
@@ -785,6 +789,50 @@ describe('an encrypted workspace', () => {
     await reopened.close();
   });
 
+  it('cannot be opened without saying which keys it uses', async () => {
+    // Choosing a sync folder once reopened the host with the keys left out, and a
+    // missing field then meant plaintext: every later edit reached the cloud folder in
+    // the clear. The field is required so no call site can forget it again.
+    const options = {
+      dataDir: await dataDir(),
+      workspaceId: WORKSPACE_ID,
+      deviceId: DEVICE_A,
+      peerId: 1n,
+      deviceKeys: keysFor(DEVICE_A),
+    };
+    // @ts-expect-error workspaceKeys is required
+    await expect(WorkspaceHost.open(options)).rejects.toThrow(/workspaceKeys is required/);
+  });
+
+  it('stays encrypted when the log is a sync folder', async () => {
+    const dir = await dataDir();
+    const folder = join(dir, 'log');
+    const host = await WorkspaceHost.open({
+      dataDir: await dataDir(),
+      logDir: folder,
+      workspaceId: WORKSPACE_ID,
+      deviceId: DEVICE_A,
+      peerId: 1n,
+      deviceKeys: keysFor(DEVICE_A),
+      workspaceKeys: material,
+      flushDelayMs: 0,
+      settleMs: 0,
+    });
+    const page = host.createPage({ title: 'Synced title' });
+    await host.openBody(page.id);
+    await host.flush();
+    await host.close();
+
+    const packs = await packsUnder(dir);
+    expect(packs.length).toBeGreaterThan(0);
+    for (const pack of packs) {
+      expect(decodePack(pack.bytes, pack.path).header.suiteId).toBe(
+        SUITE.XCHACHA20POLY1305_ARGON2ID,
+      );
+      expect(Buffer.from(pack.bytes).includes(Buffer.from('Synced title'))).toBe(false);
+    }
+  });
+
   it('still reads a workspace that was written in plaintext before the cipher was on', async () => {
     // The upgrade path. Every pack declares its own suite, so switching costs privacy
     // for what was already written and never readability.
@@ -839,7 +887,7 @@ describe('approving a second device for an encrypted workspace', () => {
         deviceKeys: keysFor(deviceId),
         flushDelayMs: 0,
         settleMs: 0,
-        ...(keys === undefined ? {} : { workspaceKeys: keys }),
+        workspaceKeys: keys ?? 'plaintext',
       });
 
     const a = await openDevice(await dataDir(), DEVICE_A, 1n, material);
@@ -902,6 +950,7 @@ describe('approving a second device for an encrypted workspace', () => {
       deviceId: DEVICE_B,
       peerId: 2n,
       deviceKeys: keysFor(DEVICE_B),
+      workspaceKeys: 'plaintext',
       flushDelayMs: 0,
       settleMs: 0,
     });

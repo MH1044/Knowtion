@@ -92,13 +92,19 @@ export interface WorkspaceHostOptions {
   /** This device's keypairs. Its public halves go into the registry record. */
   deviceKeys: DeviceKeys;
   /**
-   * The workspace keys this device holds. Absent means the workspace is still
-   * plaintext, and every pack is written under suite NONE exactly as before.
+   * The workspace keys this device holds, or the explicit word 'plaintext' to write
+   * every pack under suite NONE.
+   *
+   * Required, and plaintext spelled out rather than implied by absence, because a
+   * forgotten field used to mean "write in the clear": the sync-folder switch reopened
+   * the host without its keys, and every edit after it went into the user's cloud folder
+   * unencrypted, where an append-only log keeps it forever (ADR-0007). Only tests and a
+   * workspace that has not been set up yet have a reason to say 'plaintext'.
    *
    * The host builds the sync engine's crypto bundle from this rather than taking one
    * ready-made, because rule 7 needs the device registry and the host is what owns it.
    */
-  workspaceKeys?: WorkspaceKeyMaterial;
+  workspaceKeys: WorkspaceKeyMaterial | 'plaintext';
   /** Shown in the device list. Never trusted for anything else. */
   deviceLabel?: string;
   /** Injected so tests can flush synchronously instead of waiting. */
@@ -1045,8 +1051,13 @@ export class WorkspaceHost {
    * handed to every store.
    */
   #buildCrypto(): PackCrypto | undefined {
-    const material = this.#options.workspaceKeys;
-    if (material === undefined) return undefined;
+    // Widened on purpose: the type forbids a missing value, but a caller outside the
+    // type system must get a clear refusal, never a plaintext workspace.
+    const material = this.#options.workspaceKeys as WorkspaceKeyMaterial | 'plaintext' | undefined;
+    if (material === undefined) {
+      throw new Error("workspaceKeys is required: pass the keys, or 'plaintext' deliberately");
+    }
+    if (material === 'plaintext') return undefined;
     return {
       keyring: keyringFrom(material),
       sealWith: currentKey(material),
