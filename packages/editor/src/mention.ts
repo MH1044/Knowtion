@@ -11,6 +11,7 @@
 import { addDays, type CalendarDate } from '@knowtion/engine/properties';
 import type { Command, Plugin } from 'prosemirror-state';
 
+import { pageChoices, type PageHost } from './page-mention.js';
 import { schema } from './schema.js';
 import { mentionKey, triggerMenu, type BlockChoice, type SlashMenu } from './slash.js';
 
@@ -66,14 +67,24 @@ export function dateChoices(dates: DateHost, query: string): BlockChoice[] {
   }));
 }
 
-/** The `@` menu's plugin. */
-export function mentionMenu(dates: DateHost, onChange: (menu: SlashMenu | null) => void): Plugin {
+/**
+ * The `@` menu's plugin: pages matching what is typed, then dates. Either host may be
+ * missing, and the menu offers what the other one can.
+ */
+export function mentionMenu(
+  hosts: { dates?: DateHost | undefined; pages?: PageHost | undefined },
+  onChange: (menu: SlashMenu | null) => void,
+): Plugin {
+  const { dates, pages } = hosts;
   return triggerMenu(
     {
       key: mentionKey,
       trigger: '@',
-      title: 'Date',
-      filter: (query) => dateChoices(dates, query),
+      title: pages === undefined ? 'Date' : 'Mention',
+      filter: (query) => [
+        ...(pages === undefined ? [] : pageChoices(pages, query)),
+        ...(dates === undefined ? [] : dateChoices(dates, query)),
+      ],
     },
     onChange,
   );

@@ -8,6 +8,7 @@
  */
 
 export { markdownFromDoc } from './markdown.js';
+export type { MarkdownContext } from './markdown.js';
 export { csvFromRows, displayValue, jsonPage, markdownPage } from './page.js';
 export type { JsonPage, PageExport } from './page.js';
 export { exportPaths, relativeLink, sanitiseName } from './paths.js';

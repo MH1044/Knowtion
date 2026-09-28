@@ -7,6 +7,7 @@ import {
   type CalloutIconRequest,
   type DatePickRequest,
   type FormatToolbar,
+  type PageHost,
   type PageEditor,
   type SlashMenu,
 } from '@knowtion/editor';
@@ -76,9 +77,12 @@ function LinkDialog({
  */
 export function PageBody({
   pageId,
+  pages,
   onCreateSubpage,
 }: {
   pageId: string;
+  /** Pages to mention with @. Held by the editor for its lifetime, so keep it stable. */
+  pages?: PageHost;
   /** Make a page inside this one and open it; offered as /page. */
   onCreateSubpage?: () => void;
 }): React.JSX.Element {
@@ -146,6 +150,7 @@ export function PageBody({
           onFormatToolbar: setFormat,
           onPickCalloutIcon: setCalloutPick,
           dates: dateHost(),
+          pages,
           onPickDate: setDatePick,
           ...(createSubpage.current === undefined
             ? {}

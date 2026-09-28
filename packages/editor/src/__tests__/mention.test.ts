@@ -21,7 +21,7 @@ function stateWith(text: string): EditorState {
   const state = EditorState.create({
     schema,
     doc: schema.node('doc', null, [paragraph]),
-    plugins: [slashMenu(() => undefined), mentionMenu(host, () => undefined)],
+    plugins: [slashMenu(() => undefined), mentionMenu({ dates: host }, () => undefined)],
   });
   return state.apply(state.tr.setSelection(TextSelection.create(state.doc, 1 + text.length)));
 }

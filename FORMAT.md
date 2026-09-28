@@ -559,6 +559,7 @@ version's vocabulary is pinned by a fixture in `packages/editor/fixtures/<versio
 | callout      | icon: emoji or none | block+                 | v1    |
 | date         | date: `YYYY-MM-DD`  | none; inline, an atom  | v1    |
 | hard_break   |                     | none; inline           | v2    |
+| page_mention | page: a page uuid   | none; inline, an atom  | v3    |
 
 | Mark      | Attributes                                 | Since |
 | --------- | ------------------------------------------ | ----- |
@@ -574,6 +575,11 @@ null, which is left out. So an attribute meaning "use the default", such as a ca
 with no icon of its own, is declared with a null default and costs nothing to store.
 What is on screen but not in this table, such as whether a toggle is open, is local
 state and never reaches the log.
+
+A `page_mention` stores only the page's uuid, never its title or icon, which are looked up
+when it is drawn. A mention whose uuid names no live page MUST be shown as a page that
+cannot be found, and MUST NOT be rewritten or removed: the page may be on a device that
+has not synced yet, exactly as with a relation's target in 10.1.
 
 ---
 

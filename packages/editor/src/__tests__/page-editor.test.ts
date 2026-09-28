@@ -63,6 +63,7 @@ describe('schema', () => {
       'heading',
       'list_item',
       'ordered_list',
+      'page_mention',
       'paragraph',
       'text',
       'todo_item',

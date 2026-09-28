@@ -84,16 +84,24 @@ function inlineText(node: PmNode): string {
 }
 
 /** The inline content of a block, as one line of Markdown. */
-function inline(node: PmNode): string {
+function inline(node: PmNode, ctx: Ctx): string {
   return childrenOf(node)
     .map((child) => {
       if (child.type === 'text') return inlineText(child);
       // A date chip is its date, which every tool reads the same way.
       if (child.type === 'date')
         return typeof child.attrs?.date === 'string' ? child.attrs.date : '';
+      if (child.type === 'page_mention') {
+        // A link to the other page's file, or its name kept as text if it is not exported.
+        const uuid = typeof child.attrs?.page === 'string' ? child.attrs.page : '';
+        const target = ctx.page?.(uuid);
+        return target === undefined
+          ? '@Unknown page'
+          : `[${escapeText(target.title || 'Untitled')}](${target.href})`;
+      }
       // CommonMark's hard line break: a backslash at the end of the line.
       if (child.type === 'hard_break') return '\\\n';
-      return inline(child);
+      return inline(child, ctx);
     })
     .join('');
 }
@@ -121,11 +129,11 @@ function fenceFor(code: string): string {
  * Blocks as Markdown, a blank line apart, except that a run of to-dos stays one tight list
  * as bullets do. Blank lines between them made a loose list, which most tools space out.
  */
-function joined(nodes: readonly PmNode[], depth: number): string {
+function joined(nodes: readonly PmNode[], depth: number, ctx: Ctx): string {
   let out = '';
   let previous: PmNode | undefined;
   for (const node of nodes) {
-    const text = block(node, depth);
+    const text = block(node, depth, ctx);
     if (text === '') continue;
     if (previous !== undefined) {
       out += previous.type === 'todo_item' && node.type === 'todo_item' ? '\n' : '\n\n';
@@ -145,38 +153,39 @@ function listBody(
   item: PmNode,
   marker: string,
   depth: number,
+  ctx: Ctx,
   rest = ' '.repeat(marker.length),
 ): string {
-  return indent(joined(childrenOf(item), depth + 1), marker, rest);
+  return indent(joined(childrenOf(item), depth + 1, ctx), marker, rest);
 }
 
-function block(node: PmNode, depth: number): string {
+function block(node: PmNode, depth: number, ctx: Ctx): string {
   if (depth > MAX_DEPTH) return '';
   switch (node.type) {
     case 'paragraph':
-      return inline(node);
+      return inline(node, ctx);
     case 'heading': {
       const level = Math.min(6, Math.max(1, Number(node.attrs?.level ?? 1)));
-      return `${'#'.repeat(level)} ${inline(node)}`;
+      return `${'#'.repeat(level)} ${inline(node, ctx)}`;
     }
     case 'bullet_list':
       return childrenOf(node)
-        .map((item) => listBody(item, '- ', depth))
+        .map((item) => listBody(item, '- ', depth, ctx))
         .join('\n');
     case 'ordered_list': {
       const start = Number(node.attrs?.order ?? 1);
       return childrenOf(node)
-        .map((item, i) => listBody(item, `${String(start + i)}. `, depth))
+        .map((item, i) => listBody(item, `${String(start + i)}. `, depth, ctx))
         .join('\n');
     }
     case 'list_item':
       // Only reached if a list item turns up outside a list, which a valid document
       // cannot produce; treat it as a bullet rather than dropping the text.
-      return listBody(node, '- ', depth);
+      return listBody(node, '- ', depth, ctx);
     case 'todo_item':
-      return listBody(node, node.attrs?.checked === true ? '- [x] ' : '- [ ] ', depth, '  ');
+      return listBody(node, node.attrs?.checked === true ? '- [x] ' : '- [ ] ', depth, ctx, '  ');
     case 'blockquote':
-      return indent(joined(childrenOf(node), depth + 1), '> ', '> ');
+      return indent(joined(childrenOf(node), depth + 1, ctx), '> ', '> ');
     case 'code_block': {
       const code = childrenOf(node)
         .map((child) => (typeof child.text === 'string' ? child.text : ''))
@@ -190,27 +199,38 @@ function block(node: PmNode, depth: number): string {
       // A quote led by its icon: Markdown has no callout, and a quote is how every
       // viewer already shows text that has been set apart.
       const icon = typeof node.attrs?.icon === 'string' ? node.attrs.icon : '💡';
-      const body = joined(childrenOf(node), depth + 1);
+      const body = joined(childrenOf(node), depth + 1, ctx);
       return indent(body === '' ? icon : `${icon} ${body}`, '> ', '> ');
     }
     case 'toggle': {
       // HTML's own disclosure element, which GitHub and most Markdown viewers render as a
       // real toggle. The blank lines let the Markdown inside it be read as Markdown.
       const [summary, ...inside] = childrenOf(node);
-      const body = joined(inside, depth + 1);
-      const head = `<details>\n<summary>${summary === undefined ? '' : inline(summary)}</summary>`;
+      const body = joined(inside, depth + 1, ctx);
+      const head = `<details>\n<summary>${summary === undefined ? '' : inline(summary, ctx)}</summary>`;
       return body === '' ? `${head}\n</details>` : `${head}\n\n${body}\n\n</details>`;
     }
     default:
       // A node type this build does not know: descend, so its text survives even though
       // its structure cannot.
-      return joined(childrenOf(node), depth + 1);
+      return joined(childrenOf(node), depth + 1, ctx);
   }
 }
 
 /** A whole document as Markdown, with no trailing blank line. */
-export function markdownFromDoc(doc: unknown): string {
+/** What the writer can ask about the rest of the export. */
+export interface MarkdownContext {
+  /**
+   * The page a mention points at, as its title and a link to its file relative to the
+   * page being written; undefined when the page is not in the export.
+   */
+  page?: (uuid: string) => { title: string; href: string } | undefined;
+}
+
+type Ctx = MarkdownContext;
+
+export function markdownFromDoc(doc: unknown, ctx: MarkdownContext = {}): string {
   const root = asNode(doc);
   if (root === undefined) return '';
-  return joined(childrenOf(root), 0);
+  return joined(childrenOf(root), 0, ctx);
 }

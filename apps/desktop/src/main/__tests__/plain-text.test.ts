@@ -30,3 +30,19 @@ describe('the text a page is searched by', () => {
     ).toBe('Dentist on 2026-10-03');
   });
 });
+
+describe('a page mention', () => {
+  it('adds nothing to the searched text, rather than a uuid', () => {
+    expect(
+      indexed([
+        {
+          type: 'paragraph',
+          content: [
+            { type: 'text', text: 'See ' },
+            { type: 'page_mention', attrs: { page: '01900000-0000-7000-8000-000000000001' } },
+          ],
+        },
+      ]),
+    ).toBe('See');
+  });
+});

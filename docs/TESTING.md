@@ -118,6 +118,11 @@ be run from the app.
 - [ ] A page with pages inside it lists them after its text, each opening with a click,
       with "Add a page inside" at the end.
 - [ ] A page moved in the sidebar leaves its old parent's list and joins its new one.
+- [ ] Typing `@` and part of a title offers matching pages above the dates; choosing one
+      puts the page, with its icon, in the line.
+- [ ] Clicking a mention opens the page.
+- [ ] Renaming a page, or changing its icon, changes every mention of it.
+- [ ] A mention of a page that has been deleted says "Page not found" and stays put.
 
 ### Page icons
 

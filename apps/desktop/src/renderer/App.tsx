@@ -20,6 +20,7 @@ import { PageBody } from './PageBody.js';
 import { PageTree, useTreeDrag } from './PageTree.js';
 import { Search } from './Search.js';
 import { Breadcrumb, ChildPages } from './PageNav.js';
+import { usePageHost } from './pageHost.js';
 import { SyncPanel } from './SyncPanel.js';
 
 /** Find a page anywhere in the tree, since the sidebar only holds the nested shape. */
@@ -465,6 +466,9 @@ function PageView({
     if (title === seenTitle) setTitle(page.title);
   }
 
+  // Pages to mention with @, from the same tree as the sidebar; not this page itself.
+  const pages = usePageHost(tree, page.uuid, onOpen);
+
   // A page inside this one, opened straight away, from /page or the list below the text.
   const addPage = () =>
     void run(async () => {
@@ -556,12 +560,12 @@ function PageView({
               the viewport, and never lost by converting. Open state is ephemera. */}
           <details className="description">
             <summary>Description</summary>
-            <PageBody pageId={page.id} />
+            <PageBody pageId={page.id} pages={pages} />
           </details>
         </>
       ) : (
         <>
-          <PageBody pageId={page.id} onCreateSubpage={addPage} />
+          <PageBody pageId={page.id} pages={pages} onCreateSubpage={addPage} />
           <ChildPages
             pages={findPage(tree, page.id)?.children ?? []}
             onOpen={onOpen}

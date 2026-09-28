@@ -19,7 +19,13 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 
 import type { DatabaseSchema, NodeId, Page, PageNode } from '@knowtion/engine';
-import { csvFromRows, exportPaths, jsonPage, markdownPage } from '@knowtion/exporters';
+import {
+  csvFromRows,
+  exportPaths,
+  jsonPage,
+  markdownPage,
+  relativeLink,
+} from '@knowtion/exporters';
 
 import type { WorkspaceHost } from './workspace-host.js';
 
@@ -87,6 +93,8 @@ export async function exportWorkspace(
   }
 
   const paths = exportPaths(tree);
+  // Every exported page by uuid, so a mention in one page links to another's file.
+  const byUuid = new Map(entries.map(({ node }) => [String(node.uuid), node]));
   const schemas = new Map<NodeId, DatabaseSchema>();
   for (const { node } of entries) {
     if (node.database !== undefined) schemas.set(node.id, node.database);
@@ -100,6 +108,14 @@ export async function exportWorkspace(
       page: node,
       body: await bodyOf(node.id),
       ...(rowOf === undefined ? {} : { rowOf }),
+      context: {
+        page: (uuid) => {
+          const target = byUuid.get(uuid);
+          const targetPath = target === undefined ? undefined : paths.get(target.id);
+          if (target === undefined || targetPath === undefined) return undefined;
+          return { title: target.title, href: relativeLink(path.file, targetPath.file) };
+        },
+      },
     });
     await writeInto(directory, path.file, markdown);
 

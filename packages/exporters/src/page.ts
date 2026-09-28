@@ -14,7 +14,7 @@
 
 import type { DatabaseSchema, Page, PropertyDef, PropertyValue } from '@knowtion/engine';
 
-import { markdownFromDoc } from './markdown.js';
+import { markdownFromDoc, type MarkdownContext } from './markdown.js';
 
 /** An instant as ISO 8601, or undefined when the page predates the field. */
 function isoOf(ms: number | undefined): string | undefined {
@@ -83,6 +83,8 @@ export interface PageExport {
   body?: unknown;
   /** The schema of the database this page is a row of, to name its properties. */
   rowOf?: DatabaseSchema;
+  /** How to write a mention of another page; see markdownFromDoc. */
+  context?: MarkdownContext;
 }
 
 /** The `---` block at the top of an exported page. */
@@ -113,7 +115,7 @@ function frontMatter({ page, rowOf }: PageExport): string {
 
 /** A page as a Markdown file: front matter, the title as a heading, then the body. */
 export function markdownPage(input: PageExport): string {
-  const body = markdownFromDoc(input.body);
+  const body = markdownFromDoc(input.body, input.context);
   // An empty title is a page nobody named; the app shows it as "Untitled", so does this.
   const heading = `# ${input.page.title.replace(/\r?\n/g, ' ') || 'Untitled'}`;
   const parts = [frontMatter(input), heading, body].filter((part) => part !== '');

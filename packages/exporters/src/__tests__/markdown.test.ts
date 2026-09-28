@@ -158,3 +158,20 @@ describe('inline text', () => {
     expect(markdownFromDoc(doc(para(text('a*b', [{ type: 'code' }]))))).toBe('`a*b`');
   });
 });
+
+describe('mentions of other pages', () => {
+  const mention = (page: string) => ({ type: 'page_mention', attrs: { page } });
+
+  it("link to the other page's file, under its current title", () => {
+    const line = para(text('See '), mention('u-1'), text(' first'));
+    const out = markdownFromDoc(doc(line), {
+      page: (uuid) =>
+        uuid === 'u-1' ? { title: 'Weekly *plan*', href: 'Wiki/Weekly%20plan.md' } : undefined,
+    });
+    expect(out).toBe('See [Weekly \\*plan\\*](Wiki/Weekly%20plan.md) first');
+  });
+
+  it('keep a mention of a page that is not in the export as text', () => {
+    expect(markdownFromDoc(doc(para(mention('gone'))))).toBe('@Unknown page');
+  });
+});

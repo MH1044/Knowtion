@@ -15,6 +15,8 @@ interface LoroNode {
   attributes?: Record<string, unknown>;
 }
 
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 /** Depth cap: a malformed or hostile document must not blow the stack. */
 const MAX_DEPTH = 100;
 
@@ -27,10 +29,11 @@ export function plainTextFromLoroJson(value: unknown, depth = 0): string {
   if (value !== null && typeof value === 'object') {
     const node = value as LoroNode & Record<string, unknown>;
     if (Array.isArray(node.children)) {
-      // A leaf such as a date chip carries its text in an attribute, not in children.
+      // A leaf such as a date chip carries its text in an attribute, not in children. A
+      // page mention carries only a uuid, which is nothing anyone searches for.
       if (node.children.length === 0 && node.attributes !== undefined) {
         return Object.values(node.attributes)
-          .filter((v): v is string => typeof v === 'string')
+          .filter((v): v is string => typeof v === 'string' && !UUID.test(v))
           .join(' ');
       }
       return plainTextFromLoroJson(node.children, depth + 1);

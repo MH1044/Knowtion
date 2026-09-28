@@ -2110,3 +2110,27 @@ select.select-chip option {
 .page:has(.child-pages) .editor-tail {
   min-height: 24px;
 }
+
+/* A mention of another page: its icon and title, underlined, opening it on a click. */
+.editor .ProseMirror .page-mention {
+  padding: 0 2px;
+  color: var(--text);
+  font-weight: 500;
+  border-bottom: 1px solid var(--muted);
+  border-radius: 3px;
+  cursor: pointer;
+}
+
+.editor .ProseMirror .page-mention:hover {
+  background: var(--border);
+}
+
+.editor .ProseMirror .page-mention.missing {
+  color: var(--muted);
+  font-weight: normal;
+  cursor: default;
+}
+
+.editor .ProseMirror .page-mention.ProseMirror-selectednode {
+  outline: 2px solid var(--accent);
+}

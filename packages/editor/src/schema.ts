@@ -200,6 +200,38 @@ const date: NodeSpec = {
   ],
 };
 
+/** A page's uuid, as a mention stores it: canonical, lowercase, hyphenated. */
+const PAGE_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
+/**
+ * A mention of another page, as `@` inserts it. It stores the page's uuid and nothing
+ * else: the title and icon shown are the page's current ones, looked up when drawn, so a
+ * renamed page never leaves a stale name behind. The uuid rather than the tree's node id,
+ * for the reason ADR-0015 gives for relations: the uuid is the page's identity anywhere,
+ * while a node id means something only inside one document's tree.
+ */
+const pageMention: NodeSpec = {
+  attrs: { page: {} },
+  inline: true,
+  group: 'inline',
+  atom: true,
+  parseDOM: [
+    {
+      tag: 'span[data-page-mention]',
+      getAttrs: (dom) => {
+        const page = dom.getAttribute('data-page-mention') ?? '';
+        return PAGE_UUID.test(page) ? { page } : false;
+      },
+    },
+  ],
+  toDOM: (node): DOMOutputSpec => [
+    'span',
+    { 'data-page-mention': String(node.attrs.page) },
+    // Outside the editor the page cannot be looked up, so a copied mention reads as this.
+    '@page',
+  ],
+};
+
 /**
  * A line break inside a block, as Shift+Enter makes: the next line of the same paragraph,
  * not a new block. Its text for search and copying is a newline.
@@ -279,6 +311,7 @@ export const schema = new Schema({
     text: { group: 'inline' },
     date,
     hard_break: hardBreak,
+    page_mention: pageMention,
   },
   marks,
 });

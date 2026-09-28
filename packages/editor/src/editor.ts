@@ -42,6 +42,7 @@ import { BINDING_KEYS, unknownContent } from './vocabulary.js';
 import { CalloutView, type CalloutIconRequest } from './callout-view.js';
 import { DateView, type DatePickRequest } from './date-view.js';
 import { mentionMenu, type DateHost } from './mention.js';
+import { PageMentionView, type PageHost } from './page-mention.js';
 import { TodoItemView } from './todo-view.js';
 import { ToggleView } from './toggle-view.js';
 
@@ -82,6 +83,11 @@ export interface PageEditorOptions {
   dates?: DateHost | undefined;
   /** Open a calendar for a date chip. Without it, a chip's date is fixed. */
   onPickDate?: DatePickRequest | undefined;
+  /**
+   * Pages to mention with `@`: which match, what each is called now, and how to open one.
+   * Without it, `@` offers dates only and a mention shows as a page it cannot find.
+   */
+  pages?: PageHost | undefined;
   /** Make a page inside this one and open it, for `/page`. Without it, no Page choice. */
   onCreateSubpage?: (() => void) | undefined;
 }
@@ -207,9 +213,10 @@ export async function mountPageEditor(options: PageEditorOptions): Promise<PageE
                 ]),
             // The @ menu draws through the same host callback: the two cannot be open at once,
             // since each opens only at the start of a line or after a space.
-            ...(options.onSlashMenu === undefined || options.dates === undefined
+            ...(options.onSlashMenu === undefined ||
+            (options.dates === undefined && options.pages === undefined)
               ? []
-              : [mentionMenu(options.dates, options.onSlashMenu)]),
+              : [mentionMenu({ dates: options.dates, pages: options.pages }, options.onSlashMenu)]),
             knowtionInputRules(),
             knowtionKeymap(undo, redo, linkCommand(options)),
             knowtionPlaceholder(),
@@ -230,6 +237,7 @@ export async function mountPageEditor(options: PageEditorOptions): Promise<PageE
         new CalloutView(node, editorView, getPos, options.onPickCalloutIcon),
       date: (node, editorView, getPos) =>
         new DateView(node, editorView, getPos, options.dates, options.onPickDate),
+      page_mention: (node) => new PageMentionView(node, options.pages),
     },
     /**
      * Follow a link on a modifier click, and only then: a plain click has to keep
