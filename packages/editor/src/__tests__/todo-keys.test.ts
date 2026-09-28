@@ -8,7 +8,9 @@ import { EditorState, TextSelection, type Command } from 'prosemirror-state';
 import type { Node } from 'prosemirror-model';
 import { describe, expect, it } from 'vitest';
 
+import { knowtionInputRules } from '../keymap.js';
 import { schema } from '../schema.js';
+import { fakeView, type } from './typing.js';
 import { joinIntoBlockAbove, liftTodo, sinkTodo, splitTodo, unwrapAtStart } from '../todo-keys.js';
 
 const p = (text: string) => schema.node('paragraph', null, text === '' ? [] : [schema.text(text)]);
@@ -188,5 +190,31 @@ describe('Backspace on the line below a to-do list', () => {
     expect(run(at(plain, p('one').nodeSize + 1), joinIntoBlockAbove)).toBeUndefined();
     const mid = schema.node('doc', null, [todo('a'), p('two')]);
     expect(run(at(mid, todo('a').nodeSize + 2), joinIntoBlockAbove)).toBeUndefined();
+  });
+});
+
+describe('typing a to-do prefix on the line below a to-do', () => {
+  // Found running docs/TESTING.md in the app: "[ ] " on a plain line just below a to-do
+  // joined the new to-do into the one above, as a line with no checkbox.
+  const typedAfter = (above: Node, text: string) => {
+    const doc = schema.node('doc', null, [above, p('')]);
+    const base = EditorState.create({ schema, doc, plugins: [knowtionInputRules()] });
+    const view = fakeView(base.apply(base.tr.setSelection(TextSelection.atEnd(base.doc))));
+    type(view, text);
+    return view.state;
+  };
+
+  it('starts a to-do of its own', () => {
+    expect(outline(typedAfter(todo('done', true), '[ ] spaced'))).toEqual([
+      '[x] done',
+      '[ ] spaced',
+    ]);
+  });
+
+  it('keeps a toggle below a toggle separate too', () => {
+    const toggle = schema.node('toggle', null, [p('first')]);
+    const state = typedAfter(toggle, '> second');
+    expect(state.doc.childCount).toBe(2);
+    expect(state.doc.child(1).type.name).toBe('toggle');
   });
 });

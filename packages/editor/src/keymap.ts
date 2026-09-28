@@ -48,8 +48,10 @@ export function knowtionInputRules(): Plugin {
       wrappingInputRule(/^\s*([-*+])\s$/, schema.nodes.bullet_list),
       wrappingInputRule(/^(\d+)\.\s$/, schema.nodes.ordered_list),
       // Notion's shortcuts rather than Markdown's: "> " is a toggle, and '" ' a quote.
-      wrappingInputRule(/^\s*>\s$/, schema.nodes.toggle),
-      wrappingInputRule(/^\s*"\s$/, schema.nodes.blockquote),
+      // A toggle or quote is a block of its own, never joined to the one just above it;
+      // lists above do join, which is how a list grows.
+      wrappingInputRule(/^\s*>\s$/, schema.nodes.toggle, null, () => false),
+      wrappingInputRule(/^\s*"\s$/, schema.nodes.blockquote, null, () => false),
       todoRule(),
       dividerRule(),
       autolinkRule(),

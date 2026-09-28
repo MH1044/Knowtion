@@ -61,7 +61,9 @@ export function dividerRule(): InputRule {
 }
 
 export function todoRule(): InputRule {
-  return wrappingInputRule(TODO_PATTERN, node('todo_item'), todoAttrs);
+  // Never joined to a to-do just above: each to-do is a block of its own, and joining put
+  // the new one inside the previous one as a line with no checkbox.
+  return wrappingInputRule(TODO_PATTERN, node('todo_item'), todoAttrs, () => false);
 }
 
 /** Turn the block at the cursor into a todo, or back into a plain paragraph. */
