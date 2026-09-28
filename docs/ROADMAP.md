@@ -28,10 +28,10 @@ Notion's block and inline types.
 | Paragraph, headings 1-3, bullet, numbered, to-do, quote, code | Have    |
 | Divider                                                       | Have    |
 | Markdown shortcuts (`# `, `- `, `[] `, `> `, triple backtick) | Have    |
-| Toggle list and toggle headings                               | Missing |
-| Callout                                                       | Missing |
+| Toggle list and toggle headings                               | Partial |
+| Callout                                                       | Have    |
 | Link to another page, and `@` mention of a page               | Missing |
-| `@` date and reminder, with a calendar picker                 | Missing |
+| `@` date and reminder, with a calendar picker                 | Partial |
 | Emoji picker in text (`:` shortcut)                           | Missing |
 | Code block language and syntax highlighting                   | Missing |
 | Keyboard shortcut reference                                   | Missing |
