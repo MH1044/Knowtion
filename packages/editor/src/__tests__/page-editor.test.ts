@@ -54,6 +54,7 @@ describe('schema', () => {
     expect(Object.keys(schema.nodes).sort()).toEqual([
       'blockquote',
       'bullet_list',
+      'callout',
       'code_block',
       'divider',
       'doc',
@@ -65,6 +66,12 @@ describe('schema', () => {
       'todo_item',
       'toggle',
     ]);
+  });
+
+  it('parses a pasted callout back into a callout, icon and all', () => {
+    const doc = parseHtml('<aside data-callout="true" data-icon="X"><p>Note</p></aside>');
+    expect(doc.firstChild?.type.name).toBe('callout');
+    expect(doc.firstChild?.attrs.icon).toBe('X');
   });
 
   it('parses a pasted details element into a toggle', () => {

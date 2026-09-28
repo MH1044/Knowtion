@@ -169,13 +169,21 @@ function block(node: P5Node): DocNode[] {
       return [{ type: 'divider' }];
 
     case 'figure': {
-      // Callouts and images both arrive as figures. A callout has no schema of its own
-      // in v0.1, so it becomes a quote — which preserves the text and the sense of it
-      // being set apart, rather than losing the block entirely.
-      const callout = byClass(node, 'callout');
+      // Callouts and images both arrive as figures. Notion marks a callout with a class,
+      // on the figure itself or on a div inside it, and puts its emoji in an .icon.
+      const callout = kind.includes('callout') ? node : byClass(node, 'callout');
       if (callout) {
+        const iconNode = byClass(callout, 'icon');
+        const icon = iconNode === undefined ? '' : textOf(iconNode).trim();
+        const text = children(callout)
+          .filter((c) => c !== iconNode && byClass(c, 'icon') === undefined)
+          .flatMap((c) => inline(c));
         return [
-          { type: 'blockquote', content: [paragraph(children(callout).flatMap((c) => inline(c)))] },
+          {
+            type: 'callout',
+            ...(icon === '' ? {} : { attrs: { icon } }),
+            content: [paragraph(text)],
+          },
         ];
       }
       const image = byTag(node, 'img');

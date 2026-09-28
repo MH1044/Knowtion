@@ -556,6 +556,7 @@ version's vocabulary is pinned by a fixture in `packages/editor/fixtures/<versio
 | code_block   |                     | plain text, no marks   | v0    |
 | divider      |                     | none                   | v0    |
 | toggle       |                     | paragraph, then blocks | v1    |
+| callout      | icon: emoji or none | block+                 | v1    |
 
 | Mark   | Attributes                                 | Since |
 | ------ | ------------------------------------------ | ----- |
@@ -565,8 +566,11 @@ version's vocabulary is pinned by a fixture in `packages/editor/fixtures/<versio
 | code   |                                            | v0    |
 | link   | href: http, https, mailto, `#` or `/` only | v0    |
 
-An attribute at its default value is not stored. What is on screen but not in this table,
-such as whether a toggle is open, is local state and never reaches the log.
+Every attribute is stored with its node, defaults included, except one whose value is
+null, which is left out. So an attribute meaning "use the default", such as a callout
+with no icon of its own, is declared with a null default and costs nothing to store.
+What is on screen but not in this table, such as whether a toggle is open, is local
+state and never reaches the log.
 
 ---
 

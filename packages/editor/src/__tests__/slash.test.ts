@@ -124,6 +124,7 @@ describe('choosing a block', () => {
     expect(top('code')).toBe('code_block');
     expect(top('divider')).toBe('divider');
     expect(top('toggle')).toBe('toggle');
+    expect(top('callout')).toBe('callout');
   });
 
   it('does not nest a toggle when its own first line asks for one again', () => {

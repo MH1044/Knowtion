@@ -118,6 +118,13 @@ export const BLOCK_CHOICES: readonly BlockChoice[] = [
     command: toToggle,
   },
   {
+    id: 'callout',
+    label: 'Callout',
+    hint: '',
+    keywords: ['note', 'tip', 'info', 'warning', 'box', 'highlight'],
+    command: wrapIn(node('callout')),
+  },
+  {
     id: 'quote',
     label: 'Quote',
     hint: '>',

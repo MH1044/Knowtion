@@ -152,6 +152,13 @@ function block(node: PmNode, depth: number): string {
     }
     case 'divider':
       return '---';
+    case 'callout': {
+      // A quote led by its icon: Markdown has no callout, and a quote is how every
+      // viewer already shows text that has been set apart.
+      const icon = typeof node.attrs?.icon === 'string' ? node.attrs.icon : '💡';
+      const body = blocks(childrenOf(node), depth + 1).join('\n\n');
+      return indent(body === '' ? icon : `${icon} ${body}`, '> ', '> ');
+    }
     case 'toggle': {
       // HTML's own disclosure element, which GitHub and most Markdown viewers render as a
       // real toggle. The blank lines let the Markdown inside it be read as Markdown.

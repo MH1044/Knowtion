@@ -130,8 +130,7 @@ describe('parseNotionPage', () => {
     expect(textOf(parsed.doc)).toContain('It is 42.');
   });
 
-  it('turns a callout into a quote rather than losing it', () => {
-    // v0.1 has no callout block. Preserving the text set apart beats dropping it.
+  it('reads a callout', () => {
     const parsed = parseNotionPage(
       page(
         'T',
@@ -139,8 +138,22 @@ describe('parseNotionPage', () => {
         '<figure class="block-color-gray_background"><div class="callout">Important</div></figure>',
       ),
     );
-    expect(types(parsed.doc)).toEqual(['blockquote']);
+    expect(types(parsed.doc)).toEqual(['callout']);
     expect(textOf(parsed.doc)).toContain('Important');
+  });
+
+  it("keeps a callout's own icon, and leaves it out of the text", () => {
+    const parsed = parseNotionPage(
+      page(
+        'T',
+        'a'.repeat(32),
+        '<figure class="block-color-gray_background callout"><div><span class="icon">ICON</span></div><div>Mind the gap</div></figure>',
+      ),
+    );
+    const [callout] = must(parsed.doc.content, 'doc content');
+    expect(callout?.type).toBe('callout');
+    expect(callout?.attrs).toEqual({ icon: 'ICON' });
+    expect(textOf(parsed.doc)).toBe('Mind the gap');
   });
 
   it('leaves a visible placeholder for an image instead of a silent hole', () => {

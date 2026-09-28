@@ -132,6 +132,34 @@ const toggle: NodeSpec = {
   toDOM: (): DOMOutputSpec => ['div', { 'data-toggle': 'true' }, 0],
 };
 
+/**
+ * A callout: blocks set apart in a box with an icon. A missing icon means the default
+ * one, so the common case stores nothing beyond the node itself.
+ */
+const callout: NodeSpec = {
+  attrs: { icon: { default: null } },
+  content: 'block+',
+  group: 'block',
+  defining: true,
+  parseDOM: [
+    {
+      tag: 'aside[data-callout]',
+      getAttrs: (node) => {
+        const icon = node.getAttribute('data-icon');
+        // An empty icon is no icon, which shows the default.
+        return { icon: icon === null || icon === '' ? null : icon };
+      },
+    },
+  ],
+  toDOM: (node): DOMOutputSpec => [
+    'aside',
+    typeof node.attrs.icon === 'string'
+      ? { 'data-callout': 'true', 'data-icon': node.attrs.icon }
+      : { 'data-callout': 'true' },
+    0,
+  ],
+};
+
 const divider: NodeSpec = {
   group: 'block',
   parseDOM: [{ tag: 'hr' }],
@@ -193,6 +221,7 @@ export const schema = new Schema({
     list_item: listItem,
     todo_item: todoItem,
     toggle,
+    callout,
     blockquote,
     code_block: codeBlock,
     divider,

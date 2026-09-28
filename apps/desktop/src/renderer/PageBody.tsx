@@ -4,6 +4,7 @@ import {
   isAllowedHref,
   mountPageEditor,
   type BlockSpot,
+  type CalloutIconRequest,
   type FormatToolbar,
   type PageEditor,
   type SlashMenu,
@@ -13,6 +14,7 @@ import { api } from './api.js';
 import { BlockHandle } from './BlockHandle.js';
 import { BlockMenu } from './BlockMenu.js';
 import { FormatBar } from './FormatBar.js';
+import { FloatingIconMenu } from './IconPicker.js';
 
 /**
  * The link prompt.
@@ -82,6 +84,7 @@ export function PageBody({ pageId }: { pageId: string }): React.JSX.Element {
   const [spot, setSpot] = useState<BlockSpot>();
   // What this build could not read in the page, when it opened read-only (ADR-0017).
   const [unknown, setUnknown] = useState<readonly string[]>([]);
+  const [calloutPick, setCalloutPick] = useState<Parameters<CalloutIconRequest>[0]>();
 
   useEffect(() => {
     let editor: PageEditor | undefined;
@@ -127,6 +130,7 @@ export function PageBody({ pageId }: { pageId: string }): React.JSX.Element {
           },
           onSlashMenu: setSlash,
           onFormatToolbar: setFormat,
+          onPickCalloutIcon: setCalloutPick,
         });
         // mountPageEditor awaits its own dynamic import of the Loro binding, so the
         // component may have been torn down (and its cleanup already run, before
@@ -209,6 +213,20 @@ export function PageBody({ pageId }: { pageId: string }): React.JSX.Element {
         )}
       </div>
       {slash !== null && <BlockMenu menu={slash} />}
+      {calloutPick !== undefined && (
+        <FloatingIconMenu
+          left={calloutPick.left}
+          top={calloutPick.top}
+          icon={calloutPick.icon ?? undefined}
+          onChoose={(icon) => {
+            calloutPick.apply(icon ?? null);
+            setCalloutPick(undefined);
+          }}
+          onClose={() => {
+            setCalloutPick(undefined);
+          }}
+        />
+      )}
       {format !== null && linkApply === undefined && <FormatBar bar={format} />}
     </>
   );

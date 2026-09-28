@@ -38,6 +38,7 @@ import { schema } from './schema.js';
 import { slashMenu, type BlockChoice, type SlashMenu } from './slash.js';
 import { formatToolbar, type FormatToolbar } from './toolbar.js';
 import { BINDING_KEYS, unknownContent } from './vocabulary.js';
+import { CalloutView, type CalloutIconRequest } from './callout-view.js';
 import { TodoItemView } from './todo-view.js';
 import { ToggleView } from './toggle-view.js';
 
@@ -69,6 +70,8 @@ export interface PageEditorOptions {
   onSlashMenu?: ((menu: SlashMenu | null) => void) | undefined;
   /** Draw the toolbar over selected text, or hide it on null. */
   onFormatToolbar?: ((toolbar: FormatToolbar | null) => void) | undefined;
+  /** Offer a choice of icon for a callout. Without it, a callout's icon is fixed. */
+  onPickCalloutIcon?: CalloutIconRequest | undefined;
 }
 
 /** A block under the pointer, for placing its handle. */
@@ -195,6 +198,8 @@ export async function mountPageEditor(options: PageEditorOptions): Promise<PageE
     nodeViews: {
       todo_item: (node, editorView, getPos) => new TodoItemView(node, editorView, getPos),
       toggle: (node) => new ToggleView(node),
+      callout: (node, editorView, getPos) =>
+        new CalloutView(node, editorView, getPos, options.onPickCalloutIcon),
     },
     /**
      * Follow a link on a modifier click, and only then: a plain click has to keep

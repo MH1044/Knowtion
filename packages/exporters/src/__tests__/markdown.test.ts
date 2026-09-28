@@ -81,8 +81,18 @@ describe('blocks', () => {
     );
   });
 
+  it('writes a callout as a quote led by its icon', () => {
+    const callout = (attrs?: Record<string, unknown>) => ({
+      type: 'callout',
+      ...(attrs === undefined ? {} : { attrs }),
+      content: [para(text('Mind the gap'))],
+    });
+    expect(markdownFromDoc(doc(callout({ icon: 'ICON' })))).toBe('> ICON Mind the gap');
+    expect(markdownFromDoc(doc(callout()))).toMatch(/^> \S+ Mind the gap$/u);
+  });
+
   it('keeps going past a block type it does not know', () => {
-    const future = doc({ type: 'callout', content: [para(text('still here'))] });
+    const future = doc({ type: 'hologram', content: [para(text('still here'))] });
     expect(markdownFromDoc(future)).toBe('still here');
   });
 

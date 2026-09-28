@@ -130,7 +130,8 @@ export function turnBlockInto(
   } else if (
     block.type === node('todo_item') ||
     block.type === node('blockquote') ||
-    block.type === node('toggle')
+    block.type === node('toggle') ||
+    block.type === node('callout')
   ) {
     const tr = view.state.tr.replaceWith(pos, pos + block.nodeSize, block.content);
     view.dispatch(tr.setSelection(TextSelection.near(tr.doc.resolve(pos + 1))));

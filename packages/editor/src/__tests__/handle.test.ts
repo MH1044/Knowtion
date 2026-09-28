@@ -144,6 +144,12 @@ describe('the block menu', () => {
     expect(shape(b.state)).toEqual(['heading:said']);
   });
 
+  it('turns a callout back into its line', () => {
+    const view = fakeView(stateOf(schema.node('callout', null, [p('note')])));
+    turnBlockInto(view, 0, choice('text'));
+    expect(shape(view.state)).toEqual(['paragraph:note']);
+  });
+
   it('turns a paragraph into a numbered list', () => {
     const view = fakeView(stateOf(p('first')));
     view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, 1)));
