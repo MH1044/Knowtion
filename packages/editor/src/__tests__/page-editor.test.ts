@@ -56,6 +56,7 @@ describe('schema', () => {
       'bullet_list',
       'callout',
       'code_block',
+      'date',
       'divider',
       'doc',
       'heading',
@@ -72,6 +73,17 @@ describe('schema', () => {
     const doc = parseHtml('<aside data-callout="true" data-icon="X"><p>Note</p></aside>');
     expect(doc.firstChild?.type.name).toBe('callout');
     expect(doc.firstChild?.attrs.icon).toBe('X');
+  });
+
+  it('parses a pasted time element into a date, and only a real one', () => {
+    const doc = parseHtml(
+      '<p>On <time datetime="2026-10-03">Oct 3</time> and <time datetime="2026-02-31">x</time></p>',
+    );
+    const dates: string[] = [];
+    doc.descendants((node) => {
+      if (node.type.name === 'date') dates.push(String(node.attrs.date));
+    });
+    expect(dates).toEqual(['2026-10-03']);
   });
 
   it('parses a pasted details element into a toggle', () => {

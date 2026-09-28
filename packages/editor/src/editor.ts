@@ -39,6 +39,8 @@ import { slashMenu, type BlockChoice, type SlashMenu } from './slash.js';
 import { formatToolbar, type FormatToolbar } from './toolbar.js';
 import { BINDING_KEYS, unknownContent } from './vocabulary.js';
 import { CalloutView, type CalloutIconRequest } from './callout-view.js';
+import { DateView, type DatePickRequest } from './date-view.js';
+import { mentionMenu, type DateHost } from './mention.js';
 import { TodoItemView } from './todo-view.js';
 import { ToggleView } from './toggle-view.js';
 
@@ -72,6 +74,13 @@ export interface PageEditorOptions {
   onFormatToolbar?: ((toolbar: FormatToolbar | null) => void) | undefined;
   /** Offer a choice of icon for a callout. Without it, a callout's icon is fixed. */
   onPickCalloutIcon?: CalloutIconRequest | undefined;
+  /**
+   * Today, and how dates read. With it, `@` opens the date menu and chips read "Today" or
+   * "Oct 3"; without it, `@` is a character and a chip shows its YYYY-MM-DD.
+   */
+  dates?: DateHost | undefined;
+  /** Open a calendar for a date chip. Without it, a chip's date is fixed. */
+  onPickDate?: DatePickRequest | undefined;
 }
 
 /** A block under the pointer, for placing its handle. */
@@ -182,6 +191,11 @@ export async function mountPageEditor(options: PageEditorOptions): Promise<PageE
             /* eslint-enable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment */
             // Before the keymap, so an open menu gets Enter and the arrows first.
             ...(options.onSlashMenu === undefined ? [] : [slashMenu(options.onSlashMenu)]),
+            // The @ menu draws through the same host callback: the two cannot be open at once,
+            // since each opens only at the start of a line or after a space.
+            ...(options.onSlashMenu === undefined || options.dates === undefined
+              ? []
+              : [mentionMenu(options.dates, options.onSlashMenu)]),
             knowtionInputRules(),
             knowtionKeymap(undo, redo, linkCommand(options)),
             knowtionPlaceholder(),
@@ -200,6 +214,8 @@ export async function mountPageEditor(options: PageEditorOptions): Promise<PageE
       toggle: (node) => new ToggleView(node),
       callout: (node, editorView, getPos) =>
         new CalloutView(node, editorView, getPos, options.onPickCalloutIcon),
+      date: (node, editorView, getPos) =>
+        new DateView(node, editorView, getPos, options.dates, options.onPickDate),
     },
     /**
      * Follow a link on a modifier click, and only then: a plain click has to keep

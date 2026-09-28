@@ -12,6 +12,7 @@
 
 interface LoroNode {
   children?: unknown[];
+  attributes?: Record<string, unknown>;
 }
 
 /** Depth cap: a malformed or hostile document must not blow the stack. */
@@ -26,6 +27,12 @@ export function plainTextFromLoroJson(value: unknown, depth = 0): string {
   if (value !== null && typeof value === 'object') {
     const node = value as LoroNode & Record<string, unknown>;
     if (Array.isArray(node.children)) {
+      // A leaf such as a date chip carries its text in an attribute, not in children.
+      if (node.children.length === 0 && node.attributes !== undefined) {
+        return Object.values(node.attributes)
+          .filter((v): v is string => typeof v === 'string')
+          .join(' ');
+      }
       return plainTextFromLoroJson(node.children, depth + 1);
     }
     // The root wrapper, or any container we do not recognise: descend into its values

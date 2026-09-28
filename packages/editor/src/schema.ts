@@ -1,10 +1,10 @@
 /**
  * The Knowtion document schema.
  *
- * Deliberately small for v0.1: paragraph, three heading levels, bullet and ordered
- * lists, todo items, quote, code block and a divider. No tables, no column layouts and
- * no embeds — those are the parts that make a block editor expensive, and shipping them
- * badly is worse than not shipping them.
+ * FORMAT.md section 10.2 lists every node, attribute and mark here with the version that
+ * added it, and ADR-0017 is why that list only ever grows: a build that meets something
+ * not declared here opens the page read-only. Adding a type means adding a row there and
+ * a fixture under packages/editor/fixtures.
  *
  * The schema is ours, not the editor library's. That is the real boundary: ProseMirror
  * supplies parsing, selection and clipboard machinery, while the set of block types a
@@ -15,6 +15,7 @@
  * is the thing Notion clones visibly fail at (ADR-0003).
  */
 
+import { isCalendarDate } from '@knowtion/engine/properties';
 import { Schema, type DOMOutputSpec, type NodeSpec, type MarkSpec } from 'prosemirror-model';
 
 const paragraph: NodeSpec = {
@@ -166,6 +167,36 @@ const divider: NodeSpec = {
   toDOM: (): DOMOutputSpec => ['hr'],
 };
 
+/**
+ * A date inside a line, as `@` inserts it: a zoneless calendar date, `YYYY-MM-DD`, the
+ * same kind of value as a database's date property (FORMAT.md section 10).
+ *
+ * An atom, so the caret steps over it and Backspace takes it whole. Its text for search
+ * and copying is the date itself; how it reads on screen ("Tomorrow", "Oct 3") is the
+ * host's to decide, because that depends on today and on the reader's language.
+ */
+const date: NodeSpec = {
+  attrs: { date: {} },
+  inline: true,
+  group: 'inline',
+  atom: true,
+  leafText: (node) => String(node.attrs.date),
+  parseDOM: [
+    {
+      tag: 'time[datetime]',
+      getAttrs: (dom) => {
+        const value = dom.getAttribute('datetime') ?? '';
+        return isCalendarDate(value) ? { date: value } : false;
+      },
+    },
+  ],
+  toDOM: (node): DOMOutputSpec => [
+    'time',
+    { datetime: String(node.attrs.date) },
+    String(node.attrs.date),
+  ],
+};
+
 const marks: Record<string, MarkSpec> = {
   strong: {
     parseDOM: [
@@ -226,6 +257,7 @@ export const schema = new Schema({
     code_block: codeBlock,
     divider,
     text: { group: 'inline' },
+    date,
   },
   marks,
 });

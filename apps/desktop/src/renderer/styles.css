@@ -1837,3 +1837,106 @@ button.danger {
 .editor .ProseMirror .callout-content > :last-child {
   margin-bottom: 0;
 }
+
+/* A date in a line. */
+.editor .ProseMirror .date-chip {
+  padding: 1px 6px;
+  color: var(--accent);
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.editor .ProseMirror .date-chip:hover {
+  border-color: var(--accent);
+}
+
+.editor .ProseMirror .date-chip.ProseMirror-selectednode {
+  outline: 2px solid var(--accent);
+}
+
+/* The calendar a date chip opens. */
+.calendar {
+  position: fixed;
+  z-index: 60;
+  width: 252px;
+  padding: 10px;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgb(0 0 0 / 45%);
+}
+
+.calendar-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+  font-weight: 600;
+}
+
+.calendar button {
+  color: var(--text);
+  background: none;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+.calendar button:hover {
+  background: var(--border);
+}
+
+.calendar-head button {
+  width: 28px;
+  height: 28px;
+  font-size: 18px;
+}
+
+.calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 2px;
+}
+
+.calendar-weekday {
+  padding: 4px 0;
+  color: var(--muted);
+  font-size: 11px;
+  text-align: center;
+}
+
+.calendar-day {
+  min-width: 0;
+  height: 30px;
+  padding: 0;
+  font-size: 13px;
+}
+
+.calendar-day.outside {
+  color: var(--muted);
+  opacity: 0.6;
+}
+
+.calendar-day.today {
+  color: var(--accent);
+  font-weight: 700;
+}
+
+.calendar .calendar-day.chosen {
+  color: #fff;
+  background: var(--accent);
+}
+
+.calendar-foot {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 8px;
+}
+
+.calendar-foot button {
+  padding: 4px 10px;
+  color: var(--accent);
+}

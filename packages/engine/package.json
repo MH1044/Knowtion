@@ -15,6 +15,10 @@
     "./query-cases": {
       "types": "./dist/query-cases.d.ts",
       "default": "./dist/query-cases.js"
+    },
+    "./properties": {
+      "types": "./dist/properties.d.ts",
+      "default": "./dist/properties.js"
     }
   },
   "scripts": {

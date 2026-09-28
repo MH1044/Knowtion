@@ -5,6 +5,7 @@ import {
   mountPageEditor,
   type BlockSpot,
   type CalloutIconRequest,
+  type DatePickRequest,
   type FormatToolbar,
   type PageEditor,
   type SlashMenu,
@@ -13,6 +14,8 @@ import {
 import { api } from './api.js';
 import { BlockHandle } from './BlockHandle.js';
 import { BlockMenu } from './BlockMenu.js';
+import { Calendar } from './Calendar.js';
+import { dateHost } from './dates.js';
 import { FormatBar } from './FormatBar.js';
 import { FloatingIconMenu } from './IconPicker.js';
 
@@ -85,6 +88,7 @@ export function PageBody({ pageId }: { pageId: string }): React.JSX.Element {
   // What this build could not read in the page, when it opened read-only (ADR-0017).
   const [unknown, setUnknown] = useState<readonly string[]>([]);
   const [calloutPick, setCalloutPick] = useState<Parameters<CalloutIconRequest>[0]>();
+  const [datePick, setDatePick] = useState<Parameters<DatePickRequest>[0]>();
 
   useEffect(() => {
     let editor: PageEditor | undefined;
@@ -131,6 +135,8 @@ export function PageBody({ pageId }: { pageId: string }): React.JSX.Element {
           onSlashMenu: setSlash,
           onFormatToolbar: setFormat,
           onPickCalloutIcon: setCalloutPick,
+          dates: dateHost(),
+          onPickDate: setDatePick,
         });
         // mountPageEditor awaits its own dynamic import of the Loro binding, so the
         // component may have been torn down (and its cleanup already run, before
@@ -213,6 +219,20 @@ export function PageBody({ pageId }: { pageId: string }): React.JSX.Element {
         )}
       </div>
       {slash !== null && <BlockMenu menu={slash} />}
+      {datePick !== undefined && (
+        <Calendar
+          left={datePick.left}
+          top={datePick.top}
+          value={datePick.date}
+          onPick={(date) => {
+            datePick.apply(date);
+            setDatePick(undefined);
+          }}
+          onClose={() => {
+            setDatePick(undefined);
+          }}
+        />
+      )}
       {calloutPick !== undefined && (
         <FloatingIconMenu
           left={calloutPick.left}

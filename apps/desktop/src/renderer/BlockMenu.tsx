@@ -47,14 +47,14 @@ export function BlockMenu({ menu }: { menu: SlashMenu }): React.JSX.Element {
       ref={list}
       className="block-menu"
       role="listbox"
-      aria-label="Insert a block"
+      aria-label={menu.title}
       style={{ left: place.left, top: place.top, maxHeight: MENU_MAX_HEIGHT }}
       // Keeping focus in the editor is what keeps the caret, and the query, alive.
       onMouseDown={(e) => {
         e.preventDefault();
       }}
     >
-      <div className="block-menu-heading">Blocks</div>
+      <div className="block-menu-heading">{menu.title}</div>
       {menu.choices.map((choice, index) => (
         <button
           key={choice.id}

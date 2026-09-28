@@ -23,4 +23,6 @@ export {
 export { mountPageEditor } from './editor.js';
 export { DEFAULT_CALLOUT_ICON } from './callout-view.js';
 export type { CalloutIconRequest } from './callout-view.js';
+export type { DatePickRequest } from './date-view.js';
+export type { DateHost } from './mention.js';
 export type { BlockSpot, PageEditor, PageEditorOptions } from './editor.js';

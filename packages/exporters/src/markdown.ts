@@ -84,7 +84,13 @@ function inlineText(node: PmNode): string {
 /** The inline content of a block, as one line of Markdown. */
 function inline(node: PmNode): string {
   return childrenOf(node)
-    .map((child) => (child.type === 'text' ? inlineText(child) : inline(child)))
+    .map((child) => {
+      if (child.type === 'text') return inlineText(child);
+      // A date chip is its date, which every tool reads the same way.
+      if (child.type === 'date')
+        return typeof child.attrs?.date === 'string' ? child.attrs.date : '';
+      return inline(child);
+    })
     .join('');
 }
 

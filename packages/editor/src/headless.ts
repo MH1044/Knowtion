@@ -76,5 +76,12 @@ export function jsonFromLoroDoc(doc: LoroDoc): unknown {
 /** Plain text of a ProseMirror document JSON, for the search index. */
 export function plainTextFromJson(json: unknown): string {
   const node = schema.nodeFromJSON(json);
-  return node.textBetween(0, node.content.size, ' ', ' ');
+  // A leaf's own text where it has one (a date chip is its date), a space otherwise, so a
+  // divider does not glue the words either side of it together.
+  return node.textBetween(
+    0,
+    node.content.size,
+    ' ',
+    (leaf) => leaf.type.spec.leafText?.(leaf) ?? ' ',
+  );
 }

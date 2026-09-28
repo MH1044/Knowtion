@@ -81,6 +81,11 @@ describe('blocks', () => {
     );
   });
 
+  it('writes a date chip as its date', () => {
+    const line = para(text('Due '), { type: 'date', attrs: { date: '2026-10-03' } }, text(' ok'));
+    expect(markdownFromDoc(doc(line))).toBe('Due 2026-10-03 ok');
+  });
+
   it('writes a callout as a quote led by its icon', () => {
     const callout = (attrs?: Record<string, unknown>) => ({
       type: 'callout',

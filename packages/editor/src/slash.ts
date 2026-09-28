@@ -60,6 +60,19 @@ const toDivider: Command = (state, dispatch) => {
   return insertDivider(state, dispatch);
 };
 
+/** The `@` menu's key. Here rather than in mention.ts, so the `/` menu can open it. */
+export const mentionKey = new PluginKey<SlashState | null>('mention');
+
+/** Type an `@` at the caret and open the date menu, as choosing "Date" from `/` does. */
+export const openDateMenu: Command = (state, dispatch) => {
+  if (dispatch) {
+    const { from, to } = state.selection;
+    const meta: SlashMeta = { type: 'open', from };
+    dispatch(state.tr.insertText('@', from, to).setMeta(mentionKey, meta));
+  }
+  return true;
+};
+
 export const BLOCK_CHOICES: readonly BlockChoice[] = [
   {
     id: 'text',
@@ -145,6 +158,13 @@ export const BLOCK_CHOICES: readonly BlockChoice[] = [
     keywords: ['rule', 'line', 'separator', 'hr'],
     command: toDivider,
   },
+  {
+    id: 'date',
+    label: 'Date',
+    hint: '@',
+    keywords: ['today', 'tomorrow', 'calendar', 'day', 'when', 'due'],
+    command: openDateMenu,
+  },
 ];
 
 /**
@@ -164,7 +184,7 @@ export function filterChoices(query: string): BlockChoice[] {
 }
 
 export interface SlashState {
-  /** Where the slash itself sits. The query runs from just after it to the caret. */
+  /** Where the trigger character sits. The query runs from just after it to the caret. */
   from: number;
   query: string;
   selected: number;
@@ -173,51 +193,110 @@ export interface SlashState {
 type SlashMeta =
   { type: 'open'; from: number } | { type: 'close' } | { type: 'select'; index: number };
 
+/**
+ * One menu opened by typing a character: `/` for blocks, `@` for dates. Everything about
+ * how such a menu opens, narrows and closes is shared; only the character and the
+ * choices differ.
+ */
+export interface TriggerMenuConfig {
+  key: PluginKey<SlashState | null>;
+  trigger: string;
+  /** Shown above the choices. */
+  title: string;
+  filter: (query: string) => BlockChoice[];
+}
+
 export const slashKey = new PluginKey<SlashState | null>('slash');
 
+const SLASH: TriggerMenuConfig = {
+  key: slashKey,
+  trigger: '/',
+  title: 'Blocks',
+  filter: filterChoices,
+};
+
 /**
- * The transaction that types a slash and opens the menu, or null when a slash here is
- * just a character.
+ * The transaction that types the trigger and opens its menu, or null when the character
+ * here is just a character.
  *
- * Only at the start of a line or after a space, the way Notion does it, so "and/or" and
- * a pasted path never pop a menu up. Never inside code, where a slash is always code.
+ * Only at the start of a line or after a space, the way Notion does it, so "and/or", a
+ * pasted path or an email address never pop a menu up. Never inside code.
  */
-export function openSlash(state: EditorState, from: number, to: number): Transaction | null {
+export function openTrigger(
+  config: TriggerMenuConfig,
+  state: EditorState,
+  from: number,
+  to: number,
+): Transaction | null {
   const $from = state.doc.resolve(from);
   if (!$from.parent.isTextblock || $from.parent.type.spec.code === true) return null;
   const before = $from.parent.textBetween(0, $from.parentOffset);
   if (before !== '' && !/\s$/.test(before)) return null;
-  return typeSlash(state.tr, from, to);
+  return typeTrigger(config, state.tr, from, to);
 }
 
-/** Type a slash into `tr` at `from` and open the menu there, as one step with the rest. */
+/** Type the trigger into `tr` at `from` and open its menu there, as one step with the rest. */
+export function typeTrigger(
+  config: TriggerMenuConfig,
+  tr: Transaction,
+  from: number,
+  to = from,
+): Transaction {
+  return tr
+    .insertText(config.trigger, from, to)
+    .setMeta(config.key, { type: 'open', from } satisfies SlashMeta);
+}
+
+export function openSlash(state: EditorState, from: number, to: number): Transaction | null {
+  return openTrigger(SLASH, state, from, to);
+}
+
 export function typeSlash(tr: Transaction, from: number, to = from): Transaction {
-  return tr.insertText('/', from, to).setMeta(slashKey, { type: 'open', from } satisfies SlashMeta);
+  return typeTrigger(SLASH, tr, from, to);
 }
 
 function nextState(
+  config: TriggerMenuConfig,
   tr: Transaction,
   prev: SlashState | null,
   state: EditorState,
 ): SlashState | null {
-  const meta = tr.getMeta(slashKey) as SlashMeta | undefined;
+  const meta = tr.getMeta(config.key) as SlashMeta | undefined;
   if (meta?.type === 'open') return { from: meta.from, query: '', selected: 0 };
   if (meta?.type === 'close' || prev === null) return null;
   if (meta?.type === 'select') return { ...prev, selected: meta.index };
 
-  // Associating forward keeps the position on the slash when text is typed just before it.
+  // Associating forward keeps the position on the trigger when text is typed just before it.
   const from = tr.mapping.map(prev.from, 1);
   const { selection } = state;
   if (!selection.empty) return null;
-  // The caret has to sit after the slash, in the same block.
+  // The caret has to sit after the trigger, in the same block.
   if (from < selection.$from.start() || from >= selection.from) return null;
   const typed = state.doc.textBetween(from, selection.from);
-  if (!typed.startsWith('/')) return null;
-  const query = typed.slice(1);
-  // Nothing matches: the person is writing a slash, not asking for a menu.
-  if (filterChoices(query).length === 0) return null;
+  if (!typed.startsWith(config.trigger)) return null;
+  const query = typed.slice(config.trigger.length);
+  // Nothing matches: the person is writing the character, not asking for a menu.
+  if (config.filter(query).length === 0) return null;
   const selected = query === prev.query ? prev.selected : 0;
   return { from, query, selected };
+}
+
+/** Delete the typed trigger and query, then run the chosen entry there. */
+export function chooseFrom(
+  config: TriggerMenuConfig,
+  view: Pick<EditorView, 'state' | 'dispatch'>,
+  choice: BlockChoice,
+): void {
+  const menu = config.key.getState(view.state);
+  if (menu === null || menu === undefined) return;
+  view.dispatch(
+    view.state.tr
+      .delete(menu.from, view.state.selection.from)
+      .setMeta(config.key, { type: 'close' } satisfies SlashMeta),
+  );
+  choice.command(view.state, (tr) => {
+    view.dispatch(tr);
+  });
 }
 
 /** Delete the typed `/query`, then turn the block into the chosen one. */
@@ -225,23 +304,15 @@ export function chooseBlock(
   view: Pick<EditorView, 'state' | 'dispatch'>,
   choice: BlockChoice,
 ): void {
-  const menu = slashKey.getState(view.state);
-  if (menu === null || menu === undefined) return;
-  view.dispatch(
-    view.state.tr
-      .delete(menu.from, view.state.selection.from)
-      .setMeta(slashKey, { type: 'close' } satisfies SlashMeta),
-  );
-  choice.command(view.state, (tr) => {
-    view.dispatch(tr);
-  });
+  chooseFrom(SLASH, view, choice);
 }
 
-/** What the host needs to draw the menu. */
+/** What the host needs to draw a menu. */
 export interface SlashMenu {
+  title: string;
   choices: BlockChoice[];
   selected: number;
-  /** Viewport coordinates of the bottom-left of the slash. */
+  /** Viewport coordinates of the bottom-left of the trigger character. */
   left: number;
   top: number;
   choose: (choice: BlockChoice) => void;
@@ -249,31 +320,37 @@ export interface SlashMenu {
 }
 
 /**
- * The plugin. `onChange` receives the menu to draw, or null to hide it; it is called only
- * when something the host shows has changed.
+ * A trigger menu's plugin. `onChange` receives the menu to draw, or null to hide it; it is
+ * called only when something the host shows has changed.
  */
-export function slashMenu(onChange: (menu: SlashMenu | null) => void): Plugin {
+export function triggerMenu(
+  config: TriggerMenuConfig,
+  onChange: (menu: SlashMenu | null) => void,
+): Plugin {
+  const close = (view: EditorView): void => {
+    view.dispatch(view.state.tr.setMeta(config.key, { type: 'close' } satisfies SlashMeta));
+  };
   return new Plugin<SlashState | null>({
-    key: slashKey,
+    key: config.key,
     state: {
       init: () => null,
-      apply: (tr, prev, _old, state) => nextState(tr, prev, state),
+      apply: (tr, prev, _old, state) => nextState(config, tr, prev, state),
     },
     props: {
       handleTextInput(view, from, to, text) {
-        if (text !== '/') return false;
-        const tr = openSlash(view.state, from, to);
+        if (text !== config.trigger) return false;
+        const tr = openTrigger(config, view.state, from, to);
         if (tr === null) return false;
         view.dispatch(tr);
         return true;
       },
       handleKeyDown(view, event) {
-        const menu = slashKey.getState(view.state);
+        const menu = config.key.getState(view.state);
         if (menu === null || menu === undefined) return false;
-        const choices = filterChoices(menu.query);
+        const choices = config.filter(menu.query);
         const select = (index: number): void => {
           const meta: SlashMeta = { type: 'select', index };
-          view.dispatch(view.state.tr.setMeta(slashKey, meta));
+          view.dispatch(view.state.tr.setMeta(config.key, meta));
         };
         switch (event.key) {
           case 'ArrowDown':
@@ -285,11 +362,11 @@ export function slashMenu(onChange: (menu: SlashMenu | null) => void): Plugin {
           case 'Enter':
           case 'Tab': {
             const choice = choices[menu.selected];
-            if (choice !== undefined) chooseBlock(view, choice);
+            if (choice !== undefined) chooseFrom(config, view, choice);
             return true;
           }
           case 'Escape':
-            view.dispatch(view.state.tr.setMeta(slashKey, { type: 'close' } satisfies SlashMeta));
+            close(view);
             return true;
           default:
             return false;
@@ -298,8 +375,8 @@ export function slashMenu(onChange: (menu: SlashMenu | null) => void): Plugin {
       handleDOMEvents: {
         // Clicking away leaves the caret where it was, so the menu would float on.
         blur(view) {
-          if (slashKey.getState(view.state) == null) return false;
-          view.dispatch(view.state.tr.setMeta(slashKey, { type: 'close' } satisfies SlashMeta));
+          if (config.key.getState(view.state) == null) return false;
+          close(view);
           return false;
         },
       },
@@ -308,7 +385,7 @@ export function slashMenu(onChange: (menu: SlashMenu | null) => void): Plugin {
       let shown: SlashState | null = null;
       return {
         update(view) {
-          const menu = slashKey.getState(view.state) ?? null;
+          const menu = config.key.getState(view.state) ?? null;
           if (menu === shown) return;
           shown = menu;
           if (menu === null) {
@@ -317,16 +394,17 @@ export function slashMenu(onChange: (menu: SlashMenu | null) => void): Plugin {
           }
           const coords = view.coordsAtPos(menu.from);
           onChange({
-            choices: filterChoices(menu.query),
+            title: config.title,
+            choices: config.filter(menu.query),
             selected: menu.selected,
             left: coords.left,
             top: coords.bottom,
             choose: (choice) => {
-              chooseBlock(view, choice);
+              chooseFrom(config, view, choice);
               view.focus();
             },
             close: () => {
-              view.dispatch(view.state.tr.setMeta(slashKey, { type: 'close' } satisfies SlashMeta));
+              close(view);
             },
           });
         },
@@ -336,4 +414,9 @@ export function slashMenu(onChange: (menu: SlashMenu | null) => void): Plugin {
       };
     },
   });
+}
+
+/** The `/` menu. */
+export function slashMenu(onChange: (menu: SlashMenu | null) => void): Plugin {
+  return triggerMenu(SLASH, onChange);
 }
