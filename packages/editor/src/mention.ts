@@ -24,13 +24,15 @@ export interface DateHost {
   describe: (date: CalendarDate) => string;
 }
 
-/** Put a date chip at the caret, followed by a space so typing carries on after it. */
+/**
+ * Put a date chip at the caret, with the caret after it. No space is added: people type
+ * one by reflex after choosing, and an added one made that a double space.
+ */
 export function insertDate(date: CalendarDate): Command {
   return (state, dispatch) => {
     const type = schema.nodes.date;
     if (dispatch) {
-      const tr = state.tr.replaceSelectionWith(type.create({ date }), false);
-      dispatch(tr.insertText(' ').scrollIntoView());
+      dispatch(state.tr.replaceSelectionWith(type.create({ date }), false).scrollIntoView());
     }
     return true;
   };

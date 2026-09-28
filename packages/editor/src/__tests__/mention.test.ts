@@ -53,7 +53,7 @@ describe('the dates on offer', () => {
 });
 
 describe('putting a date in a line', () => {
-  it('replaces the typed @query with a date chip and a space', () => {
+  it('replaces the typed @query with a date chip, adding no space of its own', () => {
     const typed = openTrigger(config, stateWith('Due '), 5, 5);
     if (typed === null) throw new Error('expected @ to open the menu after a space');
     let state = stateWith('Due ').apply(typed);
@@ -73,7 +73,7 @@ describe('putting a date in a line', () => {
     expect(paragraph?.child(1).attrs.date).toBe('2026-09-29');
     expect(
       paragraph?.textBetween(0, paragraph.content.size, '', (n) => `[${String(n.attrs.date)}]`),
-    ).toBe('Due [2026-09-29] ');
+    ).toBe('Due [2026-09-29]');
   });
 
   it('is searchable and copyable as the date itself', () => {
