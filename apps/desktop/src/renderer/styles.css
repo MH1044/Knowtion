@@ -1632,3 +1632,80 @@ button.danger {
 .format-turn-into-menu button {
   text-align: left;
 }
+
+/* The frame reaches into the gutter so the handle beside a block stays reachable. */
+.editor-frame {
+  margin-left: -64px;
+  padding-left: 64px;
+}
+
+.block-handle {
+  position: fixed;
+  z-index: 40;
+  display: flex;
+}
+
+.block-handle > button {
+  width: 20px;
+  height: 24px;
+  padding: 0;
+  color: var(--muted);
+  font-size: 16px;
+  line-height: 24px;
+  background: none;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.block-handle > button:hover {
+  color: var(--text);
+  background: var(--border);
+}
+
+.block-handle-grip {
+  font-size: 12px;
+  letter-spacing: -2px;
+  cursor: grab;
+}
+
+.block-handle-menu {
+  position: absolute;
+  top: 28px;
+  left: 24px;
+  display: flex;
+  flex-direction: column;
+  width: 200px;
+  max-height: 360px;
+  overflow-y: auto;
+  padding: 4px;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgb(0 0 0 / 45%);
+}
+
+.block-handle-menu button {
+  height: 30px;
+  padding: 0 8px;
+  color: var(--text);
+  text-align: left;
+  background: none;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+.block-handle-menu button:hover {
+  background: var(--border);
+}
+
+.block-handle-menu button.danger {
+  color: var(--danger);
+}
+
+.block-handle-menu-heading {
+  padding: 8px 8px 4px;
+  color: var(--muted);
+  font-size: 12px;
+}

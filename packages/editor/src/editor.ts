@@ -15,14 +15,23 @@
  * e.g. from an existing async open/mount path) so this adds no new loading state.
  */
 
-import { EditorState, type Command } from 'prosemirror-state';
+import { EditorState, Selection, type Command } from 'prosemirror-state';
 import { EditorView } from 'prosemirror-view';
 
+import {
+  blockPosAt,
+  canTurnInto,
+  deleteBlock,
+  duplicateBlock,
+  insertBlockAfter,
+  startBlockDrag,
+  turnBlockInto,
+} from './handle.js';
 import { knowtionInputRules, knowtionKeymap } from './keymap.js';
 import { isAllowedHref, linkAt, setLink } from './links.js';
 import { knowtionPlaceholder } from './placeholder.js';
 import { schema } from './schema.js';
-import { slashMenu, type SlashMenu } from './slash.js';
+import { slashMenu, type BlockChoice, type SlashMenu } from './slash.js';
 import { formatToolbar, type FormatToolbar } from './toolbar.js';
 import { TodoItemView } from './todo-view.js';
 
@@ -56,9 +65,27 @@ export interface PageEditorOptions {
   onFormatToolbar?: ((toolbar: FormatToolbar | null) => void) | undefined;
 }
 
+/** A block under the pointer, for placing its handle. */
+export interface BlockSpot {
+  /** Where the block starts; the handle's actions take it back. */
+  pos: number;
+  /** Viewport coordinates of the block's first line, and the editor's left edge. */
+  top: number;
+  bottom: number;
+  left: number;
+  canTurnInto: boolean;
+}
+
 export interface PageEditor {
   readonly doc: LoroDoc;
   readonly view: EditorView;
+  /** The block at a height in the viewport, or undefined over nothing. */
+  blockAt(clientY: number): BlockSpot | undefined;
+  insertBlockAfter(pos: number): void;
+  deleteBlock(pos: number): void;
+  duplicateBlock(pos: number): void;
+  turnBlockInto(pos: number, choice: BlockChoice): void;
+  startBlockDrag(pos: number, event: DragEvent): void;
   /** Merge another device's operations. */
   applyRemote(update: Uint8Array): void;
   /** Everything needed to reconstruct this document from nothing. */
@@ -142,9 +169,56 @@ export async function mountPageEditor(options: PageEditorOptions): Promise<PageE
     },
   });
 
+  const run = (command: Command): void => {
+    command(view.state, view.dispatch, view);
+    view.focus();
+  };
+
   return {
     doc,
     view,
+    blockAt(clientY) {
+      const box = view.dom.getBoundingClientRect();
+      const hit = view.posAtCoords({ left: box.left + box.width / 2, top: clientY });
+      if (hit === null) return undefined;
+      // Over a divider the hit is the divider itself, which has no inside to resolve into.
+      const atom = hit.inside >= 0 ? view.state.doc.nodeAt(hit.inside) : null;
+      const pos = blockPosAt(view.state.doc, atom?.isAtom === true ? hit.inside : hit.pos);
+      if (pos === undefined) return undefined;
+      const block = view.state.doc.nodeAt(pos);
+      if (block === null) return undefined;
+      // Line the handle up with the first line of text, not the block's box: a heading's
+      // box starts with its top margin, a list item's with its bullet.
+      const first = Selection.findFrom(view.state.doc.resolve(pos), 1, true);
+      const line =
+        first !== null && first.from < pos + block.nodeSize
+          ? view.coordsAtPos(first.from)
+          : (view.nodeDOM(pos) as HTMLElement | null)?.getBoundingClientRect();
+      if (line === undefined) return undefined;
+      return {
+        pos,
+        top: line.top,
+        bottom: line.bottom,
+        left: box.left,
+        canTurnInto: canTurnInto(block),
+      };
+    },
+    insertBlockAfter: (pos) => {
+      run(insertBlockAfter(pos));
+    },
+    deleteBlock: (pos) => {
+      run(deleteBlock(pos));
+    },
+    duplicateBlock: (pos) => {
+      run(duplicateBlock(pos));
+    },
+    turnBlockInto: (pos, choice) => {
+      turnBlockInto(view, pos, choice);
+      view.focus();
+    },
+    startBlockDrag: (pos, event) => {
+      startBlockDrag(view, pos, event);
+    },
     applyRemote(update) {
       // Guarded so the resulting editor transaction is not mistaken for a local edit
       // and echoed straight back out as another write.

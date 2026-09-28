@@ -3,12 +3,14 @@ import { useEffect, useRef, useState } from 'react';
 import {
   isAllowedHref,
   mountPageEditor,
+  type BlockSpot,
   type FormatToolbar,
   type PageEditor,
   type SlashMenu,
 } from '@knowtion/editor';
 
 import { api } from './api.js';
+import { BlockHandle } from './BlockHandle.js';
 import { BlockMenu } from './BlockMenu.js';
 import { FormatBar } from './FormatBar.js';
 
@@ -75,6 +77,9 @@ export function PageBody({ pageId }: { pageId: string }): React.JSX.Element {
   const [linkApply, setLinkApply] = useState<{ apply: (href: string) => void }>();
   const [slash, setSlash] = useState<SlashMenu | null>(null);
   const [format, setFormat] = useState<FormatToolbar | null>(null);
+  // State rather than a ref so the block handle renders once the editor exists.
+  const [live, setLive] = useState<PageEditor>();
+  const [spot, setSpot] = useState<BlockSpot>();
 
   useEffect(() => {
     let editor: PageEditor | undefined;
@@ -132,6 +137,7 @@ export function PageBody({ pageId }: { pageId: string }): React.JSX.Element {
           return;
         }
         editor = mounted;
+        setLive(mounted);
         editor.view.focus();
       } catch (cause) {
         setError(cause instanceof Error ? cause.message : String(cause));
@@ -145,6 +151,8 @@ export function PageBody({ pageId }: { pageId: string }): React.JSX.Element {
       // milliseconds of typing are lost simply by navigating to another page.
       flush();
       editor?.destroy();
+      setLive(undefined);
+      setSpot(undefined);
     };
   }, [pageId]);
 
@@ -162,7 +170,34 @@ export function PageBody({ pageId }: { pageId: string }): React.JSX.Element {
           }}
         />
       )}
-      <div className="editor" ref={holder} />
+      {/* The frame reaches into the left gutter, so moving onto the handle keeps it. */}
+      <div
+        className="editor-frame"
+        onMouseMove={(e) => {
+          // Frozen while a handle's menu is open or a block is being dragged.
+          if (e.buttons !== 0 || document.querySelector('.block-handle-menu') !== null) return;
+          const next = live?.blockAt(e.clientY);
+          if (next?.pos !== spot?.pos || next?.top !== spot?.top) setSpot(next);
+        }}
+        onMouseLeave={() => {
+          if (document.querySelector('.block-handle-menu') === null) setSpot(undefined);
+        }}
+        // Out of the way while typing, as the caret is where attention is.
+        onKeyDown={() => {
+          setSpot(undefined);
+        }}
+      >
+        <div className="editor" ref={holder} />
+        {live !== undefined && spot !== undefined && (
+          <BlockHandle
+            editor={live}
+            spot={spot}
+            onDone={() => {
+              setSpot(undefined);
+            }}
+          />
+        )}
+      </div>
       {slash !== null && <BlockMenu menu={slash} />}
       {format !== null && linkApply === undefined && <FormatBar bar={format} />}
     </>

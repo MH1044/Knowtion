@@ -21,4 +21,4 @@ export {
   trimUrlPunctuation,
 } from './links.js';
 export { mountPageEditor } from './editor.js';
-export type { PageEditor, PageEditorOptions } from './editor.js';
+export type { BlockSpot, PageEditor, PageEditorOptions } from './editor.js';

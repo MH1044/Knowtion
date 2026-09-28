@@ -173,7 +173,12 @@ export function openSlash(state: EditorState, from: number, to: number): Transac
   if (!$from.parent.isTextblock || $from.parent.type.spec.code === true) return null;
   const before = $from.parent.textBetween(0, $from.parentOffset);
   if (before !== '' && !/\s$/.test(before)) return null;
-  return state.tr.insertText('/', from, to).setMeta(slashKey, { type: 'open', from });
+  return typeSlash(state.tr, from, to);
+}
+
+/** Type a slash into `tr` at `from` and open the menu there, as one step with the rest. */
+export function typeSlash(tr: Transaction, from: number, to = from): Transaction {
+  return tr.insertText('/', from, to).setMeta(slashKey, { type: 'open', from } satisfies SlashMeta);
 }
 
 function nextState(
