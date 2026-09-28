@@ -11,6 +11,7 @@ import {
   deleteBlock,
   duplicateBlock,
   insertBlockAfter,
+  moveBlock,
   turnBlockInto,
 } from '../handle.js';
 import { schema } from '../schema.js';
@@ -130,5 +131,69 @@ describe('the block menu', () => {
     view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, 1)));
     turnBlockInto(view, 0, choice('numbered'));
     expect(shape(view.state)).toEqual(['ordered_list:first']);
+  });
+});
+
+describe('dropping a dragged block', () => {
+  const ol = (...items: string[]) => schema.node('ordered_list', null, items.map(li));
+  const ul = (...items: string[]) => schema.node('bullet_list', null, items.map(li));
+  const move = (state: EditorState, from: number, at: number) => {
+    const tr = moveBlock(state, from, at);
+    return tr === null ? undefined : state.apply(tr);
+  };
+
+  it('keeps a numbered item numbered when it leaves its list', () => {
+    const state = stateOf(p('top'), ol('one', 'two'));
+    const second = 5 + 1 + li('one').nodeSize;
+    const moved = move(state, second, 0);
+    expect(moved && shape(moved)).toEqual([
+      'ordered_list:two',
+      'paragraph:top',
+      'ordered_list:one',
+    ]);
+  });
+
+  it('never splits the block it lands next to', () => {
+    const heading = schema.node('heading', { level: 2 }, [schema.text('Shopping list')]);
+    const state = stateOf(heading, ol('alpha', 'beta'));
+    const beta = heading.nodeSize + 1 + li('alpha').nodeSize;
+    const moved = move(state, beta, heading.nodeSize);
+    // The heading stays whole, and beta lands back beside alpha's list, which it joins.
+    expect(moved && shape(moved)).toEqual(['heading:Shopping list', 'ordered_list:betaalpha']);
+  });
+
+  it('joins another list as an item when dropped between its items', () => {
+    const state = stateOf(ul('a', 'b'), ol('x'));
+    const x = ul('a', 'b').nodeSize + 1;
+    const moved = move(state, x, 1 + li('a').nodeSize);
+    expect(moved?.doc.childCount).toBe(1);
+    expect(moved?.doc.firstChild?.childCount).toBe(3);
+  });
+
+  it('joins a list of its own kind that it lands beside', () => {
+    const heading = schema.node('heading', { level: 2 }, [schema.text('H')]);
+    const state = stateOf(heading, ol('beta'), p('gap'), ol('alpha'));
+    const alpha = heading.nodeSize + ol('beta').nodeSize + p('gap').nodeSize + 1;
+    const moved = move(state, alpha, heading.nodeSize);
+    expect(moved && shape(moved)).toEqual(['heading:H', 'ordered_list:alphabeta', 'paragraph:gap']);
+  });
+
+  it('takes an emptied list away with its last item', () => {
+    const state = stateOf(p('top'), ol('only'));
+    const moved = move(state, 6, 0);
+    expect(moved && shape(moved)).toEqual(['ordered_list:only', 'paragraph:top']);
+  });
+
+  it('puts a paragraph dropped among list items beside the list instead', () => {
+    const state = stateOf(ul('a', 'b'), p('para'));
+    const para = ul('a', 'b').nodeSize;
+    const moved = move(state, para, 1 + li('a').nodeSize);
+    expect(moved && shape(moved)).toEqual(['bullet_list:ab', 'paragraph:para']);
+  });
+
+  it('does nothing when dropped onto itself', () => {
+    const state = stateOf(p('one'), p('two'));
+    expect(moveBlock(state, 0, 0)).toBeNull();
+    expect(moveBlock(state, 0, 5)).toBeNull();
   });
 });

@@ -1709,3 +1709,17 @@ button.danger {
   color: var(--muted);
   font-size: 12px;
 }
+
+.knowtion-drop-cursor {
+  background: var(--accent);
+  border-radius: 1px;
+}
+
+/* Where a block dragged from its handle will land. */
+.knowtion-block-drop {
+  height: 2px;
+  margin: -1px 0;
+  background: var(--accent);
+  border-radius: 1px;
+  pointer-events: none;
+}

@@ -20,7 +20,7 @@ covering prior art we may read but not copy.
 
 <!-- GENERATED: dependency table below is written by scripts/write-third-party.mjs -->
 
-## Shipped dependencies (31)
+## Shipped dependencies (32)
 
 Dependencies that are distributed with the application. Development-only tooling is
 excluded: it is not redistributed. Workspace packages are our own and are covered by
@@ -51,6 +51,7 @@ the repository LICENSE.
 | orderedmap | 2.1.1 | MIT |
 | parse5 | 8.0.1 | MIT |
 | prosemirror-commands | 1.7.2 | MIT |
+| prosemirror-dropcursor | 1.8.4 | MIT |
 | prosemirror-inputrules | 1.5.1 | MIT |
 | prosemirror-keymap | 1.2.3 | MIT |
 | prosemirror-model | 1.25.11 | MIT |

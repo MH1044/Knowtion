@@ -15,14 +15,17 @@
  * e.g. from an existing async open/mount path) so this adds no new loading state.
  */
 
+import { dropCursor } from 'prosemirror-dropcursor';
 import { EditorState, Selection, type Command } from 'prosemirror-state';
 import { EditorView } from 'prosemirror-view';
 
 import {
+  blockDrop,
   blockPosAt,
   canTurnInto,
   deleteBlock,
   duplicateBlock,
+  endBlockDrag,
   insertBlockAfter,
   startBlockDrag,
   turnBlockInto,
@@ -86,6 +89,7 @@ export interface PageEditor {
   duplicateBlock(pos: number): void;
   turnBlockInto(pos: number, choice: BlockChoice): void;
   startBlockDrag(pos: number, event: DragEvent): void;
+  endBlockDrag(): void;
   /** Merge another device's operations. */
   applyRemote(update: Uint8Array): void;
   /** Everything needed to reconstruct this document from nothing. */
@@ -137,6 +141,11 @@ export async function mountPageEditor(options: PageEditorOptions): Promise<PageE
         knowtionInputRules(),
         knowtionKeymap(undo, redo, linkCommand(options)),
         knowtionPlaceholder(),
+        // The line that shows where a dragged block will land. Coloured by the host's
+        // stylesheet through the class, so it follows the theme.
+        // Before the drop cursor, so a block dragged from its handle is handled here.
+        blockDrop(),
+        dropCursor({ class: 'knowtion-drop-cursor', color: false, width: 2 }),
         ...(options.onFormatToolbar === undefined
           ? []
           : [formatToolbar(options.onFormatToolbar, linkCommand(options))]),
@@ -218,6 +227,9 @@ export async function mountPageEditor(options: PageEditorOptions): Promise<PageE
     },
     startBlockDrag: (pos, event) => {
       startBlockDrag(view, pos, event);
+    },
+    endBlockDrag: () => {
+      endBlockDrag(view);
     },
     applyRemote(update) {
       // Guarded so the resulting editor transaction is not mistaken for a local edit

@@ -25,6 +25,7 @@
     "loro-crdt": "1.16.0",
     "loro-prosemirror": "0.4.4",
     "prosemirror-commands": "^1.7.2",
+    "prosemirror-dropcursor": "^1.8.4",
     "prosemirror-inputrules": "^1.5.1",
     "prosemirror-keymap": "^1.2.3",
     "prosemirror-model": "^1.25.11",

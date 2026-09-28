@@ -83,9 +83,7 @@ export function BlockHandle({
           editor.startBlockDrag(spot.pos, e.nativeEvent);
         }}
         onDragEnd={() => {
-          // A drag cancelled outside the editor never reaches its drop handler, which is
-          // what normally clears this.
-          editor.view.dragging = null;
+          editor.endBlockDrag();
           onDone();
         }}
         onClick={() => {
