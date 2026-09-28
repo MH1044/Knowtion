@@ -25,6 +25,7 @@ import {
 } from '@knowtion/format';
 
 import { loadOrCreateIdentity, type Identity } from './identity.js';
+import { settle } from './ipc-result.js';
 import { chooseProtector } from './secret-protector.js';
 import { readSettings, writeSettings } from './settings.js';
 import { checkSyncFolder, copyLog } from './sync-folder.js';
@@ -213,14 +214,7 @@ async function collectNewEpochs(): Promise<void> {
 
 /** Wrap a handler so a thrown engine error reaches the renderer as a plain message. */
 function handle(channel: string, fn: (...args: never[]) => unknown): void {
-  ipcMain.handle(channel, (_event, ...args) => {
-    try {
-      return { ok: true, value: fn(...(args as never[])) };
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      return { ok: false, error: message };
-    }
-  });
+  ipcMain.handle(channel, (_event, ...args) => settle(() => fn(...(args as never[]))));
 }
 
 /**
