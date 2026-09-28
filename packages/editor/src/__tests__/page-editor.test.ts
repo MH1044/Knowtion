@@ -7,7 +7,7 @@
  */
 import { LoroDoc, LoroList, LoroMap, LoroText } from 'loro-crdt';
 import { LoroSyncPlugin } from 'loro-prosemirror';
-import { DOMParser as PMDOMParser } from 'prosemirror-model';
+import { DOMParser as PMDOMParser, DOMSerializer, type Node } from 'prosemirror-model';
 import { EditorState } from 'prosemirror-state';
 import { EditorView } from 'prosemirror-view';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -68,6 +68,24 @@ describe('schema', () => {
       'todo_item',
       'toggle',
     ]);
+  });
+
+  it('copies and pastes a to-do list as to-dos, with ticks and nesting', () => {
+    // Through an HTML string, as the clipboard carries it: the browser's parser is what
+    // flattened nested to-dos when each one was an <li> with no list around it.
+    const todo = (text: string, checked: boolean, ...inside: Node[]) =>
+      schema.node('todo_item', { checked }, [
+        schema.node('paragraph', null, [schema.text(text)]),
+        ...inside,
+      ]);
+    const doc = schema.node('doc', null, [
+      todo('One', true, todo('Nested', false)),
+      todo('Two', false),
+    ]);
+    const holder = document.createElement('div');
+    holder.appendChild(DOMSerializer.fromSchema(schema).serializeFragment(doc.content));
+    const pasted = parseHtml(holder.innerHTML);
+    expect(pasted.toJSON()).toEqual(doc.toJSON());
   });
 
   it('parses a pasted callout back into a callout, icon and all', () => {

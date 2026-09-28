@@ -84,16 +84,19 @@ const todoItem: NodeSpec = {
   content: 'paragraph block*',
   group: 'block',
   defining: true,
-  parseDOM: [
-    {
-      tag: 'li[data-todo]',
-      getAttrs: (node) => ({
-        checked: node.getAttribute('data-checked') === 'true',
-      }),
-    },
-  ],
+  // Ahead of list items' plain `li` rule, which otherwise claims a pasted to-do as a bullet.
+  parseDOM: ['div[data-todo]', 'li[data-todo]'].map((tag) => ({
+    tag,
+    priority: 60,
+    getAttrs: (node: HTMLElement) => ({
+      checked: node.getAttribute('data-checked') === 'true',
+    }),
+  })),
+  // A div, not an li, on the clipboard: an li with no list around it is closed by the HTML
+  // parser as soon as the next one starts, which flattened nested to-dos on paste. The
+  // editor draws its own li through the node view, so this is only what gets copied.
   toDOM: (node): DOMOutputSpec => [
-    'li',
+    'div',
     { 'data-todo': 'true', 'data-checked': String(node.attrs.checked) },
     0,
   ],
