@@ -111,6 +111,25 @@ describe('parseNotionPage', () => {
     expect(at(items, 1).attrs).toEqual({ checked: false });
   });
 
+  it('reads a toggle, with its first line and what is folded inside it', () => {
+    const parsed = parseNotionPage(
+      page(
+        'T',
+        'a'.repeat(32),
+        `<ul class="toggle"><li><details open=""><summary>Answer</summary>
+           <p>It is 42.</p></details></li></ul>`,
+      ),
+    );
+    const [toggle] = must(parsed.doc.content, 'doc content');
+    expect(toggle?.type).toBe('toggle');
+    expect(must(toggle?.content, 'toggle content').map((c) => c.type)).toEqual([
+      'paragraph',
+      'paragraph',
+    ]);
+    expect(textOf(parsed.doc)).toContain('Answer');
+    expect(textOf(parsed.doc)).toContain('It is 42.');
+  });
+
   it('turns a callout into a quote rather than losing it', () => {
     // v0.1 has no callout block. Preserving the text set apart beats dropping it.
     const parsed = parseNotionPage(

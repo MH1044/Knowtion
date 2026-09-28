@@ -555,6 +555,7 @@ version's vocabulary is pinned by a fixture in `packages/editor/fixtures/<versio
 | blockquote   |                     | block+                 | v0    |
 | code_block   |                     | plain text, no marks   | v0    |
 | divider      |                     | none                   | v0    |
+| toggle       |                     | paragraph, then blocks | v1    |
 
 | Mark   | Attributes                                 | Since |
 | ------ | ------------------------------------------ | ----- |

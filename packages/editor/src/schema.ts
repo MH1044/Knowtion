@@ -20,7 +20,8 @@ import { Schema, type DOMOutputSpec, type NodeSpec, type MarkSpec } from 'prosem
 const paragraph: NodeSpec = {
   content: 'inline*',
   group: 'block',
-  parseDOM: [{ tag: 'p' }],
+  // A <summary> is the first line of a pasted <details>, which becomes a toggle.
+  parseDOM: [{ tag: 'p' }, { tag: 'summary' }],
   toDOM: (): DOMOutputSpec => ['p', 0],
 };
 
@@ -115,6 +116,22 @@ const codeBlock: NodeSpec = {
   toDOM: (): DOMOutputSpec => ['pre', ['code', 0]],
 };
 
+/**
+ * A toggle: its first paragraph is the line that is always shown, and every block after
+ * it is what opening the toggle reveals.
+ *
+ * Whether it is open is not stored. FORMAT.md section 10 keeps collapsed sections out of
+ * the log, since two devices disagreeing about what is folded is not a conflict worth
+ * syncing. The node view decides, per session.
+ */
+const toggle: NodeSpec = {
+  content: 'paragraph block*',
+  group: 'block',
+  defining: true,
+  parseDOM: [{ tag: 'div[data-toggle]' }, { tag: 'details' }],
+  toDOM: (): DOMOutputSpec => ['div', { 'data-toggle': 'true' }, 0],
+};
+
 const divider: NodeSpec = {
   group: 'block',
   parseDOM: [{ tag: 'hr' }],
@@ -175,6 +192,7 @@ export const schema = new Schema({
     ordered_list: orderedList,
     list_item: listItem,
     todo_item: todoItem,
+    toggle,
     blockquote,
     code_block: codeBlock,
     divider,

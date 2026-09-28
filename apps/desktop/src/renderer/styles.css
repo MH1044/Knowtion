@@ -1733,3 +1733,60 @@ button.danger {
   border-radius: 8px;
   line-height: 1.5;
 }
+
+/* Toggles. The arrow sits in the line's own gutter; closed hides all but the first line. */
+.editor .ProseMirror .toggle {
+  display: flex;
+  align-items: flex-start;
+  gap: 4px;
+}
+
+.editor .ProseMirror .toggle-arrow {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  /* The first line is a paragraph, whose 1em top margin does not collapse in a flex box. */
+  margin-top: calc(1em + 1px);
+  padding: 0;
+  color: var(--muted);
+  font-size: 11px;
+  background: none;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: transform 120ms ease;
+}
+
+.editor .ProseMirror .toggle-arrow::before {
+  content: '\25B6';
+}
+
+.editor .ProseMirror .toggle-arrow:hover {
+  color: var(--text);
+  background: var(--border);
+}
+
+.editor .ProseMirror .toggle:not(.collapsed) > .toggle-arrow {
+  transform: rotate(90deg);
+}
+
+.editor .ProseMirror .toggle-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.editor .ProseMirror .toggle-content > * + * {
+  margin-top: 0.6em;
+}
+
+.editor .ProseMirror .toggle.collapsed > .toggle-content > :not(:first-child) {
+  display: none;
+}
+
+.editor .ProseMirror .toggle.empty:not(.collapsed) > .toggle-content::after {
+  display: block;
+  margin-top: 4px;
+  color: var(--muted);
+  content: 'Empty toggle. Press Enter at the end of the line to add inside it.';
+  pointer-events: none;
+}

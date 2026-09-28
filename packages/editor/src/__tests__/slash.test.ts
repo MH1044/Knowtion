@@ -89,7 +89,12 @@ describe('the query', () => {
 
   it('matches keywords and any word of the label', () => {
     expect(filterChoices('h1').map((c) => c.id)).toEqual(['heading1']);
-    expect(filterChoices('list').map((c) => c.id)).toEqual(['bullet', 'numbered', 'todo']);
+    expect(filterChoices('list').map((c) => c.id)).toEqual([
+      'bullet',
+      'numbered',
+      'todo',
+      'toggle',
+    ]);
     expect(filterChoices('check').map((c) => c.id)).toEqual(['todo']);
     expect(filterChoices('')).toHaveLength(BLOCK_CHOICES.length);
   });
@@ -118,6 +123,16 @@ describe('choosing a block', () => {
     expect(top('quote')).toBe('blockquote');
     expect(top('code')).toBe('code_block');
     expect(top('divider')).toBe('divider');
+    expect(top('toggle')).toBe('toggle');
+  });
+
+  it('does not nest a toggle when its own first line asks for one again', () => {
+    const view = fakeView(type(typeSlash(stateWith('')), 'tog'));
+    chooseBlock(view, choice('toggle'));
+    const once = view.state.doc;
+    const again = fakeView(typeSlash(view.state));
+    chooseBlock(again, choice('toggle'));
+    expect(again.state.doc.eq(once)).toBe(true);
   });
 
   it('keeps the text already on the line', () => {

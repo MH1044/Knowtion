@@ -50,7 +50,7 @@ function parseHtml(html: string) {
 }
 
 describe('schema', () => {
-  it('has the v0.1 block types and no more', () => {
+  it('has the block types FORMAT.md 10.2 lists, and no more', () => {
     expect(Object.keys(schema.nodes).sort()).toEqual([
       'blockquote',
       'bullet_list',
@@ -63,7 +63,14 @@ describe('schema', () => {
       'paragraph',
       'text',
       'todo_item',
+      'toggle',
     ]);
+  });
+
+  it('parses a pasted details element into a toggle', () => {
+    const doc = parseHtml('<details><summary>Q</summary><p>A</p></details>');
+    expect(doc.firstChild?.type.name).toBe('toggle');
+    expect(doc.firstChild?.childCount).toBe(2);
   });
 
   it('parses pasted headings, lists and quotes into real blocks', () => {

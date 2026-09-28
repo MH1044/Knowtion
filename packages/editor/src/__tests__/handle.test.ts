@@ -74,6 +74,24 @@ describe('which block a position belongs to', () => {
   });
 });
 
+describe('inside a toggle', () => {
+  const toggle = (...blocks: Node[]) => schema.node('toggle', null, blocks);
+
+  it('gives each folded block its own handle, and the first line the whole toggle', () => {
+    const state = stateOf(toggle(p('summary'), p('inside')));
+    // toggle(0) > p(1) "summary" … the second paragraph starts at 1 + p("summary").nodeSize.
+    const inside = 1 + p('summary').nodeSize;
+    expect(blockPosAt(state.doc, 3)).toBe(0);
+    expect(blockPosAt(state.doc, inside + 2)).toBe(inside);
+  });
+
+  it('turns back into its lines when turned into text', () => {
+    const view = fakeView(stateOf(toggle(p('summary'), p('inside'))));
+    turnBlockInto(view, 0, choice('text'));
+    expect(shape(view.state)).toEqual(['paragraph:summary', 'paragraph:inside']);
+  });
+});
+
 describe('the + button', () => {
   it('adds an empty line below with the / menu open', () => {
     const next = run(stateOf(p('one'), p('two')), insertBlockAfter(0));

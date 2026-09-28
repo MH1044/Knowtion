@@ -8,6 +8,7 @@
  * The rules here are the ones people type by reflex. `[] ` and `[x] ` come from the
  * markdown task-list convention; `---` for a rule is markdown proper.
  */
+import { wrapIn } from 'prosemirror-commands';
 import { InputRule, wrappingInputRule } from 'prosemirror-inputrules';
 import { TextSelection, type Command, type EditorState, type Transaction } from 'prosemirror-state';
 import type { NodeType } from 'prosemirror-model';
@@ -113,4 +114,18 @@ export const toggleTodoChecked: Command = (state, dispatch) => {
 export const insertDivider: Command = (state, dispatch) => {
   if (dispatch) dispatch(state.tr.replaceSelectionWith(node('divider').create()).scrollIntoView());
   return true;
+};
+
+/**
+ * Turn the line at the cursor into a toggle whose always-shown line it becomes.
+ *
+ * Already in a toggle's first line, it does nothing, so choosing "Toggle" twice does not
+ * nest one toggle inside another.
+ */
+export const toToggle: Command = (state, dispatch) => {
+  const { $from } = state.selection;
+  if ($from.depth >= 2 && $from.node($from.depth - 1).type === node('toggle')) {
+    if ($from.index($from.depth - 1) === 0) return true;
+  }
+  return wrapIn(node('toggle'))(state, dispatch);
 };

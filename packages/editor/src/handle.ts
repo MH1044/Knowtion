@@ -34,6 +34,11 @@ export function blockPosAt(doc: Node, pos: number): number | undefined {
   const $pos = doc.resolve(Math.max(0, Math.min(pos, doc.content.size)));
   for (let depth = $pos.depth; depth > 1; depth--) {
     if ($pos.node(depth).type === node('list_item')) return $pos.before(depth);
+    // A block inside an open toggle is its own block; the toggle's first line is the
+    // toggle's, so grabbing it moves the whole toggle.
+    if ($pos.node(depth - 1).type === node('toggle') && $pos.index(depth - 1) > 0) {
+      return $pos.before(depth);
+    }
   }
   if ($pos.depth >= 1) return $pos.before(1);
   // Between top-level blocks, as a click on a divider's margin resolves to.
@@ -122,7 +127,11 @@ export function turnBlockInto(
     for (let i = 0; i < 16 && inside(view.state, 'list_item'); i++) {
       if (!liftListItem(node('list_item'))(view.state, dispatch)) break;
     }
-  } else if (block.type === node('todo_item') || block.type === node('blockquote')) {
+  } else if (
+    block.type === node('todo_item') ||
+    block.type === node('blockquote') ||
+    block.type === node('toggle')
+  ) {
     const tr = view.state.tr.replaceWith(pos, pos + block.nodeSize, block.content);
     view.dispatch(tr.setSelection(TextSelection.near(tr.doc.resolve(pos + 1))));
   } else {

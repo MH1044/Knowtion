@@ -39,6 +39,7 @@ import { slashMenu, type BlockChoice, type SlashMenu } from './slash.js';
 import { formatToolbar, type FormatToolbar } from './toolbar.js';
 import { BINDING_KEYS, unknownContent } from './vocabulary.js';
 import { TodoItemView } from './todo-view.js';
+import { ToggleView } from './toggle-view.js';
 
 import type { LoroDoc } from 'loro-crdt';
 
@@ -193,6 +194,7 @@ export async function mountPageEditor(options: PageEditorOptions): Promise<PageE
         }),
     nodeViews: {
       todo_item: (node, editorView, getPos) => new TodoItemView(node, editorView, getPos),
+      toggle: (node) => new ToggleView(node),
     },
     /**
      * Follow a link on a modifier click, and only then: a plain click has to keep

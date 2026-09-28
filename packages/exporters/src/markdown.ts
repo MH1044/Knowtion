@@ -152,6 +152,14 @@ function block(node: PmNode, depth: number): string {
     }
     case 'divider':
       return '---';
+    case 'toggle': {
+      // HTML's own disclosure element, which GitHub and most Markdown viewers render as a
+      // real toggle. The blank lines let the Markdown inside it be read as Markdown.
+      const [summary, ...inside] = childrenOf(node);
+      const body = blocks(inside, depth + 1).join('\n\n');
+      const head = `<details>\n<summary>${summary === undefined ? '' : inline(summary)}</summary>`;
+      return body === '' ? `${head}\n</details>` : `${head}\n\n${body}\n\n</details>`;
+    }
     default:
       // A node type this build does not know: descend, so its text survives even though
       // its structure cannot.

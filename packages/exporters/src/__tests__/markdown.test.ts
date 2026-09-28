@@ -71,6 +71,16 @@ describe('blocks', () => {
     expect(markdownFromDoc(tricky)).toBe('````\n```\nnot the end\n```\n````');
   });
 
+  it('writes a toggle as a details element, with its inside as Markdown', () => {
+    const toggle = { type: 'toggle', content: [para(text('Answer')), para(text('**42**'))] };
+    expect(markdownFromDoc(doc(toggle))).toBe(
+      '<details>\n<summary>Answer</summary>\n\n\\*\\*42\\*\\*\n\n</details>',
+    );
+    expect(markdownFromDoc(doc({ type: 'toggle', content: [para(text('Empty'))] }))).toBe(
+      '<details>\n<summary>Empty</summary>\n</details>',
+    );
+  });
+
   it('keeps going past a block type it does not know', () => {
     const future = doc({ type: 'callout', content: [para(text('still here'))] });
     expect(markdownFromDoc(future)).toBe('still here');

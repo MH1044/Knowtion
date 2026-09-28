@@ -22,7 +22,7 @@ import {
 import type { NodeType } from 'prosemirror-model';
 import type { EditorView } from 'prosemirror-view';
 
-import { insertDivider, replaceWithDivider, toggleTodo } from './blocks.js';
+import { insertDivider, replaceWithDivider, toToggle, toggleTodo } from './blocks.js';
 import { schema } from './schema.js';
 
 function node(name: string): NodeType {
@@ -109,6 +109,13 @@ export const BLOCK_CHOICES: readonly BlockChoice[] = [
     hint: '[]',
     keywords: ['todo', 'task', 'checkbox', 'check'],
     command: toTodo,
+  },
+  {
+    id: 'toggle',
+    label: 'Toggle list',
+    hint: '',
+    keywords: ['collapse', 'expand', 'details', 'fold'],
+    command: toToggle,
   },
   {
     id: 'quote',

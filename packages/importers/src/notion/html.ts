@@ -134,6 +134,12 @@ function block(node: P5Node): DocNode[] {
       ];
 
     case 'ul':
+      // A toggle is a one-item ul holding a <details>, again marked only by its class.
+      if (kind.includes('toggle')) {
+        return children(node)
+          .filter((c) => c.tagName === 'li')
+          .flatMap((item) => children(item).flatMap(block));
+      }
       // A to-do list is a ul in the export, distinguished only by its class.
       if (kind.includes('to-do-list')) {
         return children(node)
@@ -187,8 +193,21 @@ function block(node: P5Node): DocNode[] {
       // Tables are a database view; the CSV beside the export is the better source.
       return [paragraph([{ type: 'text', text: '[table omitted — see the database export]' }])];
 
+    case 'details': {
+      const summary = children(node).find((c) => c.tagName === 'summary');
+      const inside = children(node).filter((c) => c !== summary);
+      return [
+        {
+          type: 'toggle',
+          content: [
+            paragraph(summary === undefined ? [] : children(summary).flatMap((c) => inline(c))),
+            ...inside.flatMap(block),
+          ],
+        },
+      ];
+    }
+
     case 'div':
-    case 'details':
     case 'section':
       return children(node).flatMap(block);
 
