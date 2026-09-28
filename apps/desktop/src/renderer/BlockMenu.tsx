@@ -5,26 +5,30 @@ import type { SlashMenu } from '@knowtion/editor';
 /** Tall enough for most of the list; the rest scrolls. */
 export const MENU_MAX_HEIGHT = 320;
 
+/** The shortest the menu gets before it would rather open above the caret. */
+export const MENU_MIN_HEIGHT = 180;
+
 /**
- * Where to put a menu anchored under a caret.
+ * Where to put a menu anchored under a caret, and how tall it may be.
  *
- * Below the caret when it fits, above it when it would run off the bottom of the window,
- * and pulled back from the right edge, so a slash typed at the end of a long line or on
- * the last line of the window still shows the whole menu.
+ * Below the caret whenever there is reasonable room, shortened to fit (the list scrolls),
+ * as Notion's does. Only when even a short menu would not fit does it open above.
+ * Pulled back from the right edge, so a slash at the end of a long line still shows it.
  */
 export function menuPlacement(
   anchor: { left: number; top: number },
   viewport: { width: number; height: number },
   size: { width: number; height: number },
   lineHeight = 24,
-): { left: number; top: number } {
+): { left: number; top: number; maxHeight: number } {
   const below = anchor.top + 4;
-  const top =
-    below + size.height <= viewport.height
-      ? below
-      : Math.max(4, anchor.top - lineHeight - size.height);
+  const room = viewport.height - below - 4;
   const left = Math.max(4, Math.min(anchor.left, viewport.width - size.width - 4));
-  return { left, top };
+  if (room >= Math.min(size.height, MENU_MIN_HEIGHT)) {
+    return { left, top: below, maxHeight: Math.min(size.height, room) };
+  }
+  const top = Math.max(4, anchor.top - lineHeight - size.height);
+  return { left, top, maxHeight: size.height };
 }
 
 /** The `/` menu the editor asks for. The editor owns the state; this only draws it. */
@@ -48,7 +52,7 @@ export function BlockMenu({ menu }: { menu: SlashMenu }): React.JSX.Element {
       className="block-menu"
       role="listbox"
       aria-label={menu.title}
-      style={{ left: place.left, top: place.top, maxHeight: MENU_MAX_HEIGHT }}
+      style={{ left: place.left, top: place.top, maxHeight: place.maxHeight }}
       // Keeping focus in the editor is what keeps the caret, and the query, alive.
       onMouseDown={(e) => {
         e.preventDefault();
