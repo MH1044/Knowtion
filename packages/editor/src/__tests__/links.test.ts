@@ -17,6 +17,7 @@ import {
   trimUrlPunctuation,
 } from '../links.js';
 import { schema } from '../schema.js';
+import { linkedText, typedParagraph } from './typing.js';
 
 function stateWith(text: string): EditorState {
   const paragraph = schema.node('paragraph', null, [schema.text(text)]);
@@ -140,5 +141,19 @@ describe('linkAt', () => {
     const inside = linked.apply(linked.tr.setSelection(TextSelection.create(linked.doc, 4)));
     expect(linkAt(inside)).toBe('https://example.test');
     expect(linkAt(stateWith('plain'))).toBeUndefined();
+  });
+});
+
+describe('typing a URL', () => {
+  it('keeps the space that ended it, and the words after it stay text', () => {
+    const state = typedParagraph('a link to https://example.com in it.');
+    expect(linkedText(state)).toBe('a link to [https://example.com](https://example.com) in it.');
+  });
+
+  it('keeps punctuation and brackets from the sentence out of the link', () => {
+    const state = typedParagraph('Visit https://en.wikipedia.org/wiki/Notion_(software) today');
+    expect(linkedText(state)).toBe(
+      'Visit [https://en.wikipedia.org/wiki/Notion_(software)](https://en.wikipedia.org/wiki/Notion_(software)) today',
+    );
   });
 });

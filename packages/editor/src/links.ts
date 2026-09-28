@@ -81,12 +81,17 @@ export function trimUrlPunctuation(url: string): string {
 }
 
 export function autolinkRule(): InputRule {
-  return new InputRule(AUTOLINK_PATTERN, (state, match, start) => {
+  return new InputRule(AUTOLINK_PATTERN, (state, match, start, end) => {
     const matched = match[1];
     if (matched === undefined) return null;
     const href = trimUrlPunctuation(matched);
     if (href === '' || !isAllowedHref(href)) return null;
+    // An input rule's transaction replaces the keystroke that triggered it, so the space
+    // that ended the URL has to be typed here. Without it the space vanished, the next
+    // word ran on from the link, and the following space linked that word too.
+    const typed = match[0].slice(-1);
     return state.tr
+      .insertText(typed, end)
       .addMark(start, start + href.length, linkMark().create({ href }))
       .removeStoredMark(linkMark());
   });
