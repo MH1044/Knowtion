@@ -14,18 +14,19 @@ rule in CONTRIBUTING.md still applies: no reading Notion's code or formula gramm
 
 ## M1. An editor you can use without knowing the shortcuts
 
-The editor can already make most of Notion's basic blocks. It just never shows you how.
-This comes first because without it, writing plain text is all a new user can do.
+The controls that make the editor's blocks reachable are in: the `/` menu, the handle
+beside each block, and the toolbar over selected text. What remains is the rest of
+Notion's block and inline types.
 
 | Feature                                                       | Status  |
 | ------------------------------------------------------------- | ------- |
-| `/` command menu to insert any block                          | Missing |
-| `+` button beside a line to insert a block                    | Missing |
-| Drag handle on each block: move, delete, duplicate, turn into | Missing |
-| Toolbar on text selection: bold, italic, strike, code, link   | Missing |
+| `/` command menu to insert any block                          | Have    |
+| `+` button beside a line to insert a block                    | Have    |
+| Drag handle on each block: move, delete, duplicate, turn into | Have    |
+| Toolbar on text selection: bold, italic, strike, code, link   | Have    |
 | Text colour and highlight                                     | Missing |
-| Paragraph, headings 1-3, bullet, numbered, to-do, quote, code | Partial |
-| Divider                                                       | Partial |
+| Paragraph, headings 1-3, bullet, numbered, to-do, quote, code | Have    |
+| Divider                                                       | Have    |
 | Markdown shortcuts (`# `, `- `, `[] `, `> `, triple backtick) | Have    |
 | Toggle list and toggle headings                               | Missing |
 | Callout                                                       | Missing |
@@ -34,9 +35,6 @@ This comes first because without it, writing plain text is all a new user can do
 | Emoji picker in text (`:` shortcut)                           | Missing |
 | Code block language and syntax highlighting                   | Missing |
 | Keyboard shortcut reference                                   | Missing |
-
-"Partial" on the basic blocks means they work but can only be reached by keyboard
-shortcut or markdown syntax.
 
 ## M2. Images and files
 
