@@ -274,11 +274,11 @@ input:focus-visible {
   padding-left: 1.6em;
 }
 
+/* A quotation, as Notion draws one: body text behind a solid bar, not a dim aside. */
 .editor .ProseMirror blockquote {
   margin: 4px 0;
   padding: 0 14px;
-  color: var(--muted);
-  border-left: 3px solid var(--border);
+  border-left: 3px solid currentColor;
 }
 
 .editor .ProseMirror pre {
