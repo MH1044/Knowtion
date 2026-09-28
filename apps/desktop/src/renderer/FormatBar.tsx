@@ -7,15 +7,20 @@ const BAR_HEIGHT = 36;
 
 /**
  * Where the bar sits: centred above the selection, or below it when the selection is at
- * the top of the window, and never past either side.
+ * the top of the window, and never past either side of the writing column. A word at the
+ * start of a line used to pull the bar out over the sidebar.
  */
 export function barPlacement(
   anchor: { left: number; top: number; bottom: number },
   viewportWidth: number,
+  columnLeft = 4,
 ): { left: number; top: number } {
   const above = anchor.top - BAR_HEIGHT - 8;
   const top = above >= 4 ? above : anchor.bottom + 8;
-  const left = Math.max(4, Math.min(anchor.left - BAR_WIDTH / 2, viewportWidth - BAR_WIDTH - 4));
+  const left = Math.max(
+    columnLeft,
+    Math.min(anchor.left - BAR_WIDTH / 2, viewportWidth - BAR_WIDTH - 4),
+  );
   return { left, top };
 }
 
@@ -36,7 +41,8 @@ const BLOCKS: { block: FormatBlock; label: string }[] = [
 
 /** The toolbar over selected text. The editor decides what is active; this draws it. */
 export function FormatBar({ bar }: { bar: FormatToolbar }): React.JSX.Element {
-  const place = barPlacement(bar, window.innerWidth);
+  const column = document.querySelector('.editor')?.getBoundingClientRect().left;
+  const place = barPlacement(bar, window.innerWidth, column ?? 4);
   const [turnInto, setTurnInto] = useState(false);
   const current = BLOCKS.find((b) => b.block === bar.block);
   return (

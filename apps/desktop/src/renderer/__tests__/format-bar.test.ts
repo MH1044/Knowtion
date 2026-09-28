@@ -19,4 +19,8 @@ describe('where the format bar sits', () => {
       1200 - 360 - 4,
     );
   });
+
+  it('stays inside the writing column for a word at the start of a line', () => {
+    expect(barPlacement({ left: 310, top: 300, bottom: 320 }, 1200, 308).left).toBe(308);
+  });
 });
