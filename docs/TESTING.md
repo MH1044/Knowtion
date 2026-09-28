@@ -121,7 +121,7 @@ be run from the app.
 - [ ] Three backticks make a code block, and marks do not apply inside it.
 - [ ] `- `, `* ` and `+ ` each start a bullet list.
 - [ ] `1. ` starts a numbered list.
-- [ ] `> ` starts a quote.
+- [ ] `> ` starts a toggle and `" ` starts a quote, as in Notion.
 - [ ] `---`, `___` or `***` make a divider, and the cursor lands on a line after it so
       typing continues.
 - [ ] `[] `, `[ ] ` and `[x] ` make a todo, the last already ticked.

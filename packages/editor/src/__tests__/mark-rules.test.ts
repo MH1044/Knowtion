@@ -40,3 +40,14 @@ describe('typing Markdown formatting', () => {
     expect(marked(typedParagraph('a * b * c'))).toBe('a * b * c');
   });
 });
+
+describe("Notion's block shortcuts while typing", () => {
+  it('makes a toggle from "> " and a quote from \'" \'', () => {
+    expect(typedParagraph('> Details').doc.firstChild?.type.name).toBe('toggle');
+    expect(typedParagraph('" Said').doc.firstChild?.type.name).toBe('blockquote');
+  });
+
+  it('leaves a quotation mark that starts ordinary text alone', () => {
+    expect(typedParagraph('"Hello," she said').doc.firstChild?.type.name).toBe('paragraph');
+  });
+});

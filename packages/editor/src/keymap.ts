@@ -47,7 +47,9 @@ export function knowtionInputRules(): Plugin {
       textblockTypeInputRule(/^```$/, schema.nodes.code_block),
       wrappingInputRule(/^\s*([-*+])\s$/, schema.nodes.bullet_list),
       wrappingInputRule(/^(\d+)\.\s$/, schema.nodes.ordered_list),
-      wrappingInputRule(/^\s*>\s$/, schema.nodes.blockquote),
+      // Notion's shortcuts rather than Markdown's: "> " is a toggle, and '" ' a quote.
+      wrappingInputRule(/^\s*>\s$/, schema.nodes.toggle),
+      wrappingInputRule(/^\s*"\s$/, schema.nodes.blockquote),
       todoRule(),
       dividerRule(),
       autolinkRule(),

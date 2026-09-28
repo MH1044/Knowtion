@@ -126,7 +126,7 @@ export const BLOCK_CHOICES: readonly BlockChoice[] = [
   {
     id: 'toggle',
     label: 'Toggle list',
-    hint: '',
+    hint: '>',
     keywords: ['collapse', 'expand', 'details', 'fold'],
     command: toToggle,
   },
@@ -140,7 +140,7 @@ export const BLOCK_CHOICES: readonly BlockChoice[] = [
   {
     id: 'quote',
     label: 'Quote',
-    hint: '>',
+    hint: '"',
     keywords: ['blockquote', 'citation'],
     command: wrapIn(node('blockquote')),
   },
