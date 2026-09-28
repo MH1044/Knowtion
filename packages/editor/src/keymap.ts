@@ -19,6 +19,7 @@ import type { Command, Plugin } from 'prosemirror-state';
 
 import { dividerRule, insertDivider, toggleTodo, toggleTodoChecked, todoRule } from './blocks.js';
 import { autolinkRule, removeLink } from './links.js';
+import { liftTodo, sinkTodo, splitTodo, unwrapAtStart } from './todo-keys.js';
 import { schema } from './schema.js';
 
 /** `marks`/`baseKeymap` are indexed by string key, so lookups are optional statically. */
@@ -58,13 +59,21 @@ export function knowtionKeymap(undo: Command, redo: Command, addLink?: Command):
     'Mod-Alt-1': setBlockType(schema.nodes.heading, { level: 1 }),
     'Mod-Alt-2': setBlockType(schema.nodes.heading, { level: 2 }),
     'Mod-Alt-3': setBlockType(schema.nodes.heading, { level: 3 }),
-    // Inside a list, Enter splits the item; elsewhere it falls through to the default.
+    // In a list or a run of to-dos, Enter starts the next item; elsewhere it falls through
+    // to the default.
     Enter: chainCommands(
+      splitTodo,
       splitListItem(listItem),
       must(baseKeymap.Enter, 'baseKeymap binding "Enter"'),
     ),
-    Tab: sinkListItem(listItem),
-    'Shift-Tab': liftListItem(listItem),
+    Backspace: chainCommands(
+      unwrapAtStart,
+      must(baseKeymap.Backspace, 'baseKeymap binding "Backspace"'),
+    ),
+    // Tab is always the editor's. Letting it through would move focus out of the page
+    // in the middle of typing, which no one wants from a key they pressed to indent.
+    Tab: chainCommands(sinkListItem(listItem), sinkTodo, () => true),
+    'Shift-Tab': chainCommands(liftListItem(listItem), liftTodo, () => true),
     // A todo and a divider had no way in at all before these.
     'Mod-Shift-9': toggleTodo,
     'Mod-Enter': toggleTodoChecked,
