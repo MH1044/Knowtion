@@ -110,6 +110,23 @@ export const toggleTodoChecked: Command = (state, dispatch) => {
   return false;
 };
 
+/**
+ * Shift+Enter: the next line of the same block. In a code block, where every line break is
+ * already just text, that is a newline character.
+ */
+export const insertLineBreak: Command = (state, dispatch) => {
+  const { $from } = state.selection;
+  if ($from.parent.type.spec.code === true) {
+    if (dispatch) dispatch(state.tr.insertText('\n').scrollIntoView());
+    return true;
+  }
+  if (!$from.parent.isTextblock) return false;
+  if (dispatch) {
+    dispatch(state.tr.replaceSelectionWith(node('hard_break').create()).scrollIntoView());
+  }
+  return true;
+};
+
 /** Insert a divider at the cursor, for people who reach for a shortcut. */
 export const insertDivider: Command = (state, dispatch) => {
   if (dispatch) dispatch(state.tr.replaceSelectionWith(node('divider').create()).scrollIntoView());

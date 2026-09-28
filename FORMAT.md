@@ -558,6 +558,7 @@ version's vocabulary is pinned by a fixture in `packages/editor/fixtures/<versio
 | toggle       |                     | paragraph, then blocks | v1    |
 | callout      | icon: emoji or none | block+                 | v1    |
 | date         | date: `YYYY-MM-DD`  | none; inline, an atom  | v1    |
+| hard_break   |                     | none; inline           | v2    |
 
 | Mark   | Attributes                                 | Since |
 | ------ | ------------------------------------------ | ----- |

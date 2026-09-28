@@ -17,7 +17,14 @@ import { keymap } from 'prosemirror-keymap';
 import { liftListItem, sinkListItem, splitListItem } from 'prosemirror-schema-list';
 import type { Command, Plugin } from 'prosemirror-state';
 
-import { dividerRule, insertDivider, toggleTodo, toggleTodoChecked, todoRule } from './blocks.js';
+import {
+  dividerRule,
+  insertDivider,
+  insertLineBreak,
+  toggleTodo,
+  toggleTodoChecked,
+  todoRule,
+} from './blocks.js';
 import { autolinkRule, removeLink } from './links.js';
 import { joinIntoBlockAbove, liftTodo, sinkTodo, splitTodo, unwrapAtStart } from './todo-keys.js';
 import { schema } from './schema.js';
@@ -66,6 +73,7 @@ export function knowtionKeymap(undo: Command, redo: Command, addLink?: Command):
       splitListItem(listItem),
       must(baseKeymap.Enter, 'baseKeymap binding "Enter"'),
     ),
+    'Shift-Enter': insertLineBreak,
     Backspace: chainCommands(
       unwrapAtStart,
       joinIntoBlockAbove,

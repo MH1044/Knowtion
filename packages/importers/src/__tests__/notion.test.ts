@@ -111,6 +111,16 @@ describe('parseNotionPage', () => {
     expect(at(items, 1).attrs).toEqual({ checked: false });
   });
 
+  it('keeps a line break inside a paragraph as a line break', () => {
+    const parsed = parseNotionPage(page('T', 'a'.repeat(32), '<p>line one<br>line two</p>'));
+    const [paragraph] = must(parsed.doc.content, 'doc content');
+    expect(must(paragraph?.content, 'paragraph content').map((c) => c.type)).toEqual([
+      'text',
+      'hard_break',
+      'text',
+    ]);
+  });
+
   it('reads a toggle, with its first line and what is folded inside it', () => {
     const parsed = parseNotionPage(
       page(

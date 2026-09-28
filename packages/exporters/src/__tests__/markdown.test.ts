@@ -81,6 +81,11 @@ describe('blocks', () => {
     );
   });
 
+  it('writes a line break as a CommonMark hard break', () => {
+    const line = para(text('line one'), { type: 'hard_break' }, text('line two'));
+    expect(markdownFromDoc(doc(line))).toBe('line one\\\nline two');
+  });
+
   it('writes a date chip as its date', () => {
     const line = para(text('Due '), { type: 'date', attrs: { date: '2026-10-03' } }, text(' ok'));
     expect(markdownFromDoc(doc(line))).toBe('Due 2026-10-03 ok');

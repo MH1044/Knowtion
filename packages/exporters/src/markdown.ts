@@ -89,6 +89,8 @@ function inline(node: PmNode): string {
       // A date chip is its date, which every tool reads the same way.
       if (child.type === 'date')
         return typeof child.attrs?.date === 'string' ? child.attrs.date : '';
+      // CommonMark's hard line break: a backslash at the end of the line.
+      if (child.type === 'hard_break') return '\\\n';
       return inline(child);
     })
     .join('');

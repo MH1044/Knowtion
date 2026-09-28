@@ -59,6 +59,7 @@ describe('schema', () => {
       'date',
       'divider',
       'doc',
+      'hard_break',
       'heading',
       'list_item',
       'ordered_list',

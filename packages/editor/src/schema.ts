@@ -197,6 +197,19 @@ const date: NodeSpec = {
   ],
 };
 
+/**
+ * A line break inside a block, as Shift+Enter makes: the next line of the same paragraph,
+ * not a new block. Its text for search and copying is a newline.
+ */
+const hardBreak: NodeSpec = {
+  inline: true,
+  group: 'inline',
+  selectable: false,
+  leafText: () => '\n',
+  parseDOM: [{ tag: 'br' }],
+  toDOM: (): DOMOutputSpec => ['br'],
+};
+
 const marks: Record<string, MarkSpec> = {
   strong: {
     parseDOM: [
@@ -258,6 +271,7 @@ export const schema = new Schema({
     divider,
     text: { group: 'inline' },
     date,
+    hard_break: hardBreak,
   },
   marks,
 });

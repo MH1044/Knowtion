@@ -13,6 +13,7 @@ import {
   DIVIDER_PATTERN,
   TODO_PATTERN,
   insertDivider,
+  insertLineBreak,
   replaceWithDivider,
   todoAttrs,
   toggleTodo,
@@ -131,5 +132,28 @@ describe('insertDivider', () => {
     expect(next).toBeDefined();
     if (next === undefined) return;
     expect(shape(next)).toContain('divider');
+  });
+});
+
+describe('Shift+Enter', () => {
+  it('breaks the line inside the same paragraph', () => {
+    let state = stateWith('line one');
+    state = run(state, insertLineBreak) ?? state;
+    state = state.apply(state.tr.insertText('line two'));
+    expect(shape(state)).toEqual(['paragraph']);
+    const paragraph = state.doc.firstChild;
+    expect(paragraph?.childCount).toBe(3);
+    expect(paragraph?.child(1).type.name).toBe('hard_break');
+    expect(
+      paragraph?.textBetween(0, paragraph.content.size, '', (n) => n.type.spec.leafText?.(n) ?? ''),
+    ).toBe('line one\nline two');
+  });
+
+  it('adds a newline character inside a code block', () => {
+    const code = schema.node('code_block', null, [schema.text('a')]);
+    const base = EditorState.create({ schema, doc: schema.node('doc', null, [code]) });
+    const state = base.apply(base.tr.setSelection(TextSelection.create(base.doc, 2)));
+    const next = run(state, insertLineBreak);
+    expect(next?.doc.textContent).toBe('a\n');
   });
 });

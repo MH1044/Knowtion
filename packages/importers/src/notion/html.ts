@@ -73,7 +73,7 @@ function inline(node: P5Node, marks: DocNode['marks'] = []): DocNode[] {
   }
 
   const tag = node.tagName ?? '';
-  if (tag === 'br') return [{ type: 'text', text: '\n' }];
+  if (tag === 'br') return [{ type: 'hard_break' }];
 
   const mark = MARK_FOR_TAG[tag];
   let next = marks;
