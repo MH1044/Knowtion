@@ -655,7 +655,9 @@ describe('sync between two devices sharing a folder', () => {
   });
 });
 
-describe('compaction', () => {
+// Every test here opens two hosts on real files, and CI runs them under coverage on
+// Windows, where one took over the default 5 s. Budgets several times the cost, not 15%.
+describe('compaction', { timeout: 30_000 }, () => {
   async function pairSharing() {
     const shared = await dataDir();
     const logDir = join(shared, 'shared-log');
