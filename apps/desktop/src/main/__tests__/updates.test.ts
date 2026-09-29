@@ -33,6 +33,38 @@ describe('findUpdate', () => {
     ).toBeUndefined();
   });
 
+  it('never offers a release candidate to a stable build, even one not flagged as a pre-release', async () => {
+    expect(
+      await findUpdate('0.4.2', release({ tag_name: 'v0.5.0-rc.1', prerelease: false })),
+    ).toBeUndefined();
+    expect(await findUpdate('0.4.2', release({ tag_name: 'v0.5.0-rc.1' }))).toBeUndefined();
+    expect(await findUpdate('0.4.2', release({ tag_name: 'v0.5.0', prerelease: false }))).toEqual(
+      expect.objectContaining({ version: '0.5.0' }),
+    );
+  });
+
+  it('keeps offering a release candidate build the final release and a newer candidate', async () => {
+    expect(await findUpdate('0.5.0-rc.1', release({ tag_name: 'v0.5.0' }))).toEqual(
+      expect.objectContaining({ version: '0.5.0' }),
+    );
+    expect(
+      await findUpdate('0.5.0-rc.1', release({ tag_name: 'v0.5.0-rc.2', prerelease: false })),
+    ).toEqual(expect.objectContaining({ version: '0.5.0-rc.2' }));
+    expect(await findUpdate('0.5.0-rc.1', release({ tag_name: 'v0.5.0-rc.2' }))).toEqual(
+      expect.objectContaining({ version: '0.5.0-rc.2' }),
+    );
+    expect(await findUpdate('0.5.0-rc.2', release({ tag_name: 'v0.5.0-rc.1' }))).toBeUndefined();
+  });
+
+  it('still ignores a draft or a flagged pre-release on a release candidate build', async () => {
+    expect(
+      await findUpdate('0.5.0-rc.1', release({ tag_name: 'v0.5.0', draft: true })),
+    ).toBeUndefined();
+    expect(
+      await findUpdate('0.5.0-rc.1', release({ tag_name: 'v0.5.0-rc.2', prerelease: true })),
+    ).toBeUndefined();
+  });
+
   it('stays quiet when the network fails, because that is not the user’s problem', async () => {
     const failing = () => Promise.reject(new Error('offline'));
     await expect(findUpdate('0.3.0', failing)).resolves.toBeUndefined();

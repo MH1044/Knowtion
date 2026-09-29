@@ -13,7 +13,7 @@
  * the request itself, it never runs during the recovery ceremony, and a failure is
  * silent — a workspace that opens offline must not show an error about a version check.
  */
-import { isNewerVersion } from '../shared/version.js';
+import { isNewerVersion, parseVersion } from '../shared/version.js';
 
 /** Where releases are published. Public, so the request carries no credentials. */
 const RELEASES_API = 'https://api.github.com/repos/MH1044/Knowtion/releases/latest';
@@ -38,6 +38,11 @@ interface ReleaseResponse {
   body?: unknown;
   draft?: unknown;
   prerelease?: unknown;
+}
+
+/** Whether a version carries a pre-release part, as `0.5.0-rc.1` does. */
+function isPrereleaseVersion(text: string): boolean {
+  return (parseVersion(text)?.prerelease.length ?? 0) > 0;
 }
 
 /** First few lines of the release notes, so a banner has something to say. */
@@ -76,6 +81,11 @@ export async function findUpdate(
 
   const tag = typeof release.tag_name === 'string' ? release.tag_name : '';
   if (!isNewerVersion(tag, currentVersion)) return undefined;
+  // Belt and braces against a mis-flagged release. A release candidate published without
+  // the pre-release flag would otherwise reach everyone, because 0.5.0-rc.1 sorts above
+  // 0.4.1. So a stable build is only ever told about a stable release, whatever the flag
+  // says. A build that is itself a candidate still hears of a newer one and of the final.
+  if (!isPrereleaseVersion(currentVersion) && isPrereleaseVersion(tag)) return undefined;
 
   return {
     version: tag.replace(/^v/, ''),
