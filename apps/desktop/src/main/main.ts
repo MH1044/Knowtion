@@ -28,6 +28,7 @@ import { loadOrCreateIdentity, type Identity } from './identity.js';
 import { settle } from './ipc-result.js';
 import { chooseProtector } from './secret-protector.js';
 import { readSettings, writeSettings } from './settings.js';
+import { claimProfile } from './single-instance.js';
 import { checkSyncFolder, copyLog } from './sync-folder.js';
 import { NodeStorage } from '@knowtion/sync';
 
@@ -52,6 +53,13 @@ const isDevelopment = !app.isPackaged;
 // nested folder the user would have to find to back up their own notes. Changing it
 // once real data exists would strand that data, so it is pinned now.
 app.setName('Knowtion');
+
+// One process per profile, claimed before anything reads or writes the workspace or opens
+// a window. Two copies on one profile are one device writing its d/<deviceId> folder
+// twice over, which breaks FORMAT.md section 9's single-writer rule; see
+// single-instance.ts. After the name, because the lock lives in the user-data directory
+// the name decides. A second launch exits here and the first window comes to the front.
+const isPrimaryInstance = claimProfile(app, () => BrowserWindow.getAllWindows());
 
 let host: WorkspaceHost | undefined;
 /** Stops forwarding the current host's changes; called before a host is replaced. */
@@ -909,6 +917,11 @@ async function createWindow(): Promise<void> {
 }
 
 void app.whenReady().then(async () => {
+  // A launch turned away by the lock has already exited inside claimProfile. Should
+  // Electron ever defer that exit instead, this is the line that keeps the second launch
+  // from touching the profile the other copy owns: everything below reads it.
+  if (!isPrimaryInstance) return;
+
   // No remote content is ever loaded, so everything is locked to the app's own origin.
   session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
     callback({
