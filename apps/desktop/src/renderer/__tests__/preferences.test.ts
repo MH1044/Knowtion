@@ -2,11 +2,16 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
   COLUMN_TOGGLES_KEY,
+  RECENT_PAGES_KEY,
+  RECENT_PAGES_LIMIT,
   readPreference,
   readStored,
+  recentPages,
+  rememberRecentPage,
   rememberView,
   rememberedView,
   subscribePreferences,
+  withRecent,
   writePreference,
 } from '../preferences.js';
 
@@ -125,5 +130,50 @@ describe('subscribers', () => {
     writePreference(COLUMN_TOGGLES_KEY, 'properties');
     stop();
     expect(heard).toEqual([COLUMN_TOGGLES_KEY]);
+  });
+});
+
+describe('the pages opened lately', () => {
+  it('puts a page opened again at the front rather than listing it twice', () => {
+    expect(withRecent([], 'a')).toEqual(['a']);
+    expect(withRecent(['b', 'a'], 'c')).toEqual(['c', 'b', 'a']);
+    expect(withRecent(['c', 'b', 'a'], 'a')).toEqual(['a', 'c', 'b']);
+    expect(withRecent(['a', 'b'], 'a')).toEqual(['a', 'b']);
+  });
+
+  it('keeps at most twenty, dropping the oldest', () => {
+    const full = Array.from({ length: RECENT_PAGES_LIMIT }, (_, i) => `p${String(i)}`);
+    const next = withRecent(full, 'new');
+    expect(next).toHaveLength(RECENT_PAGES_LIMIT);
+    expect(next[0]).toBe('new');
+    expect(next).not.toContain(`p${String(RECENT_PAGES_LIMIT - 1)}`);
+    expect(withRecent(['a', 'b', 'c'], 'd', 2)).toEqual(['d', 'a']);
+  });
+
+  it('are stored newest first and read back', () => {
+    vi.stubGlobal('localStorage', fakeStorage());
+    expect(recentPages()).toEqual([]);
+    rememberRecentPage('a');
+    rememberRecentPage('b');
+    rememberRecentPage('a');
+    expect(recentPages()).toEqual(['a', 'b']);
+  });
+
+  it('read as none when what is stored is not a list of ids', () => {
+    vi.stubGlobal('localStorage', fakeStorage());
+    writePreference(RECENT_PAGES_KEY, 'not json');
+    expect(recentPages()).toEqual([]);
+    writePreference(RECENT_PAGES_KEY, '{"a":1}');
+    expect(recentPages()).toEqual([]);
+    writePreference(RECENT_PAGES_KEY, '["a", 2, "b"]');
+    expect(recentPages()).toEqual(['a', 'b']);
+  });
+
+  it('read as none, and are not remembered, when storage is unavailable', () => {
+    vi.stubGlobal('localStorage', refusingStorage());
+    expect(() => {
+      rememberRecentPage('a');
+    }).not.toThrow();
+    expect(recentPages()).toEqual([]);
   });
 });

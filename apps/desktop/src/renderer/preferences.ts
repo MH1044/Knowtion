@@ -1,5 +1,6 @@
 /**
- * Per-device display state: which view a database was left on, where a control is drawn.
+ * Per-device display state: which view a database was left on, where a control is drawn,
+ * which pages were opened lately.
  *
  * None of this belongs in the operation log. FORMAT.md section 10 keeps ephemera local,
  * and it means it: syncing "which tab I had open" would make every glance at a table an
@@ -106,4 +107,35 @@ export function rememberedView(databaseId: string): string | undefined {
 
 export function rememberView(databaseId: string, viewId: string): void {
   writePreference(`knowtion.view.${databaseId}`, viewId);
+}
+
+/** The pages opened on this device, for Quick Find to offer before anything is typed. */
+export const RECENT_PAGES_KEY = 'knowtion.recentPages';
+export const RECENT_PAGES_LIMIT = 20;
+
+/** `list` with `id` moved to the front, or added there, keeping at most `limit`. */
+export function withRecent(
+  list: readonly string[],
+  id: string,
+  limit: number = RECENT_PAGES_LIMIT,
+): string[] {
+  return [id, ...list.filter((other) => other !== id)].slice(0, limit);
+}
+
+/** Page ids, the most recently opened first. Empty when none are stored or they are not ids. */
+export function recentPages(): string[] {
+  const stored = readStored(RECENT_PAGES_KEY);
+  if (stored === undefined) return [];
+  try {
+    const parsed: unknown = JSON.parse(stored);
+    return Array.isArray(parsed)
+      ? parsed.filter((id): id is string => typeof id === 'string').slice(0, RECENT_PAGES_LIMIT)
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+export function rememberRecentPage(id: string): void {
+  writePreference(RECENT_PAGES_KEY, JSON.stringify(withRecent(recentPages(), id)));
 }

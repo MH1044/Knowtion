@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 
 import {
   api,
@@ -21,6 +21,9 @@ import { PageTree, useTreeDrag } from './PageTree.js';
 import { Search } from './Search.js';
 import { Breadcrumb, ChildPages } from './PageNav.js';
 import { usePageHost } from './pageHost.js';
+import { rememberRecentPage } from './preferences.js';
+import { QuickFind } from './QuickFind.js';
+import { inEditor, matchShortcut, type ShortcutAction } from './shortcuts.js';
 import { SyncPanel } from './SyncPanel.js';
 
 /** Find a page anywhere in the tree, since the sidebar only holds the nested shape. */
@@ -44,6 +47,7 @@ export function App(): React.JSX.Element {
   const [exportReport, setExportReport] = useState<ExportReport>();
   const [exporting, setExporting] = useState(false);
   const [keyStatus, setKeyStatus] = useState<KeyStatus>();
+  const [finding, setFinding] = useState(false);
   /**
    * The open page. Usually found in the tree; a database's rows are left out of the tree
    * on purpose, so a row opened from a table is fetched by id instead.
@@ -123,10 +127,63 @@ export function App(): React.JSX.Element {
     };
   }, [selectedId, tree]);
 
+  // Every way of opening a page goes through selectedId, so Quick Find's recent list is
+  // kept here rather than at each place a page can be opened from.
+  useEffect(() => {
+    if (selectedId !== undefined) rememberRecentPage(selectedId);
+  }, [selectedId]);
+
+  const openPage = useCallback((id: string) => {
+    setSelectedId(id);
+    setShowTrash(false);
+  }, []);
+
+  /** The New page button and Ctrl+N: a top-level page, opened with the caret in its title. */
+  const newPage = useCallback(
+    () =>
+      run(async () => {
+        // An empty title, shown as the "Untitled" placeholder, so typing a name
+        // replaces it rather than landing in the middle of the word.
+        const page = await api.createPage({ title: '' });
+        openPage(page.id);
+      }),
+    [run, openPage],
+  );
+
   // Declared before the early returns below, as hooks must be.
   const treeDrag = useTreeDrag((id, move) => {
     void run(() => api.movePage(id, move.parentId, move.index));
   });
+
+  // The keys that work wherever focus is. Nothing until setup is done: there is no
+  // workspace to search or add to before then.
+  const ready = keyStatus?.needsSetup === false;
+  const shortcut = useRef<(action: ShortcutAction) => boolean>(() => false);
+  useLayoutEffect(() => {
+    shortcut.current = (action) => {
+      if (!ready) return false;
+      if (action === 'quickFind') {
+        setFinding(true);
+      } else {
+        setFinding(false);
+        // What is being typed in a title or a cell is saved when it loses focus, and the
+        // page it is on is about to go away without that happening.
+        if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+        void newPage();
+      }
+      return true;
+    };
+  });
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent): void => {
+      const action = matchShortcut(event, { inEditor: inEditor(event.target) });
+      if (action !== undefined && shortcut.current(action)) event.preventDefault();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+    };
+  }, []);
 
   if (keyStatus === undefined) return <div className="app loading">Starting Knowtion…</div>;
   if (keyStatus.needsSetup) {
@@ -138,28 +195,12 @@ export function App(): React.JSX.Element {
       <aside className="sidebar">
         <header className="sidebar-header">
           <span className="brand">Knowtion</span>
-          <button
-            type="button"
-            onClick={() =>
-              void run(async () => {
-                // An empty title, shown as the "Untitled" placeholder, so typing a name
-                // replaces it rather than landing in the middle of the word.
-                const page = await api.createPage({ title: '' });
-                setSelectedId(page.id);
-                setShowTrash(false);
-              })
-            }
-          >
+          <button type="button" title="Ctrl+N" onClick={() => void newPage()}>
             New page
           </button>
         </header>
 
-        <Search
-          onOpen={(id) => {
-            setSelectedId(id);
-            setShowTrash(false);
-          }}
-        />
+        <Search onOpen={openPage} />
 
         {tree.length === 0 && !showTrash && (
           <p className="empty">No pages yet. Create one to get started.</p>
@@ -169,15 +210,11 @@ export function App(): React.JSX.Element {
           nodes={tree}
           selectedId={selectedId}
           drag={treeDrag}
-          onSelect={(id) => {
-            setSelectedId(id);
-            setShowTrash(false);
-          }}
+          onSelect={openPage}
           onCreateChild={(parentId) =>
             void run(async () => {
               const page = await api.createPage({ parentId, title: '' });
-              setSelectedId(page.id);
-              setShowTrash(false);
+              openPage(page.id);
             })
           }
         />
@@ -258,10 +295,7 @@ export function App(): React.JSX.Element {
             page={selected}
             tree={tree}
             run={run}
-            onOpen={(id) => {
-              setSelectedId(id);
-              setShowTrash(false);
-            }}
+            onOpen={openPage}
             onArchived={() => {
               setSelectedId(undefined);
             }}
@@ -270,6 +304,17 @@ export function App(): React.JSX.Element {
           <p className="placeholder">Select a page, or create one.</p>
         )}
       </main>
+
+      {finding && (
+        <QuickFind
+          tree={tree}
+          openId={showTrash ? undefined : selectedId}
+          onOpen={openPage}
+          onClose={() => {
+            setFinding(false);
+          }}
+        />
+      )}
     </div>
   );
 }

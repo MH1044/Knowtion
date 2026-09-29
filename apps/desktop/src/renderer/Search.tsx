@@ -20,7 +20,7 @@ const MATCH_END = String.fromCharCode(3);
  * an execution vector — which is exactly why the index emits control characters instead
  * of tags.
  */
-function Snippet({ text }: { text: string }): React.JSX.Element {
+export function Snippet({ text }: { text: string }): React.JSX.Element {
   const parts = text.split(MATCH_START).flatMap((chunk, index) => {
     if (index === 0) return [{ match: false, text: chunk }];
     const [matched = '', rest = ''] = chunk.split(MATCH_END);
@@ -39,14 +39,25 @@ function Snippet({ text }: { text: string }): React.JSX.Element {
   );
 }
 
-export function Search({ onOpen }: { onOpen: (id: string) => void }): React.JSX.Element {
-  const [query, setQuery] = useState('');
-  const [hits, setHits] = useState<SearchHit[]>([]);
+/** What the index answered, and the trimmed query it answered. */
+export interface SearchAnswer {
+  query: string;
+  hits: SearchHit[];
+}
+
+/**
+ * The pages matching `query`, from the full-text index; none while it is blank.
+ *
+ * The answer names the query it is for, because it lags what is typed by the debounce:
+ * until the next answer arrives, the hits are the previous query's.
+ */
+export function useSearchHits(query: string): SearchAnswer {
+  const [answer, setAnswer] = useState<SearchAnswer>({ query: '', hits: [] });
 
   useEffect(() => {
     const trimmed = query.trim();
     if (trimmed === '') {
-      setHits([]);
+      setAnswer({ query: '', hits: [] });
       return;
     }
     // Debounced so a fast typist does not queue one query per keystroke across IPC.
@@ -55,10 +66,10 @@ export function Search({ onOpen }: { onOpen: (id: string) => void }): React.JSX.
       void api
         .search(trimmed, 20)
         .then((results) => {
-          if (!cancelled) setHits(results);
+          if (!cancelled) setAnswer({ query: trimmed, hits: results });
         })
         .catch(() => {
-          if (!cancelled) setHits([]);
+          if (!cancelled) setAnswer({ query: trimmed, hits: [] });
         });
     }, 120);
 
@@ -67,6 +78,13 @@ export function Search({ onOpen }: { onOpen: (id: string) => void }): React.JSX.
       clearTimeout(timer);
     };
   }, [query]);
+
+  return answer;
+}
+
+export function Search({ onOpen }: { onOpen: (id: string) => void }): React.JSX.Element {
+  const [query, setQuery] = useState('');
+  const { hits } = useSearchHits(query);
 
   return (
     <div className="search">
