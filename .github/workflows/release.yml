@@ -1,7 +1,8 @@
 name: Release
 
 # Cutting a release is pushing a tag. Nothing else publishes, so an accidental push to
-# main can never ship a binary.
+# main can never ship a binary. RELEASING.md describes the release branches a tag is cut
+# from.
 on:
   push:
     tags: ['v*']
@@ -22,12 +23,52 @@ jobs:
     runs-on: windows-latest
 
     steps:
+      # The whole history rather than the one tagged commit, so the branch check below can
+      # see origin/release/X.Y and ask whether the tag is on it.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 24
           cache: npm
+
+      # What "Latest" means is the whole reason this step exists. The application's update
+      # check reads releases/latest and offers it to every installed copy older than it,
+      # so whatever this workflow marks Latest is pushed at everybody. A release candidate
+      # (any version with a suffix, such as 0.5.0-rc.1) is for testing: it publishes as a
+      # pre-release and is never Latest. Which notes it uses, and which branch it must be
+      # on, follow from the tag too. The rules are in scripts/release-channel.mjs, as pure
+      # functions with tests, rather than in shell here, where nothing could test them.
+      #
+      # It needs no dependencies, so it runs before npm ci: a bad tag fails in seconds.
+      # The notes go to the runner's temp directory, outside the checkout, so the
+      # formatting check and the source hygiene test never see them.
+      - name: Decide the release channel
+        id: plan
+        shell: bash
+        run: node scripts/plan-release.mjs plan "$GITHUB_REF_NAME" --notes-out "$RUNNER_TEMP/release-notes.md"
+
+      # A release is tagged on its release branch, never on main, so that what ships is
+      # what was tested as a release candidate plus the fixes deliberately cherry-picked
+      # onto it, and not whatever landed on main in the meantime. Checked before building:
+      # a tag in the wrong place should cost seconds, not a full verify.
+      - name: Tag must be on its release branch
+        shell: bash
+        env:
+          BRANCH: ${{ steps.plan.outputs.branch }}
+        run: |
+          commit=$(git rev-parse HEAD)
+          if ! git rev-parse --verify --quiet "refs/remotes/origin/$BRANCH" >/dev/null; then
+            echo "::error::$GITHUB_REF_NAME must be tagged on $BRANCH, and origin has no $BRANCH. Cut it from main and push it before the tag (RELEASING.md)."
+            exit 1
+          fi
+          if ! git merge-base --is-ancestor "$commit" "refs/remotes/origin/$BRANCH"; then
+            echo "::error::$GITHUB_REF_NAME points at $commit, which is not on origin/$BRANCH. Tag the release commit on $BRANCH and push the branch before the tag (RELEASING.md)."
+            exit 1
+          fi
+          echo "$GITHUB_REF_NAME ($commit) is on origin/$BRANCH"
 
       - run: npm ci
 
@@ -58,23 +99,30 @@ jobs:
       # artifacts split between them. Creating it here makes that race impossible.
       #
       # The notes are a file in the repository rather than generated, because these are
-      # read by someone deciding whether to run an unsigned installer. `gh` is already on
-      # the runner, so this needs no fourth action to pin.
+      # read by someone deciding whether to run an unsigned installer; the plan step chose
+      # the file and wrote it out. `gh` is already on the runner, so this needs no third
+      # action to pin.
       - name: Create the draft release
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PRERELEASE: ${{ steps.plan.outputs.prerelease }}
+          NOTES_FILE: ${{ steps.plan.outputs.notes_file }}
         run: |
           version="${GITHUB_REF_NAME#v}"
-          notes="docs/releases/$version.md"
-          if [ ! -f "$notes" ]; then
-            echo "::error::$notes is missing; a release nobody can read is not a release"
-            exit 1
-          fi
+          # Spelled out rather than defaulted: an empty answer must not read as "stable".
+          case "$PRERELEASE" in
+            true) channel=(--prerelease) ;;
+            false) channel=() ;;
+            *)
+              echo "::error::the plan step did not say whether $GITHUB_REF_NAME is a pre-release"
+              exit 1
+              ;;
+          esac
           if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
             echo "release already exists, reusing it"
           else
-            gh release create "$GITHUB_REF_NAME" --draft --title "Knowtion $version" --notes-file "$notes"
+            gh release create "$GITHUB_REF_NAME" --draft "${channel[@]}" --title "Knowtion $version" --notes-file "$NOTES_FILE"
           fi
 
       - name: Build the installer
@@ -87,11 +135,82 @@ jobs:
         # action to pin in the one workflow that can publish, for a copy of a file that
         # is already public.
 
+      # Decided now, just before publishing, rather than in the plan: the build takes long
+      # enough that asking before it would be asking about a different moment.
+      #
+      # A stable release becomes Latest only if it is the highest stable version: a 0.4.x
+      # patch published after 0.5.0 must not become what every installed copy is offered.
+      # Whatever is Latest now is, by the same rule, the highest stable version published,
+      # so comparing with it is enough.
+      #
+      # `gh api` fails on a 404, which is GitHub's answer when nothing is Latest yet. Any
+      # other failure stops the job: reading an outage as "nothing is Latest" would make
+      # this tag Latest on the strength of an error.
+      - name: Decide whether this release becomes Latest
+        id: latest
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if current=$(gh api repos/${{ github.repository }}/releases/latest --jq .tag_name 2>"$RUNNER_TEMP/latest.err"); then
+            :
+          elif grep -q 'HTTP 404' "$RUNNER_TEMP/latest.err"; then
+            current=''
+          else
+            cat "$RUNNER_TEMP/latest.err"
+            echo "::error::could not read which release is Latest, so there is no telling whether $GITHUB_REF_NAME should be"
+            exit 1
+          fi
+          echo "Latest now: ${current:-none}"
+          node scripts/plan-release.mjs latest "$GITHUB_REF_NAME" "$current"
+
       # Only now, with the installer attached and the build green, does the release
       # become visible. The update check ignores drafts, so nothing is offered an update
-      # it cannot download.
+      # it cannot download. Both flags are always explicit: left out, GitHub marks a newly
+      # published release Latest, which is exactly the mistake this workflow used to make.
       - name: Publish the release
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release edit "$GITHUB_REF_NAME" --draft=false --latest
+          PRERELEASE: ${{ steps.plan.outputs.prerelease }}
+          MAKE_LATEST: ${{ steps.latest.outputs.make_latest }}
+        run: |
+          case "$PRERELEASE/$MAKE_LATEST" in
+            true/false) flags=(--prerelease --latest=false) ;;
+            false/true) flags=(--prerelease=false --latest) ;;
+            false/false) flags=(--prerelease=false --latest=false) ;;
+            *)
+              echo "::error::no plan for publishing $GITHUB_REF_NAME (prerelease='$PRERELEASE', make_latest='$MAKE_LATEST')"
+              exit 1
+              ;;
+          esac
+          gh release edit "$GITHUB_REF_NAME" --draft=false "${flags[@]}"
+
+      # Trust nothing above: ask GitHub what it now offers. If Latest is wrong, every
+      # installed copy is being offered the wrong version right now, so this fails loudly
+      # and says how to put it back.
+      - name: Check which release is Latest
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          EXPECTED: ${{ steps.latest.outputs.expected_latest }}
+        run: |
+          if actual=$(gh api repos/${{ github.repository }}/releases/latest --jq .tag_name 2>"$RUNNER_TEMP/latest.err"); then
+            :
+          elif grep -q 'HTTP 404' "$RUNNER_TEMP/latest.err"; then
+            actual=''
+          else
+            cat "$RUNNER_TEMP/latest.err"
+            echo "::error::could not read which release is Latest after publishing $GITHUB_REF_NAME; check it by hand"
+            exit 1
+          fi
+          if [ "$actual" != "$EXPECTED" ]; then
+            if [ -n "$EXPECTED" ]; then
+              fix="gh release edit $EXPECTED --latest"
+            else
+              fix="gh release edit $actual --latest=false"
+            fi
+            echo "::error::releases/latest is ${actual:-nothing} but should be ${EXPECTED:-nothing}. The update check offers Latest to every installed copy; put it back with: $fix"
+            exit 1
+          fi
+          echo "releases/latest is ${actual:-nothing}, as it should be"
