@@ -1,0 +1,19 @@
+/* Anything opened over the page. Popover.tsx sets left, top and max-height. */
+.popover {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 60;
+  overflow-y: auto;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgb(0 0 0 / 45%);
+}
+
+/* Drawn once to be measured before it is placed. Not hidden: a hidden element cannot
+   take focus, and a menu takes it as it opens. */
+.popover.placing {
+  opacity: 0;
+  pointer-events: none;
+}
