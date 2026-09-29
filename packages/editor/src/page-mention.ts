@@ -72,6 +72,8 @@ export class PageMentionView implements NodeView {
     this.dom = document.createElement('span');
     this.dom.className = 'page-mention';
     this.dom.addEventListener('mousedown', (event) => {
+      // The main button only: a right-click opens the page's menu and stays on this page.
+      if (event.button !== 0) return;
       // A click follows the mention rather than placing the caret inside it.
       event.preventDefault();
       if (this.#target() !== undefined) this.#pages?.open(this.#uuid());

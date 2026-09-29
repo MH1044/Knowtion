@@ -17,8 +17,10 @@ import { BlockHandle } from './BlockHandle.js';
 import { BlockMenu } from './BlockMenu.js';
 import { Calendar } from './Calendar.js';
 import { dateHost } from './dates.js';
+import { EditorContextMenu, type EditTarget } from './EditorContextMenu.js';
 import { FormatBar } from './FormatBar.js';
 import { FloatingIconMenu } from './IconPicker.js';
+import { pointBox, type Box } from './ui/placement.js';
 
 /**
  * The link prompt.
@@ -103,6 +105,8 @@ export function PageBody({
   const [unknown, setUnknown] = useState<readonly string[]>([]);
   const [calloutPick, setCalloutPick] = useState<Parameters<CalloutIconRequest>[0]>();
   const [datePick, setDatePick] = useState<Parameters<DatePickRequest>[0]>();
+  // The right-click menu, and what was under the pointer when it opened.
+  const [context, setContext] = useState<{ anchor: Box; target: EditTarget }>();
 
   useEffect(() => {
     let editor: PageEditor | undefined;
@@ -190,6 +194,7 @@ export function PageBody({
       setLive(undefined);
       setSpot(undefined);
       setUnknown([]);
+      setContext(undefined);
     };
   }, [pageId]);
 
@@ -229,6 +234,30 @@ export function PageBody({
         onKeyDown={() => {
           setSpot(undefined);
         }}
+        // On the frame, which holds the handle too, so a right-click on the grip opens the
+        // menu for the grip's block.
+        onContextMenu={(e) => {
+          // React passes on events from a portal as if they happened where it is rendered,
+          // so a right-click on the open ⋮⋮ menu, drawn in the body, would arrive here too.
+          if (live === undefined || !(e.target instanceof Element)) return;
+          if (!e.currentTarget.contains(e.target) || e.target.closest('.editor-tail') !== null) {
+            return;
+          }
+          e.preventDefault();
+          // Outside a selection, Chromium moves the caret to the pointer on the press and
+          // tells the editor with a selectionchange. After a very short press that event
+          // comes once the menu has focus, the editor ignores it, and Paste would replace
+          // the old selection. Sent now, it has the editor read the caret first.
+          document.dispatchEvent(new Event('selectionchange'));
+          setContext({
+            anchor: pointBox(e.clientX, e.clientY),
+            target: {
+              spot: live.blockAt(e.clientY),
+              hasSelection: !live.view.state.selection.empty,
+              editable: live.unknown.length === 0,
+            },
+          });
+        }}
       >
         <div className="editor" ref={holder} />
         {/* The space below the last block: a click here writes at the end of the page,
@@ -251,6 +280,20 @@ export function PageBody({
           />
         )}
       </div>
+      {/* Beside the frame, not in it: the pointer over the menu would move the handle. */}
+      {live !== undefined && context !== undefined && (
+        <EditorContextMenu
+          editor={live}
+          anchor={context.anchor}
+          target={context.target}
+          onClose={() => {
+            setContext(undefined);
+          }}
+          onDone={() => {
+            setSpot(undefined);
+          }}
+        />
+      )}
       {slash !== null && <BlockMenu menu={slash} />}
       {datePick !== undefined && (
         <Calendar

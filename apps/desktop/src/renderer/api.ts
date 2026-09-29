@@ -265,6 +265,10 @@ interface Bridge {
   }): Promise<Result<{ keyed: string[] }>>;
   dbQuery(input: ViewQuery): Promise<Result<QueryResult>>;
   checkForUpdate(): Promise<Result<UpdateNotice | null>>;
+  /** Run Cut, Copy or Paste on whatever has focus in this window, as its shortcut would. */
+  cut(): Promise<Result<null>>;
+  copy(): Promise<Result<null>>;
+  paste(): Promise<Result<null>>;
 }
 
 declare global {
@@ -370,4 +374,7 @@ export const api = {
   dbQuery: (query: ViewQuery & { overrides?: ViewOverrides }) =>
     unwrap(window.knowtion.dbQuery(query)),
   checkForUpdate: () => unwrap(window.knowtion.checkForUpdate()),
+  cut: () => unwrap(window.knowtion.cut()),
+  copy: () => unwrap(window.knowtion.copy()),
+  paste: () => unwrap(window.knowtion.paste()),
 };

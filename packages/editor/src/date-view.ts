@@ -33,7 +33,8 @@ export class DateView implements NodeView {
     this.dom = document.createElement('time');
     this.dom.className = 'date-chip';
     this.dom.addEventListener('mousedown', (event) => {
-      if (pick === undefined || !view.editable) return;
+      // The main button only: a right-click is for the page's menu.
+      if (event.button !== 0 || pick === undefined || !view.editable) return;
       // A click opens the calendar rather than selecting the chip or moving the caret.
       event.preventDefault();
       const box = this.dom.getBoundingClientRect();

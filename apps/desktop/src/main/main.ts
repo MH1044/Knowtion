@@ -373,6 +373,28 @@ function registerDatabaseHandlers(): void {
 
 function registerHandlers(): void {
   registerDatabaseHandlers();
+  // Cut, Copy and Paste from the page's own menu. Web content may not paste by itself, so
+  // the sender runs the command on itself, as the Edit menu's roles do: its cut, copy or
+  // paste event fires and the editor handles it. Nothing of the clipboard comes back, and
+  // a sender can only paste into itself, which Ctrl+V already lets it do.
+  ipcMain.handle('edit:cut', (event) =>
+    settle(() => {
+      event.sender.cut();
+      return null;
+    }),
+  );
+  ipcMain.handle('edit:copy', (event) =>
+    settle(() => {
+      event.sender.copy();
+      return null;
+    }),
+  );
+  ipcMain.handle('edit:paste', (event) =>
+    settle(() => {
+      event.sender.paste();
+      return null;
+    }),
+  );
   handle('workspace:tree', () => mustHost().tree());
   handle('workspace:trash', () => mustHost().trash());
   handle('workspace:page', (input: { id: string }) => mustHost().page(input.id as never));
