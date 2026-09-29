@@ -86,6 +86,13 @@ function keysFor(deviceId: Uint8Array): ReturnType<typeof generateDeviceKeys> {
 
 const titles = (pages: { title: string }[]) => pages.map((p) => p.title).sort();
 
+/**
+ * The budget for a block whose tests open two hosts on real files. CI runs them under
+ * coverage on Windows, where a runner stall has pushed one past the default 5 s (a
+ * sync that takes 0.6 s in the run either side). Several times the cost, not 15%.
+ */
+const TWO_HOSTS = { timeout: 30_000 };
+
 /** Two devices: separate application data, one shared log directory. */
 async function pair() {
   const shared = await dataDir();
@@ -529,7 +536,7 @@ describe('Notion import', () => {
   });
 });
 
-describe('sync between two devices sharing a folder', () => {
+describe('sync between two devices sharing a folder', TWO_HOSTS, () => {
   it('propagates a new page', async () => {
     const { a, b } = await pair();
     a.createPage({ title: 'From A' });
@@ -655,9 +662,7 @@ describe('sync between two devices sharing a folder', () => {
   });
 });
 
-// Every test here opens two hosts on real files, and CI runs them under coverage on
-// Windows, where one took over the default 5 s. Budgets several times the cost, not 15%.
-describe('compaction', { timeout: 30_000 }, () => {
+describe('compaction', TWO_HOSTS, () => {
   async function pairSharing() {
     const shared = await dataDir();
     const logDir = join(shared, 'shared-log');
@@ -1098,7 +1103,7 @@ describe('a workspace that cannot save', () => {
   });
 });
 
-describe('change notification', () => {
+describe('change notification', TWO_HOSTS, () => {
   it('reports each local intent once, naming the page', async () => {
     const host = await open(await dataDir());
     const seen: unknown[] = [];
@@ -1179,7 +1184,7 @@ describe('change notification', () => {
   });
 });
 
-describe('databases', () => {
+describe('databases', TWO_HOSTS, () => {
   const ctx = { limit: 100 };
 
   it('caps one query at 500 rows and pages past it, with the total unchanged throughout', async () => {
