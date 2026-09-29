@@ -117,8 +117,8 @@ It names the new release after a new highest stable version, and is unchanged af
 release candidate or an older patch. If it is wrong, every installed copy is being offered
 the wrong version: put it right with `gh release edit <the right tag> --latest`.
 
-Nothing else publishes. A push to `main` or to a release branch runs no release and
-produces no binary, so an ordinary commit can never ship.
+Nothing else publishes. A push to `main` or to a release branch runs CI on Windows, Linux
+and macOS but no release, and produces no binary, so an ordinary commit can never ship.
 
 ## Building one locally
 
