@@ -2,7 +2,11 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    # Release branches as well as main, so a release candidate (a release/X.Y branch with
+    # fixes cherry-picked onto it, RELEASING.md) is tested on all three OSes before it is
+    # tagged. Runs are grouped by the full ref below, so a push to one branch cancels only
+    # that branch's older run, never main's or another release branch's.
+    branches: [main, 'release/**']
   pull_request:
 
 concurrency:
