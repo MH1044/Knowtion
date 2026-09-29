@@ -5,13 +5,15 @@
  * menu, this plugin decides when the toolbar shows and what is active. The host only
  * draws it and hands the clicks back.
  */
-import { setBlockType, toggleMark } from 'prosemirror-commands';
+import { toggleMark } from 'prosemirror-commands';
 import { Plugin, TextSelection, type Command, type EditorState } from 'prosemirror-state';
-import type { MarkType, NodeType } from 'prosemirror-model';
+import type { MarkType } from 'prosemirror-model';
 import type { EditorView } from 'prosemirror-view';
 
+import { blockKindAt, blocksBetween, turnSelectionInto, type BlockKind } from './handle.js';
 import { linkAt, removeLink } from './links.js';
 import { schema } from './schema.js';
+import type { BlockChoice } from './slash.js';
 
 function mark(name: string): MarkType {
   const found = schema.marks[name];
@@ -19,21 +21,20 @@ function mark(name: string): MarkType {
   return found;
 }
 
-function node(name: string): NodeType {
-  const found = schema.nodes[name];
-  if (found === undefined) throw new Error(`expected schema node "${name}"`);
-  return found;
-}
-
 export type FormatMark = 'strong' | 'em' | 'underline' | 'strike' | 'code';
-export type FormatBlock = 'text' | 'heading1' | 'heading2' | 'heading3';
+/** A kind of block, by the id of the Turn into choice that makes one. */
+export type FormatBlock = BlockKind;
 
 export interface FormatState {
   from: number;
   to: number;
   /** Which marks cover the selection. A mark on only part of it counts as active. */
   active: Record<FormatMark | 'link', boolean>;
-  /** What the selection's block is, when it is one the toolbar can switch between. */
+  /**
+   * The kind of the first block with selected text, found the way the block handle finds
+   * a block: in a list that is the list item, not the paragraph inside it. A line nested
+   * under an item is its own block, not the item's (see blocksBetween).
+   */
   block: FormatBlock | undefined;
 }
 
@@ -62,24 +63,13 @@ export function formatStateOf(state: EditorState): FormatState | undefined {
   };
   for (const name of MARKS) active[name] = state.doc.rangeHasMark(from, to, mark(name));
 
-  const parent = $from.parent;
-  let block: FormatBlock | undefined;
-  if (parent.type === node('paragraph')) block = 'text';
-  else if (parent.type === node('heading')) {
-    const level = parent.attrs.level as number;
-    block = level === 1 ? 'heading1' : level === 2 ? 'heading2' : 'heading3';
-  }
+  const first = blocksBetween(state.doc, from, to)[0];
+  const block = first === undefined ? undefined : blockKindAt(state.doc, first);
   return { from, to, active, block };
 }
 
 export function toggleFormat(name: FormatMark): Command {
   return toggleMark(mark(name));
-}
-
-export function setFormatBlock(block: FormatBlock): Command {
-  return block === 'text'
-    ? setBlockType(node('paragraph'))
-    : setBlockType(node('heading'), { level: Number(block.slice(-1)) });
 }
 
 /** What the host needs to draw the toolbar. */
@@ -90,7 +80,8 @@ export interface FormatToolbar extends FormatState {
   /** The bottom of the selection, for when there is no room above it. */
   bottom: number;
   toggle: (name: FormatMark) => void;
-  setBlock: (block: FormatBlock) => void;
+  /** Turn every block the selection has text in into this, keeping the selection. */
+  turnInto: (choice: BlockChoice) => void;
   /** Ask for a URL, or remove the link when the selection already has one. */
   link: () => void;
 }
@@ -130,8 +121,8 @@ export function formatToolbar(
       toggle: (name) => {
         run(toggleFormat(name));
       },
-      setBlock: (block) => {
-        run(setFormatBlock(block));
+      turnInto: (choice) => {
+        run(turnSelectionInto(choice));
       },
       link: () => {
         if (next.active.link) run(removeLink);

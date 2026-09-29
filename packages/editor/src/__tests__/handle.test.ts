@@ -156,6 +156,59 @@ describe('the block menu', () => {
     turnBlockInto(view, 0, choice('numbered'));
     expect(shape(view.state)).toEqual(['ordered_list:first']);
   });
+
+  it('leaves a block turned into its own kind as it was', () => {
+    const done = schema.node('todo_item', { checked: true }, [p('done')]);
+    const a = fakeView(stateOf(done));
+    turnBlockInto(a, 0, choice('todo'));
+    expect(a.state.doc.firstChild?.attrs.checked).toBe(true);
+
+    const toggle = schema.node('toggle', null, [p('summary'), p('inside')]);
+    const b = fakeView(stateOf(toggle));
+    turnBlockInto(b, 0, choice('toggle'));
+    expect(shape(b.state)).toEqual(['toggle:summaryinside']);
+  });
+
+  it('turns a heading into a list, which must start with plain text', () => {
+    const view = fakeView(stateOf(schema.node('heading', { level: 1 }, [schema.text('Title')])));
+    turnBlockInto(view, 0, choice('bullet'));
+    expect(view.state.doc.toString()).toBe('doc(bullet_list(list_item(paragraph("Title"))))');
+  });
+
+  it('changes a list item to the other kind of list where it stands', () => {
+    const view = fakeView(stateOf(schema.node('bullet_list', null, [li('a'), li('b'), li('c')])));
+    turnBlockInto(view, 1 + li('a').nodeSize, choice('numbered'));
+    expect(shape(view.state)).toEqual(['bullet_list:a', 'ordered_list:b', 'bullet_list:c']);
+  });
+
+  it('continues a numbered list just above, as the toolbar does', () => {
+    const numbered = schema.node('ordered_list', null, [li('a')]);
+    const view = fakeView(stateOf(numbered, schema.node('bullet_list', null, [li('b')])));
+    turnBlockInto(view, numbered.nodeSize + 1, choice('numbered'));
+    expect(shape(view.state)).toEqual(['ordered_list:ab']);
+  });
+
+  it('turns one box into another with every line still inside', () => {
+    const quote = schema.node('blockquote', null, [p('first'), p('second')]);
+    const a = fakeView(stateOf(quote));
+    turnBlockInto(a, 0, choice('callout'));
+    expect(a.state.doc.toString()).toBe('doc(callout(paragraph("first"), paragraph("second")))');
+
+    const toggle = schema.node('toggle', null, [p('sum'), p('kid')]);
+    const b = fakeView(stateOf(toggle));
+    turnBlockInto(b, 0, choice('todo'));
+    expect(b.state.doc.toString()).toBe('doc(todo_item(paragraph("sum"), paragraph("kid")))');
+  });
+
+  it('gives a box that must start with plain text a plain first line', () => {
+    const titled = schema.node('callout', null, [
+      schema.node('heading', { level: 2 }, [schema.text('Title')]),
+      p('body'),
+    ]);
+    const view = fakeView(stateOf(titled));
+    turnBlockInto(view, 0, choice('toggle'));
+    expect(view.state.doc.toString()).toBe('doc(toggle(paragraph("Title"), paragraph("body")))');
+  });
 });
 
 describe('dropping a dragged block', () => {

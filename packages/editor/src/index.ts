@@ -9,7 +9,7 @@ export { schema } from './schema.js';
 export { knowtionInputRules, knowtionKeymap } from './keymap.js';
 export { insertDivider, toggleTodo, toggleTodoChecked } from './blocks.js';
 export { knowtionPlaceholder } from './placeholder.js';
-export { BLOCK_CHOICES, filterChoices } from './slash.js';
+export { BLOCK_CHOICES, filterChoices, TURN_INTO_CHOICES } from './slash.js';
 export type { BlockChoice, SlashMenu } from './slash.js';
 export type { FormatBlock, FormatMark, FormatToolbar } from './toolbar.js';
 export {

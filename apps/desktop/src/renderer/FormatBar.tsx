@@ -1,9 +1,13 @@
 import { useState } from 'react';
 
-import type { FormatBlock, FormatMark, FormatToolbar } from '@knowtion/editor';
+import { TURN_INTO_CHOICES, type FormatMark, type FormatToolbar } from '@knowtion/editor';
 
 const BAR_WIDTH = 360;
 const BAR_HEIGHT = 36;
+/** Tall enough for every Turn into choice without scrolling, when the window allows. */
+const TURN_INTO_HEIGHT = 320;
+/** The least a squeezed Turn into list keeps: a couple of choices, and it scrolls. */
+const TURN_INTO_MIN = 64;
 
 /**
  * Where the bar sits: centred above the selection, or below it when the selection is at
@@ -24,6 +28,24 @@ export function barPlacement(
   return { left, top };
 }
 
+/**
+ * Where the Turn into list opens: below the bar, or above it when the bar sits too low for
+ * the list to fit underneath and there is more room over it. Either way it is no taller
+ * than the room it has, and scrolls for the rest.
+ */
+export function turnIntoPlacement(
+  barTop: number,
+  viewportHeight: number,
+): { up: boolean; maxHeight: number } {
+  const below = viewportHeight - (barTop + BAR_HEIGHT) - 10;
+  const above = barTop - 10;
+  const up = below < TURN_INTO_HEIGHT && above > below;
+  return {
+    up,
+    maxHeight: Math.max(TURN_INTO_MIN, Math.min(TURN_INTO_HEIGHT, up ? above : below)),
+  };
+}
+
 const MARK_BUTTONS: { mark: FormatMark; label: string; title: string; className: string }[] = [
   { mark: 'strong', label: 'B', title: 'Bold (Ctrl+B)', className: 'fmt-bold' },
   { mark: 'em', label: 'i', title: 'Italic (Ctrl+I)', className: 'fmt-italic' },
@@ -32,19 +54,13 @@ const MARK_BUTTONS: { mark: FormatMark; label: string; title: string; className:
   { mark: 'code', label: '</>', title: 'Code (Ctrl+E)', className: 'fmt-code' },
 ];
 
-const BLOCKS: { block: FormatBlock; label: string }[] = [
-  { block: 'text', label: 'Text' },
-  { block: 'heading1', label: 'Heading 1' },
-  { block: 'heading2', label: 'Heading 2' },
-  { block: 'heading3', label: 'Heading 3' },
-];
-
 /** The toolbar over selected text. The editor decides what is active; this draws it. */
 export function FormatBar({ bar }: { bar: FormatToolbar }): React.JSX.Element {
   const column = document.querySelector('.editor')?.getBoundingClientRect().left;
   const place = barPlacement(bar, window.innerWidth, column ?? 4);
   const [turnInto, setTurnInto] = useState(false);
-  const current = BLOCKS.find((b) => b.block === bar.block);
+  const current = TURN_INTO_CHOICES.find((c) => c.id === bar.block);
+  const menu = turnIntoPlacement(place.top, window.innerHeight);
   return (
     <div
       className="format-bar"
@@ -52,7 +68,8 @@ export function FormatBar({ bar }: { bar: FormatToolbar }): React.JSX.Element {
       aria-label="Format text"
       style={{ left: place.left, top: place.top, width: BAR_WIDTH }}
       // Keep the selection: focus leaving the editor would hide the bar mid-click, which
-      // is also why "turn into" is buttons rather than a native select.
+      // is also why "turn into" is buttons here rather than a native select or the shared
+      // menu, both of which take focus.
       onMouseDown={(e) => {
         e.preventDefault();
       }}
@@ -70,19 +87,24 @@ export function FormatBar({ bar }: { bar: FormatToolbar }): React.JSX.Element {
             {current.label} ▾
           </button>
           {turnInto && (
-            <div className="format-turn-into-menu" role="menu">
-              {BLOCKS.map((b) => (
+            <div
+              className={`format-turn-into-menu${menu.up ? ' up' : ''}`}
+              role="menu"
+              style={{ maxHeight: menu.maxHeight }}
+            >
+              {TURN_INTO_CHOICES.map((choice) => (
                 <button
-                  key={b.block}
+                  key={choice.id}
                   type="button"
-                  role="menuitem"
-                  className={b.block === bar.block ? 'active' : ''}
+                  role="menuitemradio"
+                  aria-checked={choice === current}
+                  className={choice === current ? 'active' : ''}
                   onClick={() => {
                     setTurnInto(false);
-                    bar.setBlock(b.block);
+                    bar.turnInto(choice);
                   }}
                 >
-                  {b.label}
+                  {choice.label}
                 </button>
               ))}
             </div>

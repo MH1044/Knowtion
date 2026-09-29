@@ -1655,22 +1655,39 @@ button.danger {
   border-right: 1px solid var(--border);
 }
 
+/* Its height is capped by FormatBar to the room it has; the rest scrolls. */
 .format-turn-into-menu {
   position: absolute;
   top: 34px;
   left: 0;
   display: flex;
   flex-direction: column;
-  width: 140px;
+  width: 150px;
+  max-height: 320px;
   padding: 4px;
+  overflow-y: auto;
   background: var(--bg-raised);
   border: 1px solid var(--border);
   border-radius: 8px;
   box-shadow: 0 8px 24px rgb(0 0 0 / 45%);
 }
 
+/* Opened upwards when the bar sits too low in the window for the list to fit below. */
+.format-turn-into-menu.up {
+  top: auto;
+  bottom: 34px;
+}
+
 .format-turn-into-menu button {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: space-between;
   text-align: left;
+}
+
+.format-turn-into-menu button.active::after {
+  content: '✓';
 }
 
 /* The frame reaches into the gutter so the handle beside a block stays reachable. */

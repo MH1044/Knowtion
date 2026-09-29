@@ -168,6 +168,14 @@ export const BLOCK_CHOICES: readonly BlockChoice[] = [
 ];
 
 /**
+ * What an existing block can become: every block type except a divider, which holds no
+ * text to keep, and a date, which is not a block at all.
+ */
+export const TURN_INTO_CHOICES: readonly BlockChoice[] = BLOCK_CHOICES.filter(
+  (choice) => choice.id !== 'divider' && choice.id !== 'date',
+);
+
+/**
  * The choices a query matches, in menu order.
  *
  * A match is any word of the label or a keyword that starts with the query, so "h" finds
