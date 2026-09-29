@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { daysBetween, localToday, monthGrid, relativeLabel } from '../dates.js';
+import { daysBetween, localToday, monthGrid, numericDateOrder, relativeLabel } from '../dates.js';
 
 describe('dates for the reader', () => {
   it('reads today from the local calendar, not UTC', () => {
@@ -19,6 +19,14 @@ describe('dates for the reader', () => {
     expect(relativeLabel('2026-09-27', '2026-09-28', 'en-US')).toBe('Yesterday');
     expect(relativeLabel('2026-10-03', '2026-09-28', 'en-US')).toBe('Oct 3');
     expect(relativeLabel('2027-01-05', '2026-09-28', 'en-US')).toBe('Jan 5, 2027');
+  });
+
+  it('knows which way round the reader writes a date in numbers', () => {
+    expect(numericDateOrder('en-US')).toBe('mdy');
+    expect(numericDateOrder('en-GB')).toBe('dmy');
+    expect(numericDateOrder('de-DE')).toBe('dmy');
+    expect(numericDateOrder('ja-JP')).toBe('ymd');
+    expect(numericDateOrder('not a locale')).toBe('mdy');
   });
 });
 

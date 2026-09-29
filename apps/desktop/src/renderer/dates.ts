@@ -88,6 +88,30 @@ export function firstDayOfWeek(locale = navigator.language): number {
   }
 }
 
+type DateOrder = NonNullable<DateHost['order']>;
+
+/**
+ * The order the reader writes a date in numbers: "mdy" for 10/3/2026, "dmy" for 3/10/2026,
+ * "ymd" for 2026/10/3. Read off how Intl writes one; month first if unknown.
+ */
+export function numericDateOrder(locale = navigator.language): DateOrder {
+  try {
+    const order = new Intl.DateTimeFormat(locale, {
+      year: 'numeric',
+      month: 'numeric',
+      day: 'numeric',
+    })
+      .formatToParts(new Date(2026, 9, 3))
+      .map((part) => part.type)
+      .filter((type) => type === 'year' || type === 'month' || type === 'day')
+      .map((type) => type[0])
+      .join('');
+    return order === 'dmy' || order === 'ymd' ? order : 'mdy';
+  } catch {
+    return 'mdy';
+  }
+}
+
 export interface GridDay {
   date: CalendarDate;
   inMonth: boolean;
@@ -121,5 +145,7 @@ export function dateHost(): DateHost {
     today: () => localToday(),
     label: (date) => relativeLabel(date, localToday()),
     describe: (date) => describeDate(date),
+    order: numericDateOrder(),
+    weekStart: firstDayOfWeek(),
   };
 }
