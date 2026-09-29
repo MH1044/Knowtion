@@ -36,7 +36,7 @@ Next, in this order:
 
 | #   | Feature                                                                          | Status  |
 | --- | -------------------------------------------------------------------------------- | ------- |
-| 1   | Sub-pages from inside a page: `/page`, child-page blocks, a breadcrumb           | Have    |
+| 1   | Sub-pages from inside a page: `/page`, a list of sub-pages, a breadcrumb         | Partial |
 | 2   | Links to other pages and `@` mentions of pages                                   | Have    |
 | 3   | `@` dates typed in words (`@Oct 3`, `@next friday`), times, end dates, reminders | Partial |
 | 4   | Notion's block keys: Ctrl+D duplicate, Ctrl+Shift+arrows move, Esc selects       | Missing |
@@ -49,9 +49,11 @@ Next, in this order:
 | 11  | Emoji picker in text (`:` shortcut)                                              | Missing |
 | 12  | Keyboard shortcut reference                                                      | Missing |
 
-"Partial" on dates means the canned choices and the calendar work, but a date typed in
-words is not understood. On the toolbar it means text and headings only; the block handle
-already turns a block into any type.
+"Partial" on sub-pages means `/page`, the list of sub-pages under a page and the breadcrumb
+work, but a sub-page cannot yet sit as a block in the middle of a page's text: the list
+comes from the page tree, not from the body. On dates it means the canned choices and the
+calendar work, but a date typed in words is not understood. On the toolbar it means text
+and headings only; the block handle already turns a block into any type.
 
 ## M2. Images and files
 
