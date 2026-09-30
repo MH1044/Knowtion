@@ -39,11 +39,11 @@ Next, in this order:
 | 1   | Sub-pages from inside a page: `/page`, a list of sub-pages, a breadcrumb         | Partial |
 | 2   | Links to other pages and `@` mentions of pages                                   | Have    |
 | 3   | `@` dates typed in words (`@Oct 3`, `@next friday`), times, end dates, reminders | Partial |
-| 4   | Notion's block keys: Ctrl+D duplicate, Ctrl+Shift+arrows move, Esc selects       | Missing |
-| 5   | Quick Find on Ctrl+P, and Ctrl+N, Ctrl+[ and Ctrl+\ for new page, back, sidebar  | Missing |
+| 4   | Notion's block keys: Ctrl+D duplicate, Ctrl+Shift+arrows move, Esc selects       | Have    |
+| 5   | Quick Find on Ctrl+P, and Ctrl+N, Ctrl+[ and Ctrl+\ for new page, back, sidebar  | Have    |
 | 6   | Text colour and highlight                                                        | Missing |
 | 7   | Link hover card, `www.` addresses linked, pasted Markdown converted to blocks    | Missing |
-| 8   | Turn into every block type from the selection toolbar                            | Partial |
+| 8   | Turn into every block type from the selection toolbar                            | Have    |
 | 9   | Code block language and syntax highlighting                                      | Missing |
 | 10  | Toggle headings                                                                  | Missing |
 | 11  | Emoji picker in text (`:` shortcut)                                              | Missing |
@@ -51,9 +51,9 @@ Next, in this order:
 
 "Partial" on sub-pages means `/page`, the list of sub-pages under a page and the breadcrumb
 work, but a sub-page cannot yet sit as a block in the middle of a page's text: the list
-comes from the page tree, not from the body. On dates it means the canned choices and the
-calendar work, but a date typed in words is not understood. On the toolbar it means text
-and headings only; the block handle already turns a block into any type.
+comes from the page tree, not from the body. On dates it means a date can be typed in
+words, chosen from the `@` menu or picked in the calendar, but it has no time, end date
+or reminder yet.
 
 ## M2. Images and files
 
