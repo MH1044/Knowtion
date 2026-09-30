@@ -143,6 +143,40 @@ be run from the app.
 - [ ] PG-029 Clicking anywhere else closes the grid without changing anything.
 - [ ] PG-030 [2dev] The icon is still there after a restart, and reaches the other device on a sync.
 
+### Getting around
+
+- [ ] PG-031 Ctrl+N makes a new top-level page and opens it with the caret in its title, as
+      **New page** does, whether focus is in the text, the title or the sidebar.
+- [ ] PG-032 Ctrl+[ goes back to the page open before, and Ctrl+] forward again, however each
+      page was opened: from the sidebar, search, Quick Find, the breadcrumb, the list of pages
+      inside a page, a mention or a database row.
+- [ ] PG-033 The ← and → arrows at the top left of the page do the same, and are disabled when
+      there is nowhere to go.
+- [ ] PG-034 A mouse's back and forward buttons go back and forward.
+- [ ] PG-035 Opening a page after going back drops the pages you went back from, as a browser
+      does, and a page moved to the trash is stepped over.
+- [ ] PG-036 `Ctrl+\` hides the sidebar, as does **«** beside **New page**, and the page area
+      takes the whole window, its text staying in the centred column; `Ctrl+\` again, or **»**
+      at the top left, brings it back.
+- [ ] PG-037 The sidebar stays hidden, or shown, after a restart.
+- [ ] PG-038 The window and its taskbar entry are named after the open page, such as
+      "Meeting notes - Knowtion", and follow a rename as you type. An untitled page reads
+      "Untitled - Knowtion", the trash "Trash - Knowtion", and no page open "Knowtion".
+- [ ] PG-039 Quitting with a page open and starting again opens that page, a database row
+      included.
+- [ ] PG-040 If that page was moved to the trash before quitting, the app opens on the page
+      opened before it, or on "Select a page, or create one." when there is none, with no
+      error.
+- [ ] PG-041 On a wide window a page's text sits in a centred column. The breadcrumb, the icon,
+      the title, the text and the list of pages inside all start at the column's left edge,
+      the ••• stays at the top right, and the handle beside each block is still in the margin.
+- [ ] PG-042 A database still uses the whole width for its table or board, and a row opened as
+      a page uses the centred column.
+- [ ] PG-043 The ••• at the top right of a page offers **Turn into database**, or
+      **Turn back into a page** on a database, and **Move to trash**. Enter on the ••• opens it
+      with the first entry highlighted, Up, Down and Enter choose, and Escape closes it with
+      focus back on the •••.
+
 ## 4. The block editor
 
 ### Typing and structure
@@ -184,6 +218,13 @@ be run from the app.
 - [ ] ED-022 The Text menu turns the line into a heading and back.
 - [x] ED-023 Clicking a button keeps the selection, so several can be applied in a row.
 - [ ] ED-024 The bar never appears inside a code block or for a selection of blank space.
+- [ ] ED-081 The bar's first button names the block the selection is in (Text, Heading 1,
+      Bulleted list, To-do list, Quote and so on), and its list offers every block type but
+      Divider.
+- [ ] ED-082 Choosing one turns every block the selection covers and keeps the selection; three
+      lines turned into a numbered list are numbered 1, 2, 3.
+- [ ] ED-083 It works on a list item, a to-do, a quote, a toggle and a callout, not only on a
+      plain line.
 
 ### The handle beside each block
 
@@ -197,6 +238,23 @@ be run from the app.
 - [x] ED-030 Dragging a numbered item out of its list keeps it numbered, and dropping it beside
       another numbered list joins that list.
 - [ ] ED-031 Inside a list, the handle belongs to one item, not the whole list.
+- [ ] ED-074 The grip's menu has **Duplicate**, **Delete** and **Turn into ›**, and Turn into
+      opens a list of the block types beside it.
+- [ ] ED-075 The grip's menu works from the keyboard: Up and Down move, Right opens Turn into and
+      Left closes it, Enter chooses, and Escape closes the menu with the caret back in the text.
+- [ ] ED-076 Near the bottom of the window the grip's menu shrinks, or opens upwards, rather than
+      running off the screen.
+
+### The right-click menu
+
+- [ ] ED-077 Right-clicking a block opens a menu with **Cut**, **Copy**, **Paste**, **Duplicate**,
+      **Delete** and **Turn into ›**, and so does right-clicking a page mention or a date.
+- [ ] ED-078 **Cut** and **Copy** take the selected text, and **Paste** puts in what was copied,
+      from this page or another application, with its formatting.
+- [ ] ED-079 **Duplicate**, **Delete** and **Turn into** act on the block that was right-clicked,
+      and the headings are in Turn into. Right-clicked on text selected across several blocks,
+      or on a block selected with Escape, they act on every selected block.
+- [ ] ED-080 Escape or a click elsewhere closes the menu and changes nothing.
 
 ### Toggles, callouts and dates
 
@@ -210,6 +268,14 @@ be run from the app.
 - [x] ED-038 Clicking the chip opens a calendar on that month; picking a day changes the chip.
 - [ ] ED-039 Searching for a date, as `2026-10-15`, finds the page it is in.
 - [ ] ED-040 An email address such as `me@example.com` never opens the date menu.
+- [ ] ED-071 `@Oct 3`, `@3 October`, `@2026-10-03` and a date in numbers such as `@10/3`, read
+      in the order of the app's language, which follows the display language (month first for
+      English (United States)), each offer that date first, and Enter puts in its chip. A date
+      without a year is in this year.
+- [ ] ED-072 `@friday` and `@next friday` give the coming Friday, never today, `@last friday` the
+      one before today, and `@in 3 days`, `@2 weeks ago` and `@next month` what they say.
+- [ ] ED-073 The menu stays open while a date is half typed (`@Oc`, `@next f`, `@3/`), and closes
+      on text that can be neither a date nor a page.
 
 ### A page from a newer version
 
@@ -228,6 +294,28 @@ Needs a page written by a newer build than the one under test.
 - [ ] ED-047 Ctrl/Cmd-Alt-0 returns to a paragraph; Ctrl/Cmd-Alt-1/2/3 set headings.
 - [ ] ED-048 Ctrl/Cmd-Shift-9 turns the current line into a todo and back.
 - [ ] ED-049 Ctrl/Cmd-Enter ticks the todo the cursor is in.
+
+### Keys for blocks
+
+- [ ] ED-084 Ctrl/Cmd-D puts a copy of the block the caret is in, or of every block a selection
+      covers, just below.
+- [ ] ED-085 Ctrl/Cmd-Shift-Up and Ctrl/Cmd-Shift-Down move the block one place and keep the
+      caret; a list item moves within its list, and out of it at either end.
+- [ ] ED-086 Ctrl/Cmd-Alt-4 makes a to-do, 5 a bulleted list, 6 a numbered list, 7 a toggle and
+      8 a code block, Ctrl/Cmd-Alt-0 to 3 now work inside a list item or a to-do too, and
+      Ctrl/Cmd-Shift-0 to 8 do the same as Ctrl/Cmd-Alt. On Windows, where Ctrl-Alt and a digit
+      types a character, as Ctrl-Alt-4 types € on a UK keyboard, the character is typed
+      instead and no block changes; Ctrl-Shift with the digit still works.
+- [ ] ED-087 Escape selects the block the caret is in, which shows tinted; with a menu or the
+      date calendar open, Escape only closes that.
+- [ ] ED-088 With a block selected, Up and Down select the block above or below, Enter puts the
+      caret at the end of its text, Backspace or Delete removes it, Ctrl/Cmd-D and
+      Ctrl/Cmd-Shift-Up/Down act on it, and typing a letter changes nothing.
+- [ ] ED-089 The grip's menu of a selected block, or of one of several blocks the text selection
+      runs through, acts on every selected block; opened on a block outside the selection, it
+      acts on that block alone.
+- [ ] ED-090 The right-click and grip menus show the keys: "Ctrl+D" beside **Duplicate**, and
+      "Ctrl+Shift+0" to "Ctrl+Shift+8" beside the block types, with none on Callout and Quote.
 
 ### Links
 
@@ -276,6 +364,20 @@ Needs a page written by a newer build than the one under test.
 - [ ] SR-008 A database row is findable by its title and by its body text.
 - [ ] SR-009 Editing a body and searching for the new word finds it.
 - [ ] SR-010 Two-character Chinese or Japanese terms match.
+
+### Quick Find
+
+- [ ] SR-011 Ctrl+P opens Quick Find, centred near the top of the window over the dimmed page,
+      with its field focused, from the text, the title, a database cell or the sidebar. Ctrl+K
+      does too outside the text; in the text, on selected words, it still asks for a link.
+- [ ] SR-012 With nothing typed, Quick Find lists the pages opened most recently under "Recent
+      pages", newest first, and still does after a restart.
+- [ ] SR-013 Typing lists the matching pages, title matches first, each with its icon and the
+      pages above it, and a highlighted snippet for a match in the text.
+- [ ] SR-014 Up and Down move the highlight; Enter or a click opens the page and closes Quick
+      Find.
+- [ ] SR-015 Escape or a click outside closes it and gives focus back where it was, the caret
+      included; a search matching nothing says "No matches".
 
 ## 6. Trash
 
@@ -413,6 +515,11 @@ what you get in another program rather than just that a folder appeared.
 - [ ] DB-032 A wall-clock time inside a daylight-saving gap lands on a real minute.
 - [ ] DB-033 **URL** shows a link arrow only for http and https values, and clicking it opens
       your normal browser, never a window inside the app.
+- [ ] DB-085 Clicking a **Date** cell opens the calendar on the cell's month, or on this month
+      when it is empty; choosing a day sets it, and **Today** sets today.
+- [ ] DB-086 **Clear** empties the cell; Escape or a click elsewhere closes the calendar and
+      changes nothing.
+- [ ] DB-087 A row opened as a page edits its dates with the same calendar.
 
 ### 9.5 The table
 
@@ -456,6 +563,9 @@ what you get in another program rather than just that a folder appeared.
 - [ ] DB-059 Date clauses offer relative presets and an exact date.
 - [ ] DB-060 A relative filter such as "today" re-evaluates when the day changes.
 - [ ] DB-061 A clause on a deleted property shows as removed and can be cleared.
+- [ ] DB-088 A date clause's **Exact date…** shows **Pick a date**, which opens the same
+      calendar, and the table filters by the day chosen; **Clear** leaves the clause waiting
+      for a date, so it stops filtering.
 
 ### 9.9 Sorting, grouping and columns
 
@@ -485,6 +595,8 @@ what you get in another program rather than just that a folder appeared.
       under a tab labelled Board.
 - [ ] DB-078 **Drag a card with a real mouse.** The automated test dispatches the events directly
       and cannot prove a genuine gesture works.
+- [ ] DB-089 A card shows select and multi-select values as chips in each option's colour, as the
+      table does, and other values as before.
 
 ### Turning a database back into a page
 
