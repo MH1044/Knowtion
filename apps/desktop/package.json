@@ -1,6 +1,6 @@
 {
   "name": "@knowtion/desktop",
-  "version": "0.4.2",
+  "version": "0.5.0-rc.1",
   "private": true,
   "description": "Knowtion, a local-first knowledge workspace",
   "license": "MIT",
