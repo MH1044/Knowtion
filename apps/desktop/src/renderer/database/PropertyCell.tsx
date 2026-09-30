@@ -44,7 +44,7 @@ export interface PropertyCellProps {
 }
 
 /** A chip in its option's colour, falling back to grey for an option that is gone. */
-function chipClass(def: PropertyDef, optionId: string | undefined): string {
+export function chipClass(def: PropertyDef, optionId: string | undefined): string {
   const colour = def.options.find((o) => o.id === optionId)?.color ?? 'gray';
   return `chip colour-${colour}`;
 }

@@ -8,8 +8,9 @@
  * option whether or not it has rows, so an empty column is still a drop target.
  */
 import type { PropertyDef, RowPosition, RowView, ViewDef } from '../api.js';
+import { cardField } from './card-field.js';
 import { cardMoveIsNoop, positionForDrop } from './dnd.js';
-import { formatDate, formatDateTime } from './format.js';
+import { chipClass } from './PropertyCell.js';
 import { useRowDrag } from './useRowDrag.js';
 
 /**
@@ -29,36 +30,6 @@ export interface BoardViewProps {
   onOpenRow: (rowId: string) => void;
   onNewCard: (option: string | null) => void;
   onMoveCard: (rowId: string, option: string | null, position: RowPosition) => void;
-}
-
-/** A one-line reading of a value for a card, or nothing when there is nothing to say. */
-function summary(def: PropertyDef, row: RowView): string | undefined {
-  const value = row.values[def.id];
-  if (value === undefined) return undefined;
-  switch (value.type) {
-    case 'text':
-    case 'url':
-      return value.value;
-    case 'number':
-      return String(value.value);
-    case 'checkbox':
-      return value.value ? `☑ ${def.name}` : undefined;
-    case 'select':
-      return def.options.find((o) => o.id === value.value)?.name;
-    case 'multi-select':
-      return value.value
-        .map((id) => def.options.find((o) => o.id === id)?.name)
-        .filter((n): n is string => n !== undefined)
-        .join(', ');
-    case 'date':
-      return formatDate(value.value);
-    case 'datetime':
-      return formatDateTime(value.value.ms, value.value.zone);
-    case 'relation':
-      // Titles live on the target rows, which a card does not have. The count is the
-      // honest summary until the relation picker lands.
-      return value.value.length === 0 ? undefined : `${String(value.value.length)} linked`;
-  }
 }
 
 export function BoardView({
@@ -131,10 +102,23 @@ export function BoardView({
                     {row.title || 'Untitled'}
                   </button>
                   {shown.map((def) => {
-                    const text = summary(def, row);
-                    return text === undefined || text === '' ? null : (
-                      <div key={def.id} className="card-field" title={def.name}>
-                        {text}
+                    const field = cardField(def, row);
+                    if (field === undefined) return null;
+                    if (field.kind === 'text') {
+                      return (
+                        <div key={def.id} className="card-field" title={def.name}>
+                          {field.text}
+                        </div>
+                      );
+                    }
+                    // The same chips, in the same colours, as the table's cells.
+                    return (
+                      <div key={def.id} className="card-field chips" title={def.name}>
+                        {field.options.map((o) => (
+                          <span key={o.id} className={chipClass(def, o.id)}>
+                            {o.name}
+                          </span>
+                        ))}
                       </div>
                     );
                   })}
