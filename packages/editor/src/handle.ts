@@ -11,14 +11,24 @@
 import { setBlockType } from 'prosemirror-commands';
 import { liftListItem } from 'prosemirror-schema-list';
 import {
+  AllSelection,
   EditorState,
+  NodeSelection,
   Plugin,
   PluginKey,
   TextSelection,
   type Command,
+  type Selection,
   type Transaction,
 } from 'prosemirror-state';
-import { DOMSerializer, Fragment, type Node, type NodeType } from 'prosemirror-model';
+import {
+  DOMSerializer,
+  Fragment,
+  type Node,
+  type NodeRange,
+  type NodeType,
+  type ResolvedPos,
+} from 'prosemirror-model';
 import { Decoration, DecorationSet, type EditorView } from 'prosemirror-view';
 
 import { schema } from './schema.js';
@@ -141,6 +151,79 @@ export function blocksBetween(doc: Node, from: number, to: number): number[] {
 }
 
 /**
+ * blocksBetween, or when the selection has no text in it (a caret, which may sit at the
+ * start of a line or in an empty one) the block it is in.
+ */
+function blocksAt(doc: Node, from: number, to: number): number[] {
+  const between = blocksBetween(doc, from, to);
+  if (between.length > 0) return between;
+  const $from = doc.resolve(from);
+  const own = $from.parent.isTextblock ? ownBlockAt(doc, $from.before()) : blockPosAt(doc, from);
+  return own === undefined ? [] : [own];
+}
+
+/**
+ * For a caret, the block a key turns: blocksAt's, except in a callout of several lines,
+ * where it is the callout's own line or block that holds the caret. The toolbar names the
+ * whole box, so turning its selection turns every line of it, but a key pressed on one
+ * line of a callout means that line, which stays in the callout.
+ */
+function caretBlocks(doc: Node, pos: number): number[] {
+  const $pos = doc.resolve(pos);
+  let [block] = blocksAt(doc, pos, pos);
+  for (let depth = 1; depth < $pos.depth && block !== undefined; depth++) {
+    const box = doc.nodeAt(block);
+    if ($pos.before(depth) === block && box?.type === node('callout') && box.childCount > 1) {
+      block = $pos.before(depth + 1);
+    }
+  }
+  return block === undefined ? [] : [block];
+}
+
+/** The run of sibling blocks the selection covers, as selectedRun found it. */
+interface Run {
+  range: NodeRange;
+  /** Whether a list was split just before the run's first item to make the run. */
+  splitBefore: boolean;
+  /** Whether a list was split just after the run's last item. */
+  splitAfter: boolean;
+}
+
+/**
+ * The blocks the selection is in, as one run of siblings in `tr.doc`.
+ *
+ * Its ends can sit at different depths, as a heading and the first items of the list below
+ * it do. A list draws no line of its own, so what is selected there is those items and not
+ * the list: the list is split in `tr` just before the first selected item and just after
+ * the last, and the run takes them and none of the others. Anything else holding a selected
+ * line (an item it is nested under, a toggle) is taken whole, as the line is part of it.
+ */
+function selectedRun(tr: Transaction, selection: Selection): Run | undefined {
+  const { doc } = tr;
+  const blocks = blocksAt(doc, selection.from, selection.to);
+  const first = blocks[0];
+  const last = blocks.at(-1);
+  if (first === undefined || last === undefined) return undefined;
+  const end = last + (doc.nodeAt(last)?.nodeSize ?? 0);
+  const $first = doc.resolve(first);
+  const $end = doc.resolve(end);
+  const range = $first.blockRange($end);
+  if (range === null) return undefined;
+  // Only a list sitting right in what holds the run; one deeper is inside what goes whole.
+  const splits = ($edge: ResolvedPos, atEdge: boolean): boolean =>
+    $edge.depth === range.depth + 1 && LISTS.has($edge.parent.type.name) && !atEdge;
+  const splitAfter = splits($end, $end.index() === $end.parent.childCount);
+  const splitBefore = splits($first, $first.index() === 0);
+  if (!splitAfter && !splitBefore) return { range, splitBefore, splitAfter };
+  // The later split first, so `first` still holds. The earlier adds two tokens before `end`.
+  if (splitAfter) tr.split(end);
+  if (splitBefore) tr.split(first);
+  const shift = splitBefore ? 2 : 0;
+  const split = tr.doc.resolve(first + shift).blockRange(tr.doc.resolve(end + shift));
+  return split === null ? undefined : { range: split, splitBefore, splitAfter };
+}
+
+/**
  * Add an empty block after the one at `pos`, put the caret in it, and open the `/` menu.
  *
  * After a list item the new block is another item, which is what pressing Enter at the
@@ -213,28 +296,13 @@ const BOX_OF_CHOICE: Partial<Record<string, string>> = {
 const WHOLE_BOXES = new Set(['blockquote', 'callout']);
 
 /**
- * The list item at `pos` put in a list of `type` of its own, split off from the items
- * around it. What is nested inside it stays nested.
+ * The list item at `pos` split off from the items around it, so it is alone in a list
+ * that opens just before `at`, where the item now starts.
  */
-function relist(state: EditorState, pos: number, type: NodeType): Transaction {
-  const $item = state.doc.resolve(pos);
-  const index = $item.index();
-  const tr = state.tr;
-  if (index < $item.parent.childCount - 1) tr.split(pos + $item.parent.child(index).nodeSize);
-  let at = pos;
-  if (index > 0) {
-    tr.split(pos);
-    at += 2;
-  }
-  tr.setNodeMarkup(at - 1, type);
-  return tr.setSelection(TextSelection.create(tr.doc, at + 2));
-}
-
-/**
- * The list item at `pos` made a box of `type` where it stands, split off from the items
- * around it as relist does. What is nested under it stays nested, now inside the box.
- */
-function boxItem(state: EditorState, pos: number, type: NodeType): Transaction {
+function splitOffItem(
+  state: EditorState,
+  pos: number,
+): { tr: Transaction; at: number; item: Node } {
   const $item = state.doc.resolve(pos);
   const index = $item.index();
   const item = $item.parent.child(index);
@@ -245,9 +313,40 @@ function boxItem(state: EditorState, pos: number, type: NodeType): Transaction {
     tr.split(pos);
     at += 2;
   }
-  // The item is alone in a list that opens just before it; the box takes the list's place.
+  return { tr, at, item };
+}
+
+/**
+ * The list item at `pos` put in a list of `type` of its own, split off from the items
+ * around it. What is nested inside it stays nested.
+ */
+function relist(state: EditorState, pos: number, type: NodeType): Transaction {
+  const { tr, at } = splitOffItem(state, pos);
+  tr.setNodeMarkup(at - 1, type);
+  return tr.setSelection(TextSelection.create(tr.doc, at + 2));
+}
+
+/**
+ * The list item at `pos` made a box of `type` where it stands, split off from the items
+ * around it as relist does. What is nested under it stays nested, now inside the box.
+ */
+function boxItem(state: EditorState, pos: number, type: NodeType): Transaction {
+  const { tr, at, item } = splitOffItem(state, pos);
+  // The box takes the place of the list the item is now alone in.
   tr.replaceWith(at - 1, at + item.nodeSize + 1, type.create(null, item.content));
   return tr.setSelection(TextSelection.create(tr.doc, at + 1));
+}
+
+/**
+ * The list item at `pos`, in a list nested under another item, taken out of its list and
+ * left as the blocks it holds, still nested under that item, with the caret in its line.
+ * An item's lines after its first may be any block, so a heading made of it can stay
+ * there, indented under the line above.
+ */
+function unlistNested(state: EditorState, pos: number): Transaction {
+  const { tr, at, item } = splitOffItem(state, pos);
+  tr.replaceWith(at - 1, at + item.nodeSize + 1, item.content);
+  return tr.setSelection(TextSelection.create(tr.doc, at));
 }
 
 /**
@@ -342,10 +441,13 @@ function turnBlock(
       view.dispatch(boxItem(view.state, pos, node(box)));
       return false;
     }
-    view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, pos + 2)));
-    // One level per call; a nested item needs one lift per level.
-    for (let i = 0; i < 16 && inside(view.state, 'list_item'); i++) {
-      if (!liftListItem(node('list_item'))(view.state, dispatch)) break;
+    const $item = view.state.doc.resolve(pos);
+    if ($item.depth > 1 && $item.node($item.depth - 1).type === node('list_item')) {
+      // Lifting would carry it out to the item's own list and then to the page.
+      view.dispatch(unlistNested(view.state, pos));
+    } else {
+      view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, pos + 2)));
+      liftListItem(node('list_item'))(view.state, dispatch);
     }
   } else if (WRAPPER_KINDS[block.type.name] !== undefined) {
     const reboxed = view.state.tr;
@@ -405,8 +507,9 @@ function posAtTextPoint(doc: Node, point: TextPoint): number | undefined {
 }
 
 /**
- * Turn every block the selection has text in into `choice`, as one change, and keep the
- * same text selected so a mark can be put on it next.
+ * Turn every block the selection has text in (for a caret, the block it is in, or its line
+ * in a callout of several) into `choice`, as one change, and keep the same text selected
+ * so a mark can be put on it next.
  *
  * The selection is kept as lines and offsets, not mapped through the change: making a
  * to-do or unwrapping one replaces the whole block, and mapping collapses a position
@@ -419,7 +522,7 @@ function posAtTextPoint(doc: Node, point: TextPoint): number | undefined {
 export function turnSelectionInto(choice: BlockChoice): Command {
   return (state, dispatch) => {
     const { selection } = state;
-    if (blocksBetween(state.doc, selection.from, selection.to).length === 0) return false;
+    if (blocksAt(state.doc, selection.from, selection.to).length === 0) return false;
     if (!dispatch) return true;
 
     const tr = state.tr;
@@ -452,7 +555,9 @@ export function turnSelectionInto(choice: BlockChoice): Command {
     for (let round = 0; round < 4; round++) {
       const steps = tr.steps.length;
       const [from, to] = range(tr.doc);
-      const blocks = new Set(blocksBetween(tr.doc, from, to));
+      const blocks = new Set(
+        selection.empty ? caretBlocks(tr.doc, from) : blocksAt(tr.doc, from, to),
+      );
       for (const box of spilled) {
         const after = tr.mapping.slice(box.steps);
         for (const pos of blocksBetween(tr.doc, after.map(box.from), after.map(box.to, -1))) {
@@ -483,14 +588,6 @@ export function turnSelectionInto(choice: BlockChoice): Command {
     dispatch(tr);
     return true;
   };
-}
-
-function inside(state: EditorState, name: string): boolean {
-  const { $from } = state.selection;
-  for (let depth = $from.depth; depth > 0; depth--) {
-    if ($from.node(depth).type.name === name) return true;
-  }
-  return false;
 }
 
 const LISTS = new Set(['bullet_list', 'ordered_list']);
@@ -552,6 +649,183 @@ function joinsLists(doc: Node, pos: number): boolean {
   return (
     before !== null && after !== null && before.type === after.type && LISTS.has(before.type.name)
   );
+}
+
+/**
+ * The selection put on the same characters, each end at `moved` of where it was. An end
+ * outside the run of blocks from `run.start` to `run.end` (in the document the lists were
+ * split in, which `split` maps to), as a selection dragged to the very start of the next
+ * line has, is kept at the run's edge.
+ */
+function keepSelection(
+  tr: Transaction,
+  selection: Selection,
+  split: Pick<Transaction['mapping'], 'map'>,
+  run: NodeRange,
+  moved: (pos: number) => number,
+): Transaction {
+  if (selection instanceof AllSelection) return tr;
+  const kept = (pos: number): number =>
+    moved(Math.min(Math.max(split.map(pos), run.start), run.end));
+  if (selection instanceof NodeSelection) {
+    return tr.setSelection(NodeSelection.create(tr.doc, kept(selection.from)));
+  }
+  const $anchor = tr.doc.resolve(kept(selection.anchor));
+  return tr.setSelection(TextSelection.between($anchor, tr.doc.resolve(kept(selection.head))));
+}
+
+/**
+ * Ctrl+D: a copy of the block the selection is in, or of every block it covers, just below
+ * them, with the caret left where it was.
+ */
+export const duplicateSelectedBlocks: Command = (state, dispatch) => {
+  const tr = state.tr;
+  const run = selectedRun(tr, state.selection);
+  if (run === undefined) return false;
+  if (dispatch) {
+    const { start, end } = run.range;
+    const splits = tr.steps.length;
+    const copy = tr.doc.slice(start, end).content;
+    tr.insert(end, copy);
+    // A list split to take the run is whole again, and a copy starting with items of the
+    // list the run ends with goes on with it. The far side first, so `end` still holds.
+    if (run.splitAfter && joinsLists(tr.doc, end + copy.size)) tr.join(end + copy.size);
+    if (joinsLists(tr.doc, end)) tr.join(end);
+    if (run.splitBefore && joinsLists(tr.doc, start)) tr.join(start);
+    const after = tr.mapping.slice(splits);
+    const split = tr.mapping.slice(0, splits);
+    const kept = keepSelection(tr, state.selection, split, run.range, (pos) => after.map(pos, -1));
+    dispatch(kept.scrollIntoView());
+  }
+  return true;
+};
+
+/** Containers whose first line is their own: nothing inside one can move above that line. */
+const OWN_FIRST_LINE = new Set(['list_item', 'todo_item', 'toggle']);
+
+/**
+ * Where the sibling blocks from `start` to `end` go when moved one place up (`dir` -1) or
+ * down (1): a position between blocks in `doc`, or undefined at the top or bottom of the
+ * page. `list` is the kind of list the end moving first belongs to: the list they are
+ * items of, or the part of a list a run of blocks starts or ends with.
+ *
+ * A block passes its neighbour whole, so a paragraph steps over a whole list or toggle,
+ * while items pass one item of a list of their kind. At the edge of what holds it (a
+ * toggle, a to-do, a list item, a callout) it moves out to sit just before or after that.
+ */
+function stepTarget(
+  doc: Node,
+  start: number,
+  end: number,
+  dir: -1 | 1,
+  list: NodeType | undefined,
+): number | undefined {
+  const $start = doc.resolve(start);
+  const parent = $start.parent;
+  const first = $start.index();
+  const next = doc.resolve(end).index();
+  // Only a container's own first line can start it, and that line moves with it.
+  if (first === 0 && OWN_FIRST_LINE.has(parent.type.name)) return undefined;
+  if (LISTS.has(parent.type.name)) {
+    if (dir < 0 && first > 0) return start - parent.child(first - 1).nodeSize;
+    if (dir > 0 && next < parent.childCount) return end + parent.child(next).nodeSize;
+    // Past the end of its list it leaves the list and takes the step the list would. A
+    // list draws no line of its own, so leaving it without passing anything would look
+    // like nothing happened.
+    return stepTarget(doc, $start.before(), $start.after(), dir, list);
+  }
+  const index = dir < 0 ? first - 1 : next;
+  const neighbour = index >= 0 && index < parent.childCount ? parent.child(index) : undefined;
+  if (neighbour !== undefined && !(index === 0 && OWN_FIRST_LINE.has(parent.type.name))) {
+    // Items meeting a list of their own kind go in among its items, one item at a time.
+    if (list !== undefined && neighbour.type === list) {
+      const item = (dir < 0 ? neighbour.lastChild : neighbour.firstChild)?.nodeSize ?? 0;
+      return dir < 0 ? start - 1 - item : end + 1 + item;
+    }
+    return dir < 0 ? start - neighbour.nodeSize : end + neighbour.nodeSize;
+  }
+  if ($start.depth === 0) return undefined;
+  return dir < 0 ? $start.before() : $start.after();
+}
+
+/**
+ * Put `content`, blocks taken out of `list` or out of any other parent when `list` is
+ * undefined, back down at `at`, returning where the first of them now starts.
+ *
+ * List items outside a list of their kind go in a list of their own, as moveBlock carries
+ * them, and that list joins one of its kind beside it so numbering carries on. Anything
+ * landing among the items of a list it cannot join splits that list there.
+ */
+function place(tr: Transaction, at: number, content: Fragment, list: Node | undefined): number {
+  const $at = tr.doc.resolve(at);
+  if ($at.parent.type === list?.type) {
+    tr.insert(at, content);
+    return at;
+  }
+  let pos = at;
+  if (LISTS.has($at.parent.type.name)) {
+    const index = $at.index();
+    if (index === 0) pos = $at.before();
+    else if (index === $at.parent.childCount) pos = $at.after();
+    else {
+      tr.split(at);
+      pos = at + 1;
+    }
+  }
+  if (list === undefined) {
+    tr.insert(pos, content);
+    // A run that starts or ends with part of a list joins a list of that kind beside it.
+    const end = pos + content.size;
+    if (joinsLists(tr.doc, end)) tr.join(end);
+    if (!joinsLists(tr.doc, pos)) return pos;
+    tr.join(pos);
+    return pos - 2;
+  }
+  const wrapped = list.copy(content);
+  tr.insert(pos, wrapped);
+  let landed = pos + 1;
+  // The far side first, so `pos` still names the near one.
+  if (joinsLists(tr.doc, pos + wrapped.nodeSize)) tr.join(pos + wrapped.nodeSize);
+  if (joinsLists(tr.doc, pos)) {
+    tr.join(pos);
+    landed -= 2;
+  }
+  return landed;
+}
+
+/**
+ * Ctrl+Shift+Up and Down: move the block the selection is in, or every block it covers,
+ * one place, keeping the selection on the same characters. At the top or bottom of the
+ * page nothing moves, but the key is still taken, so it never extends the selection
+ * instead.
+ */
+export function moveSelectedBlocks(dir: -1 | 1): Command {
+  return (state, dispatch) => {
+    const tr = state.tr;
+    const run = selectedRun(tr, state.selection);
+    if (run === undefined) return true;
+    const { range } = run;
+    const splits = tr.steps.length;
+    const list = LISTS.has(range.parent.type.name) ? range.parent : undefined;
+    const edge = range.parent.child(dir < 0 ? range.startIndex : range.endIndex - 1);
+    const edgeList = list?.type ?? (LISTS.has(edge.type.name) ? edge.type : undefined);
+    const target = stepTarget(tr.doc, range.start, range.end, dir, edgeList);
+    if (target === undefined || !dispatch) return true;
+    // Taking every item of a list takes the list too. A callout or quote left with nothing
+    // keeps an empty line, as it would if the text had been cut from it.
+    const whole =
+      list !== undefined && range.startIndex === 0 && range.endIndex === list.childCount;
+    const gap = whole ? range.start - 1 : range.start;
+    const content = tr.doc.slice(range.start, range.end).content;
+    tr.delete(gap, whole ? range.end + 1 : range.end);
+    // Two lists of a kind that only what moved kept apart are one list again.
+    if (joinsLists(tr.doc, gap)) tr.join(gap);
+    const landed = place(tr, tr.mapping.slice(splits).map(target), content, list);
+    const split = tr.mapping.slice(0, splits);
+    const moved = (pos: number): number => landed + pos - range.start;
+    dispatch(keepSelection(tr, state.selection, split, range, moved).scrollIntoView());
+    return true;
+  };
 }
 
 /**

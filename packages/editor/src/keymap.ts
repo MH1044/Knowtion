@@ -11,7 +11,7 @@
  * import here would defeat that by pulling the same module back in eagerly.
  */
 
-import { baseKeymap, chainCommands, setBlockType, toggleMark } from 'prosemirror-commands';
+import { baseKeymap, chainCommands, toggleMark } from 'prosemirror-commands';
 import { inputRules, textblockTypeInputRule, wrappingInputRule } from 'prosemirror-inputrules';
 import { keymap } from 'prosemirror-keymap';
 import { liftListItem, sinkListItem, splitListItem } from 'prosemirror-schema-list';
@@ -25,11 +25,13 @@ import {
   toggleTodoChecked,
   todoRule,
 } from './blocks.js';
+import { duplicateSelectedBlocks, moveSelectedBlocks, turnSelectionInto } from './handle.js';
 import { arrowOutOfLastBlock, exitCode, exitCodeOnTripleEnter } from './leave-block.js';
 import { autolinkRule, removeLink } from './links.js';
 import { markInputRules } from './mark-rules.js';
 import { joinIntoBlockAbove, liftTodo, sinkTodo, splitTodo, unwrapAtStart } from './todo-keys.js';
 import { schema } from './schema.js';
+import { TURN_INTO_CHOICES } from './slash.js';
 
 /** `marks`/`baseKeymap` are indexed by string key, so lookups are optional statically. */
 function must<T>(value: T | undefined, what: string): T {
@@ -60,6 +62,41 @@ export function knowtionInputRules(): Plugin {
   });
 }
 
+/** What Notion's number keys turn a line into: 0 is text, 1 to 3 headings, and so on. */
+const NUMBERED_BLOCKS = [
+  'text',
+  'heading1',
+  'heading2',
+  'heading3',
+  'todo',
+  'bullet',
+  'numbered',
+  'toggle',
+  'code',
+] as const;
+
+/**
+ * Ctrl+Alt and Ctrl+Shift with 0 to 8 (Cmd+Option and Cmd+Shift on a Mac), both of which
+ * Notion users know, through the toolbar's turn-into so they work inside a list item or a
+ * to-do and leave the caret where it was.
+ *
+ * With Shift held a US keyboard reports "!" for 1, and prosemirror-keymap falls back to the
+ * key's code to find Mod-Shift-1. It does not for Ctrl+Alt on Windows, which is AltGr:
+ * where AltGr+7 types "{", the "{" is typed and no shortcut fires, as it should.
+ */
+function numberedBlockKeys(): Record<string, Command> {
+  const keys: Record<string, Command> = {};
+  NUMBERED_BLOCKS.forEach((id, digit) => {
+    const choice = must(
+      TURN_INTO_CHOICES.find((c) => c.id === id),
+      `turn-into choice "${id}"`,
+    );
+    keys[`Mod-Alt-${String(digit)}`] = turnSelectionInto(choice);
+    keys[`Mod-Shift-${String(digit)}`] = turnSelectionInto(choice);
+  });
+  return keys;
+}
+
 export function knowtionKeymap(undo: Command, redo: Command, addLink?: Command): Plugin {
   const listItem = schema.nodes.list_item;
 
@@ -72,10 +109,10 @@ export function knowtionKeymap(undo: Command, redo: Command, addLink?: Command):
     'Mod-Shift-s': toggleMark(must(schema.marks.strike, 'mark "strike"')),
     'Mod-u': toggleMark(must(schema.marks.underline, 'mark "underline"')),
     'Mod-e': toggleMark(must(schema.marks.code, 'mark "code"')),
-    'Mod-Alt-0': setBlockType(schema.nodes.paragraph),
-    'Mod-Alt-1': setBlockType(schema.nodes.heading, { level: 1 }),
-    'Mod-Alt-2': setBlockType(schema.nodes.heading, { level: 2 }),
-    'Mod-Alt-3': setBlockType(schema.nodes.heading, { level: 3 }),
+    ...numberedBlockKeys(),
+    'Mod-d': duplicateSelectedBlocks,
+    'Mod-Shift-ArrowUp': moveSelectedBlocks(-1),
+    'Mod-Shift-ArrowDown': moveSelectedBlocks(1),
     // In a list or a run of to-dos, Enter starts the next item; elsewhere it falls through
     // to the default.
     Enter: chainCommands(
