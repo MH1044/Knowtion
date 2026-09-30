@@ -12,19 +12,20 @@ const TURN_INTO_MIN = 64;
 /**
  * Where the bar sits: centred above the selection, or below it when the selection is at
  * the top of the window, and never past either side of the writing column. A word at the
- * start of a line used to pull the bar out over the sidebar.
+ * start of a line used to pull the bar out over the sidebar, and one at the end of a line
+ * out into the margin beside the page's column.
  */
 export function barPlacement(
   anchor: { left: number; top: number; bottom: number },
   viewportWidth: number,
   columnLeft = 4,
+  columnRight = viewportWidth - 4,
 ): { left: number; top: number } {
   const above = anchor.top - BAR_HEIGHT - 8;
   const top = above >= 4 ? above : anchor.bottom + 8;
-  const left = Math.max(
-    columnLeft,
-    Math.min(anchor.left - BAR_WIDTH / 2, viewportWidth - BAR_WIDTH - 4),
-  );
+  const right = Math.min(columnRight, viewportWidth - 4);
+  // The left edge wins when the column is narrower than the bar.
+  const left = Math.max(columnLeft, Math.min(anchor.left - BAR_WIDTH / 2, right - BAR_WIDTH));
   return { left, top };
 }
 
@@ -56,8 +57,8 @@ const MARK_BUTTONS: { mark: FormatMark; label: string; title: string; className:
 
 /** The toolbar over selected text. The editor decides what is active; this draws it. */
 export function FormatBar({ bar }: { bar: FormatToolbar }): React.JSX.Element {
-  const column = document.querySelector('.editor')?.getBoundingClientRect().left;
-  const place = barPlacement(bar, window.innerWidth, column ?? 4);
+  const column = document.querySelector('.editor')?.getBoundingClientRect();
+  const place = barPlacement(bar, window.innerWidth, column?.left ?? 4, column?.right);
   const [turnInto, setTurnInto] = useState(false);
   const current = TURN_INTO_CHOICES.find((c) => c.id === bar.block);
   const menu = turnIntoPlacement(place.top, window.innerHeight);

@@ -125,8 +125,64 @@ input:focus-visible {
 }
 
 .content {
+  /* How wide a page's text runs: about Notion's default page. */
+  --page-column: 720px;
   overflow-y: auto;
   padding: 40px 48px;
+}
+
+/*
+ * A page's text sits in a centred column, as in Notion, rather than across the whole
+ * window, and the banners above it, the trash and the empty state line up with it. A
+ * window too narrow for the column gives it the whole page area, as before. The editor's
+ * gutter for the ⋮⋮ handle (.editor-frame) reaches out of the column into the margin.
+ */
+.content > :not(.top-bar) {
+  max-width: var(--page-column);
+  margin-right: auto;
+  margin-left: auto;
+}
+
+/* A database keeps the whole width, which its table and 260px board columns need, and so
+   does everything above it. A row opened as a page has no table, so it uses the column. */
+.content:has(> .page > .database-view) {
+  --page-column: 100%;
+}
+
+/*
+ * The bar across the top: the arrows at its left and the ••• at its right, as in Notion,
+ * and the pages above this one over the column, level with the title's left edge. The
+ * outer columns are equal, so the middle one starts where the page's column does. The
+ * bar spans .content's side padding too, which leaves the arrows room to the left of the
+ * column at the default window size; where there is no room, the pages above simply
+ * follow the arrows, as they do on a database.
+ */
+.content > .top-bar {
+  /* max-content, not auto: the ••• has a min-width smaller than it is, and auto would let
+     it hang out of the bar on a narrow window. */
+  --bar-side: minmax(max-content, 1fr);
+  display: grid;
+  grid-template-areas: 'history path actions';
+  grid-template-columns: var(--bar-side) minmax(0, var(--page-column)) var(--bar-side);
+  column-gap: 10px;
+  margin-right: -48px;
+  margin-left: -48px;
+  padding-right: 12px;
+  padding-left: 12px;
+}
+
+.top-bar > .page-history {
+  grid-area: history;
+}
+
+.top-bar > .breadcrumb {
+  grid-area: path;
+  margin: 0;
+}
+
+.top-bar > .page-menu-button {
+  grid-area: actions;
+  justify-self: end;
 }
 
 .page-title,

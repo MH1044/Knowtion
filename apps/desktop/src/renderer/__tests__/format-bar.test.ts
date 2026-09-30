@@ -23,6 +23,15 @@ describe('where the format bar sits', () => {
   it('stays inside the writing column for a word at the start of a line', () => {
     expect(barPlacement({ left: 310, top: 300, bottom: 320 }, 1200, 308).left).toBe(308);
   });
+
+  it('stays inside a centred column for a word at the end of a line', () => {
+    const { left } = barPlacement({ left: 1000, top: 300, bottom: 320 }, 1600, 300, 1020);
+    expect(left).toBe(1020 - 360);
+  });
+
+  it('keeps to the left edge of a column narrower than the bar', () => {
+    expect(barPlacement({ left: 400, top: 300, bottom: 320 }, 1200, 300, 500).left).toBe(300);
+  });
 });
 
 describe('where the Turn into list opens', () => {
