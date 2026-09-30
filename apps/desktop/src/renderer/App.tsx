@@ -31,10 +31,17 @@ import {
 } from './history.js';
 import { Breadcrumb, ChildPages } from './PageNav.js';
 import { usePageHost } from './pageHost.js';
-import { SIDEBAR_KEY, SIDEBAR_STATES, rememberRecentPage, usePreference } from './preferences.js';
+import {
+  SIDEBAR_KEY,
+  SIDEBAR_STATES,
+  recentPages,
+  rememberRecentPage,
+  usePreference,
+} from './preferences.js';
 import { QuickFind, pageLookup, stillThere } from './QuickFind.js';
 import { inEditor, matchShortcut, mouseNavigation, type ShortcutAction } from './shortcuts.js';
 import { SyncPanel } from './SyncPanel.js';
+import { pageToReopen, windowTitle } from './window-title.js';
 import './nav.css';
 
 /** Find a page anywhere in the tree, since the sidebar only holds the nested shape. */
@@ -63,6 +70,21 @@ async function isOpenable(id: string, tree: readonly PageNode[]): Promise<boolea
   }
 }
 
+/**
+ * The page to open at launch: the one open when Knowtion last closed, which is the newest
+ * of Quick Find's recent pages, or failing that the newest one still there.
+ */
+async function lastOpenPage(tree: readonly PageNode[]): Promise<string | undefined> {
+  const inTree = pageLookup(tree);
+  const fetched = new Map<string, Page | null>();
+  const recent = recentPages();
+  for (;;) {
+    const choice = pageToReopen(recent, (id) => stillThere(id, inTree, fetched));
+    if (typeof choice !== 'object') return choice;
+    fetched.set(choice.fetch, await api.page(choice.fetch).catch(() => null));
+  }
+}
+
 const NO_IDS: ReadonlySet<string> = new Set();
 
 function blurFocused(): void {
@@ -73,6 +95,8 @@ function blurFocused(): void {
 
 export function App(): React.JSX.Element {
   const [tree, setTree] = useState<PageNode[]>([]);
+  // Whether the tree has been read yet, since an empty tree is also what a new workspace has.
+  const [treeLoaded, setTreeLoaded] = useState(false);
   const [trash, setTrash] = useState<Page[]>([]);
   const [selectedId, setSelectedId] = useState<string>();
   const [showTrash, setShowTrash] = useState(false);
@@ -121,6 +145,7 @@ export function App(): React.JSX.Element {
     try {
       const [nextTree, nextTrash] = await Promise.all([api.tree(), api.trash()]);
       setTree(nextTree);
+      setTreeLoaded(true);
       setTrash(nextTrash);
       // A page restored, or arriving from another device, can be opened again.
       setUnopenable(NO_IDS);
@@ -191,16 +216,42 @@ export function App(): React.JSX.Element {
     if (selectedId !== undefined) rememberRecentPage(selectedId);
   }, [selectedId]);
 
+  // True while the page to reopen at launch is being looked for. Whatever the user opens
+  // first wins over it, so opening a page or the trash sets it back to false.
+  const reopenPending = useRef(false);
+
   // Every way of opening a page comes here — the sidebar, search, Quick Find, the
   // breadcrumb, the pages inside a page, a mention, a row — so each goes into history.
   const openPage = useCallback(
     (id: string) => {
+      reopenPending.current = false;
       setHistory(visit(historyRef.current, id));
       setSelectedId(id);
       setShowTrash(false);
     },
     [setHistory],
   );
+
+  // Knowtion opens where it was left, as Notion's app does: once, when the tree first
+  // arrives, through openPage, so the page is the first entry Back can return to.
+  const reopenTried = useRef(false);
+  useEffect(() => {
+    if (!treeLoaded || reopenTried.current) return;
+    reopenTried.current = true;
+    reopenPending.current = true;
+    void lastOpenPage(tree).then((id) => {
+      if (!reopenPending.current) return;
+      reopenPending.current = false;
+      if (id !== undefined) openPage(id);
+    });
+  }, [treeLoaded, tree, openPage]);
+
+  // An open page names the window itself, from its title as typed (PageView); these are
+  // the other things the window can show.
+  const showing = showTrash ? 'trash' : selected === undefined ? 'nothing' : undefined;
+  useEffect(() => {
+    if (showing !== undefined) document.title = windowTitle(showing);
+  }, [showing]);
 
   /** Back or Forward: the nearest page that way still there, without adding to history. */
   const go = async (direction: Direction): Promise<void> => {
@@ -364,6 +415,7 @@ export function App(): React.JSX.Element {
           <button
             type="button"
             onClick={() => {
+              reopenPending.current = false;
               setShowTrash((v) => !v);
             }}
           >
@@ -684,6 +736,11 @@ function PageView({
     setSeenTitle(page.title);
     if (title === seenTitle) setTitle(page.title);
   }
+
+  // The window, and so the taskbar, follows the name as it is typed, not once it is saved.
+  useEffect(() => {
+    document.title = windowTitle({ page: title });
+  }, [title]);
 
   // Pages to mention with @, from the same tree as the sidebar; not this page itself.
   const pages = usePageHost(tree, page.uuid, onOpen);
