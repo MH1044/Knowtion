@@ -11,6 +11,7 @@ import { useState } from 'react';
 
 import type { Filter, FilterLeaf, PropertyDef, StoredFilter } from '../api.js';
 import { QUERY_SPEC_VERSION } from '../../shared/db-types.js';
+import { DateButton } from './DateButton.js';
 import {
   OP_LABELS,
   RELATIVE_PRESETS,
@@ -18,6 +19,7 @@ import {
   defaultLeaf,
   flatten,
   opsFor,
+  sameFilter,
   withOp,
   type FlatFilter,
   type Join,
@@ -141,13 +143,14 @@ function OperandInput({
             <option value="on">Exact date…</option>
           </select>
           {operand.kind === 'on' && (
-            <input
-              type="date"
+            <DateButton
               value={operand.date}
-              aria-label="Date"
-              onChange={(e) => {
-                // The input's `YYYY-MM-DD` is stored verbatim: no Date object, no zone.
-                onChange({ ...leaf, value: { kind: 'on', date: e.target.value } });
+              label="Date"
+              placeholder="Pick a date"
+              onChange={(date) => {
+                // The calendar's `YYYY-MM-DD` is stored verbatim: no Date object, no zone.
+                // Clear leaves the date empty, a clause `build` leaves out until it is set.
+                onChange({ ...leaf, value: { kind: 'on', date: date ?? '' } });
               }}
             />
           )}
@@ -182,12 +185,14 @@ export function FilterEditor({
   const flat = flatten(filter?.expr);
   // Clauses being typed live here until they are complete; the stored view only ever
   // holds complete ones, and the draft is seeded from it whenever it changes elsewhere.
+  // This editor's own write coming back is already in the draft, beside any clause it
+  // left out as incomplete, such as an exact date not yet picked, so it keeps the draft.
   const [draft, setDraft] = useState<FlatFilter | null>(flat);
   const [seen, setSeen] = useState(JSON.stringify(filter));
   const incoming = JSON.stringify(filter);
   if (incoming !== seen) {
     setSeen(incoming);
-    setDraft(flat);
+    if (draft === null || !sameFilter(filter?.expr, build(draft))) setDraft(flat);
   }
 
   if (draft === null) {

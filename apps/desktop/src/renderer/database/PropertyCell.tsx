@@ -6,10 +6,10 @@
  * already set this discipline. Checkbox, select, multi-select, date and datetime commit on
  * change, because each change IS the edit.
  *
- * A `date` is edited as the `YYYY-MM-DD` string the input gives, and never passes through
- * a Date object — that is how a zoneless day becomes the day before for anyone west of
- * UTC (FORMAT.md section 10). A `datetime` is edited as a wall clock in its own zone and
- * converted to an instant with that zone's offset.
+ * A `date` is edited in the app's calendar as the `YYYY-MM-DD` string its days carry, and
+ * never passes through a Date object — that is how a zoneless day becomes the day before
+ * for anyone west of UTC (FORMAT.md section 10). A `datetime` is edited as a wall clock in
+ * its own zone and converted to an instant with that zone's offset.
  *
  * The seen/draft guard is copied from the title field rather than abstracted, and for the
  * same reason it exists there: a value arriving from another device is adopted unless the
@@ -19,6 +19,7 @@
 import { useEffect, useState } from 'react';
 
 import type { PropertyDef, PropertyValue } from '../api.js';
+import { DateButton } from './DateButton.js';
 import {
   formatDate,
   formatDateTime,
@@ -363,13 +364,12 @@ export function PropertyCell(props: PropertyCellProps): React.JSX.Element {
       if (readOnly)
         return <span className="cell-text">{current === '' ? '' : formatDate(current)}</span>;
       return (
-        <input
-          type="date"
+        <DateButton
           value={current}
-          aria-label={def.name}
-          onChange={(e) => {
-            // The input's value is already YYYY-MM-DD. No Date object is ever built.
-            onCommit(e.target.value === '' ? null : { type: 'date', value: e.target.value });
+          label={def.name}
+          onChange={(date) => {
+            // The calendar's day is already YYYY-MM-DD. No Date object is ever built.
+            onCommit(date === null ? null : { type: 'date', value: date });
           }}
         />
       );

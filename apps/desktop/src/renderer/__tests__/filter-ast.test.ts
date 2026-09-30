@@ -9,6 +9,7 @@ import {
   flatten,
   isComplete,
   opsFor,
+  sameFilter,
   withOp,
 } from '../database/filter-ast.js';
 
@@ -166,5 +167,46 @@ describe('flattening and building', () => {
     const built = build(flat);
     expect(built).toBeDefined();
     expect(flatten(built)).toEqual(flat);
+  });
+});
+
+describe('the editor knowing its own write when it comes back', () => {
+  const on: FilterLeaf = {
+    kind: 'leaf',
+    property: 'due',
+    op: 'onDate',
+    value: { kind: 'on', date: '2026-09-15' },
+  };
+
+  it('takes a filter with its keys in another order as the same', () => {
+    const reordered: FilterLeaf = {
+      value: { date: '2026-09-15', kind: 'on' },
+      op: 'onDate',
+      property: 'due',
+      kind: 'leaf',
+    };
+    const group: Filter = { clauses: [on, reordered], kind: 'and' };
+    expect(sameFilter(on, reordered)).toBe(true);
+    expect(sameFilter({ kind: 'and', clauses: [on, on] }, group)).toBe(true);
+    expect(sameFilter(undefined, undefined)).toBe(true);
+  });
+
+  it('tells a different filter apart', () => {
+    const other: FilterLeaf = { ...on, value: { kind: 'on', date: '2026-09-16' } };
+    expect(sameFilter(on, other)).toBe(false);
+    expect(sameFilter(on, undefined)).toBe(false);
+    // Clause order is meaning for the editor, which shows the clauses in it.
+    const b: FilterLeaf = { kind: 'leaf', property: 'b', op: 'isEmpty' };
+    expect(sameFilter({ kind: 'or', clauses: [on, b] }, { kind: 'or', clauses: [b, on] })).toBe(
+      false,
+    );
+  });
+
+  it('counts an exact date not yet picked as nothing written, so the clause stays', () => {
+    // Choosing "Exact date…", or Clear in its calendar, leaves the clause incomplete: the
+    // write drops it, and the filter that comes back is the draft's own build.
+    const cleared: FilterLeaf = { ...on, value: { kind: 'on', date: '' } };
+    const draft = { join: 'and' as const, leaves: [cleared] };
+    expect(sameFilter(undefined, build(draft))).toBe(true);
   });
 });

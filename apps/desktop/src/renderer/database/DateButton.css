@@ -1,0 +1,36 @@
+/* In a table or a row's properties, a date reads as the cell's text, framed only on hover
+   and focus as the cell's inputs are. In a filter it stays a plain button. */
+.db-table .date-button,
+.row-properties .date-button {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  /* An empty cell is still something to click. */
+  min-height: calc(1.2em + 10px);
+  padding: 4px 6px;
+  overflow: hidden;
+  color: inherit;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+}
+
+.db-table .date-button:hover,
+.row-properties .date-button:hover,
+.db-table .date-button[aria-expanded='true'],
+.row-properties .date-button[aria-expanded='true'] {
+  border-color: var(--border);
+}
+
+.db-table .date-button:focus-visible,
+.row-properties .date-button:focus-visible {
+  border-color: var(--accent);
+  outline: none;
+}
+
+.date-button.empty {
+  color: var(--muted);
+}

@@ -3,33 +3,78 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { CalendarDate } from '@knowtion/engine/properties';
 
 import { firstDayOfWeek, localToday, monthGrid, monthTitle, weekdayNames } from './dates.js';
+import './Calendar.css';
+
+export interface CalendarPoint {
+  left: number;
+  top: number;
+}
+
+/** The month a calendar opens on: the value's, or this month's when there is none. */
+export function openingMonth(
+  value: string | undefined,
+  today: CalendarDate,
+): { year: number; month: number } {
+  const from = value !== undefined && /^\d{4}-(0[1-9]|1[0-2])-\d{2}$/.test(value) ? value : today;
+  const [year, month] = from.split('-').map(Number);
+  return { year: year ?? 2026, month: month ?? 1 };
+}
+
+/** Where a calendar opens for something on the page: just under it, as a date chip asks. */
+export function underRect(rect: { left: number; bottom: number }): CalendarPoint {
+  return { left: rect.left, top: rect.bottom + 4 };
+}
+
+const HEIGHT = 300;
+const WIDTH = 260;
+
+/** Kept inside the window: a date near the bottom of the page opens its calendar above. */
+export function placeCalendar(
+  at: CalendarPoint,
+  viewport: { width: number; height: number },
+): CalendarPoint {
+  return {
+    left: Math.min(at.left, viewport.width - WIDTH),
+    top: at.top + HEIGHT > viewport.height ? Math.max(4, at.top - HEIGHT - 32) : at.top,
+  };
+}
 
 /**
- * A month calendar for choosing a date. Opens on the month of the current value, and
- * closes on a choice, on Escape, or on a click anywhere else.
+ * A month calendar for choosing a date. Opens on the month of the current value, or on
+ * this month with nothing chosen when there is none, and closes on a choice, on Escape,
+ * or on a click anywhere else. Clear is offered only where a date can be taken away.
  */
 export function Calendar({
   left,
   top,
   value,
   onPick,
+  onClear,
   onClose,
+  anchor,
 }: {
   left: number;
   top: number;
-  value: CalendarDate;
+  value?: string | undefined;
   onPick: (date: CalendarDate) => void;
+  onClear?: (() => void) | undefined;
   onClose: () => void;
+  /**
+   * What opened the calendar. A press on it is not a click elsewhere: its own click
+   * decides, so a second click on it closes the calendar rather than reopening it.
+   */
+  anchor?: Element | null | undefined;
 }): React.JSX.Element {
-  const [year, month] = value.split('-').map(Number);
-  const [shown, setShown] = useState({ year: year ?? 2026, month: month ?? 1 });
   const today = localToday();
+  const [shown, setShown] = useState(() => openingMonth(value, today));
   const firstDay = useMemo(() => firstDayOfWeek(), []);
   const container = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const onPointerDown = (event: PointerEvent) => {
-      if (!container.current?.contains(event.target as Node)) onClose();
+      const target = event.target as Node;
+      if (anchor?.contains(target)) return;
+      if (!container.current?.contains(target)) onClose();
     };
     const onKey = (event: KeyboardEvent) => {
       if (event.key === 'Escape') onClose();
@@ -40,7 +85,7 @@ export function Calendar({
       document.removeEventListener('pointerdown', onPointerDown);
       document.removeEventListener('keydown', onKey);
     };
-  }, [onClose]);
+  }, [onClose, anchor]);
 
   const step = (by: number) => {
     setShown(({ year: y, month: m }) => {
@@ -49,10 +94,10 @@ export function Calendar({
     });
   };
 
-  // Kept inside the window: a date near the bottom of the page opens its calendar above.
-  const height = 300;
-  const placedTop = top + height > window.innerHeight ? Math.max(4, top - height - 32) : top;
-  const placedLeft = Math.min(left, window.innerWidth - 260);
+  const placed = placeCalendar(
+    { left, top },
+    { width: window.innerWidth, height: window.innerHeight },
+  );
 
   return (
     <div
@@ -60,7 +105,7 @@ export function Calendar({
       className="calendar"
       role="dialog"
       aria-label="Choose a date"
-      style={{ left: placedLeft, top: placedTop }}
+      style={{ left: placed.left, top: placed.top }}
       onMouseDown={(e) => {
         e.preventDefault();
       }}
@@ -117,6 +162,11 @@ export function Calendar({
           ))}
       </div>
       <div className="calendar-foot">
+        {onClear !== undefined && (
+          <button type="button" className="calendar-clear" onClick={onClear}>
+            Clear
+          </button>
+        )}
         <button
           type="button"
           onClick={() => {

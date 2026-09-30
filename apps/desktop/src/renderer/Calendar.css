@@ -1,0 +1,7 @@
+/* The rest of the calendar's rules are in styles.css, under "The calendar a date chip opens". */
+
+/* Clear sits at the left of the foot, away from Today, and quieter than it. */
+.calendar-foot .calendar-clear {
+  margin-right: auto;
+  color: var(--muted);
+}

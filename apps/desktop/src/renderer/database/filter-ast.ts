@@ -191,6 +191,23 @@ export function build(flat: FlatFilter): Filter | undefined {
   return { kind: flat.join, clauses: leaves };
 }
 
+/** JSON with every object's keys sorted, so key order cannot make two equal values differ. */
+function canonical(value: unknown): string | undefined {
+  return JSON.stringify(value, (_key, v: unknown) =>
+    v !== null && typeof v === 'object' && !Array.isArray(v)
+      ? Object.fromEntries(Object.entries(v).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)))
+      : v,
+  );
+}
+
+/**
+ * Whether two filters say the same thing. The engine hands a filter back with its keys in
+ * its own order, so the editor's own write coming back compares equal to what it built.
+ */
+export function sameFilter(a: Filter | undefined, b: Filter | undefined): boolean {
+  return canonical(a) === canonical(b);
+}
+
 /** Which properties a sort can use. Multi-select has no single value to order by. */
 export const SORTABLE_TYPES: readonly PropertyType[] = [
   'text',
