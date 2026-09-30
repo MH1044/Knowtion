@@ -1,0 +1,9 @@
+/*
+ * The ••• at the right end of the bar above the page. This file loads before styles.css,
+ * so a rule that changes one of its selectors has to be the more specific.
+ */
+.page-menu-button {
+  flex-shrink: 0;
+  margin-left: auto;
+  letter-spacing: 1px;
+}

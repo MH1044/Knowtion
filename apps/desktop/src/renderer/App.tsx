@@ -29,6 +29,7 @@ import {
   type Direction,
   type History,
 } from './history.js';
+import { PageMenu } from './PageMenu.js';
 import { Breadcrumb, ChildPages } from './PageNav.js';
 import { usePageHost } from './pageHost.js';
 import {
@@ -246,6 +247,9 @@ export function App(): React.JSX.Element {
     });
   }, [treeLoaded, tree, openPage]);
 
+  // The page drawn in the page area, which the trash replaces while it is open.
+  const pageShown = showTrash ? undefined : selected;
+
   // An open page names the window itself, from its title as typed (PageView); these are
   // the other things the window can show.
   const showing = showTrash ? 'trash' : selected === undefined ? 'nothing' : undefined;
@@ -458,40 +462,57 @@ export function App(): React.JSX.Element {
       </aside>
 
       <main className="content">
-        <nav className="top-bar" aria-label="Page history">
-          {sidebarHidden && (
+        {/* Back and Forward, then for an open page the pages above it and its ••• menu at
+            the right, on one line as in Notion. */}
+        <div className="top-bar">
+          <nav className="page-history" aria-label="Page history">
+            {sidebarHidden && (
+              <button
+                ref={showSidebarRef}
+                type="button"
+                className="nav-button"
+                aria-label="Show sidebar"
+                title="Show sidebar (Ctrl+\)"
+                onClick={toggleSidebar}
+              >
+                »
+              </button>
+            )}
             <button
-              ref={showSidebarRef}
               type="button"
               className="nav-button"
-              aria-label="Show sidebar"
-              title="Show sidebar (Ctrl+\)"
-              onClick={toggleSidebar}
+              aria-label="Back"
+              title="Back (Ctrl+[)"
+              disabled={!canGoBack}
+              onClick={() => void go('back')}
             >
-              »
+              ←
             </button>
+            <button
+              type="button"
+              className="nav-button"
+              aria-label="Forward"
+              title="Forward (Ctrl+])"
+              disabled={!canGoForward}
+              onClick={() => void go('forward')}
+            >
+              →
+            </button>
+          </nav>
+          {pageShown !== undefined && (
+            <>
+              <Breadcrumb tree={tree} pageId={pageShown.id} onOpen={openPage} />
+              <PageMenu
+                key={pageShown.id}
+                page={pageShown}
+                run={run}
+                onArchived={() => {
+                  setSelectedId(undefined);
+                }}
+              />
+            </>
           )}
-          <button
-            type="button"
-            className="nav-button"
-            aria-label="Back"
-            title="Back (Ctrl+[)"
-            disabled={!canGoBack}
-            onClick={() => void go('back')}
-          >
-            ←
-          </button>
-          <button
-            type="button"
-            className="nav-button"
-            aria-label="Forward"
-            title="Forward (Ctrl+])"
-            disabled={!canGoForward}
-            onClick={() => void go('forward')}
-          >
-            →
-          </button>
-        </nav>
+        </div>
         <UpdateBanner />
         {error !== undefined && <div className="error">{error}</div>}
 
@@ -515,17 +536,8 @@ export function App(): React.JSX.Element {
 
         {showTrash ? (
           <TrashView trash={trash} run={run} />
-        ) : selected ? (
-          <PageView
-            key={selected.id}
-            page={selected}
-            tree={tree}
-            run={run}
-            onOpen={openPage}
-            onArchived={() => {
-              setSelectedId(undefined);
-            }}
-          />
+        ) : pageShown ? (
+          <PageView key={pageShown.id} page={pageShown} tree={tree} run={run} onOpen={openPage} />
         ) : (
           <p className="placeholder">Select a page, or create one.</p>
         )}
@@ -712,13 +724,11 @@ function PageView({
   tree,
   run,
   onOpen,
-  onArchived,
 }: {
   page: Page;
   tree: PageNode[];
   run: (action: () => Promise<unknown>) => Promise<void>;
   onOpen: (id: string) => void;
-  onArchived: () => void;
 }): React.JSX.Element {
   // Local title state so typing stays responsive; the engine is told on blur rather
   // than per keystroke, which also keeps one rename out of the log per edit session.
@@ -754,7 +764,7 @@ function PageView({
 
   return (
     <article className="page">
-      <Breadcrumb tree={tree} pageId={page.id} onOpen={onOpen} />
+      {/* The pages above this one, and its ••• menu, are in the bar above the page. */}
       <div className="page-heading">
         <IconPicker
           icon={page.icon}
@@ -783,48 +793,6 @@ function PageView({
             }
           }}
         />
-      </div>
-      <div className="page-actions">
-        {page.database === undefined ? (
-          <button
-            type="button"
-            title="Existing child pages become its rows"
-            onClick={() => void run(() => api.dbConvert(page.id))}
-          >
-            Turn into database
-          </button>
-        ) : (
-          <button
-            type="button"
-            title="Rows become ordinary child pages; nothing is deleted"
-            onClick={() => {
-              // Worth a question: the table, its views and every column vanish from
-              // view at once. They are all still there, which is what the wording says.
-              if (
-                window.confirm(
-                  'Turn this database back into a page? The rows become child pages. ' +
-                    'Nothing is deleted — turning it into a database again brings the ' +
-                    'columns and values back.',
-                )
-              ) {
-                void run(() => api.dbRetire(page.id));
-              }
-            }}
-          >
-            Turn back into a page
-          </button>
-        )}
-        <button
-          type="button"
-          onClick={() =>
-            void run(async () => {
-              await api.archivePage(page.id);
-              onArchived();
-            })
-          }
-        >
-          Move to trash
-        </button>
       </div>
       {page.properties !== undefined && (
         <RowProperties page={page} run={run} onOpenParent={onOpen} />

@@ -141,12 +141,6 @@ input:focus-visible {
   width: 100%;
 }
 
-.page-actions {
-  display: flex;
-  gap: 8px;
-  margin-bottom: 24px;
-}
-
 .placeholder,
 .empty {
   color: var(--muted);

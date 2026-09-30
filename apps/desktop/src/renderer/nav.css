@@ -1,5 +1,5 @@
 /*
- * Back and Forward above the page, and hiding the sidebar. This file loads before
+ * The bar above the page, and hiding the sidebar. This file loads before
  * styles.css, so a rule that changes one of its selectors has to be the more specific.
  */
 
@@ -19,7 +19,7 @@
 }
 
 /*
- * At the top left of the page area, and still there once the page has scrolled under it.
+ * Across the top of the page area, and still there once the page has scrolled under it.
  * It is drawn up into the 40px .content keeps above the page, from the very top, so that
  * the page starts about where it did and nothing shows above the bar while it is stuck.
  */
@@ -33,6 +33,19 @@
   margin: -40px 0 8px;
   padding: 10px 0 4px;
   background: var(--bg);
+}
+
+.page-history {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 2px;
+}
+
+/* The pages above the open one, beside the arrows rather than above its title. */
+.top-bar .breadcrumb {
+  min-width: 0;
+  margin: 0 0 0 8px;
 }
 
 .nav-button {

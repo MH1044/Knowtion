@@ -24,7 +24,8 @@ test('a database can be built, filled, reordered and viewed as a board from the 
     await title.fill('Tasks');
     await title.press('Enter');
 
-    await window.getByRole('button', { name: 'Turn into database' }).click();
+    await window.getByRole('button', { name: 'Page options' }).click();
+    await window.getByRole('menuitem', { name: 'Turn into database' }).click();
     // The default table view is created with the database.
     await expect(window.getByRole('tab', { name: 'Table' })).toBeVisible();
     await expect(window.getByRole('grid', { name: 'Table' })).toBeVisible();
