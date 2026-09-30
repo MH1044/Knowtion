@@ -1,15 +1,18 @@
-import type { BlockSpot, PageEditor } from '@knowtion/editor';
+import type { PageEditor } from '@knowtion/editor';
 
 import { api } from './api.js';
-import { blockMenuItems } from './BlockHandle.js';
+import { blockMenuItems, type MenuTarget } from './BlockHandle.js';
 import { Menu, type MenuEntry } from './ui/Menu.js';
 import type { Box } from './ui/placement.js';
 import { showToast } from './ui/Toast.js';
 
 /** What a right-click landed on, as it was at the right-click. */
 export interface EditTarget {
-  /** The block under the pointer, as its ⋮⋮ handle would act on; undefined over none. */
-  spot: Pick<BlockSpot, 'pos' | 'canTurnInto'> | undefined;
+  /**
+   * The block under the pointer, and whether the selection holds it, as its ⋮⋮ handle
+   * would act on; undefined over none.
+   */
+  spot: MenuTarget | undefined;
   hasSelection: boolean;
   editable: boolean;
 }

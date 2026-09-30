@@ -7,9 +7,9 @@ import { EditorState, TextSelection, type Plugin } from 'prosemirror-state';
 import type { Node } from 'prosemirror-model';
 import { describe, expect, it } from 'vitest';
 
-import { knowtionKeymap } from '../keymap.js';
+import { knowtionKeymap, NUMBERED_BLOCKS } from '../keymap.js';
 import { schema } from '../schema.js';
-import { slashKey, slashMenu } from '../slash.js';
+import { slashKey, slashMenu, TURN_INTO_CHOICES } from '../slash.js';
 import { fakeView, type } from './typing.js';
 
 const p = (text: string) => schema.node('paragraph', null, text === '' ? [] : [schema.text(text)]);
@@ -292,6 +292,22 @@ describe('Ctrl+Alt with a number', () => {
   const digit = (view: View, n: number, mods: { shift?: boolean; alt?: boolean } = {}) =>
     press(view, String(n), mods, 48 + n);
   const alt = { alt: true };
+
+  it('come from one table, which the block menus read their hints from', () => {
+    expect(NUMBERED_BLOCKS).toEqual([
+      'text',
+      'heading1',
+      'heading2',
+      'heading3',
+      'todo',
+      'bullet',
+      'numbered',
+      'toggle',
+      'code',
+    ]);
+    const choices = TURN_INTO_CHOICES.map((c) => c.id);
+    for (const id of NUMBERED_BLOCKS) expect(choices).toContain(id);
+  });
 
   it('turns a line into each basic block, the caret staying on its character', () => {
     const cases: [number, Node][] = [

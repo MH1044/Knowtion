@@ -6,7 +6,7 @@
  */
 
 export { schema } from './schema.js';
-export { knowtionInputRules, knowtionKeymap } from './keymap.js';
+export { knowtionInputRules, knowtionKeymap, NUMBERED_BLOCKS } from './keymap.js';
 export { insertDivider, toggleTodo, toggleTodoChecked } from './blocks.js';
 export { knowtionPlaceholder } from './placeholder.js';
 export { BLOCK_CHOICES, filterChoices, TURN_INTO_CHOICES } from './slash.js';

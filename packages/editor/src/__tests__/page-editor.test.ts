@@ -8,12 +8,12 @@
 import { LoroDoc, LoroList, LoroMap, LoroText } from 'loro-crdt';
 import { LoroSyncPlugin } from 'loro-prosemirror';
 import { DOMParser as PMDOMParser, DOMSerializer, type Node } from 'prosemirror-model';
-import { EditorState } from 'prosemirror-state';
+import { EditorState, NodeSelection, TextSelection } from 'prosemirror-state';
 import { EditorView } from 'prosemirror-view';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { loroDocFromJson } from '../headless.js';
-import { mountPageEditor, schema } from '../index.js';
+import { mountPageEditor, schema, TURN_INTO_CHOICES } from '../index.js';
 import { unknownContent } from '../vocabulary.js';
 
 const settle = () => new Promise((resolve) => setTimeout(resolve, 30));
@@ -213,6 +213,38 @@ describe('mountPageEditor', () => {
     await settle();
     expect(a.view.state.doc.textContent).toBe(b.view.state.doc.textContent);
   });
+
+  it('has the block menus act on a text selection only while the page shows it', async () => {
+    const editor = await open(1n);
+    await settle();
+    const { view } = editor;
+    const line = (text: string) => schema.node('paragraph', null, [schema.text(text)]);
+    view.dispatch(
+      view.state.tr.replaceWith(0, view.state.doc.content.size, [line('one'), line('two')]),
+    );
+    const second = line('one').nodeSize;
+    // From "one" into "two", in the editor's state and on the page.
+    view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, 2, second + 3)));
+    const [first, last] = [...view.dom.querySelectorAll('p')].map((p) => p.firstChild);
+    const shown = document.getSelection();
+    if (shown === null || first == null || last == null) throw new Error('no selection');
+    shown.setBaseAndExtent(first, 1, last, 2);
+    expect(editor.selectionHolds(second)).toBe(true);
+
+    // A click in the margin: the page shows no selection, though the editor's state keeps it.
+    shown.collapse(document.body, 0);
+    expect(view.state.selection.empty).toBe(false);
+    expect(editor.selectionHolds(second)).toBe(false);
+    // Text selected somewhere else on the page, as the title's is.
+    const title = document.body.appendChild(document.createElement('div'));
+    title.textContent = 'Title';
+    shown.selectAllChildren(title);
+    expect(editor.selectionHolds(second)).toBe(false);
+
+    // A block selected with Esc stays tinted, so it holds wherever the page's selection is.
+    view.dispatch(view.state.tr.setSelection(NodeSelection.create(view.state.doc, second)));
+    expect(editor.selectionHolds(second)).toBe(true);
+  });
 });
 
 describe('a page written by a newer build', () => {
@@ -258,9 +290,18 @@ describe('a page written by a newer build', () => {
     expect(editor.view.state.doc.textContent).toBe('hi');
     expect(unknownContent(editor.doc)).toEqual(['node hologram']);
     expect(writes).toEqual([]);
-    // Nothing the handle offers can change it either.
+    // Nothing the handle offers can change it either, nor act on a selection there.
     editor.deleteBlock(0);
     expect(editor.view.state.doc.textContent).toBe('hi');
+    const before = editor.view.state.doc;
+    // The line selected whole, as Esc would, which on an editable page the menus act on.
+    editor.view.dispatch(editor.view.state.tr.setSelection(NodeSelection.create(before, 0)));
+    expect(editor.selectionHolds(0)).toBe(false);
+    editor.duplicateSelectedBlocks();
+    editor.deleteSelectedBlocks();
+    editor.turnSelectedBlocksInto(at(TURN_INTO_CHOICES, 1));
+    expect(editor.view.state.doc.eq(before)).toBe(true);
+    expect(writes).toEqual([]);
   });
 
   it('refuses a remote update that would bring such content into an editable page', async () => {

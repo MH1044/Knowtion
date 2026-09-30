@@ -162,6 +162,33 @@ export function blocksBetween(doc: Node, from: number, to: number): number[] {
 }
 
 /**
+ * Whether a block menu opened on the block at `pos` (a blockPosAt answer) acts on the
+ * selection rather than on that block alone: the selection holds a block selected whole,
+ * or has text in two blocks or more, and the block at `pos` overlaps the span they make.
+ * So a divider between two selected lines counts, as do an item nested in a selected item
+ * and the item whose nested line is selected. Everything selected (Ctrl+A) holds every
+ * block, a divider at either end of the page included, which has no text to find it by.
+ *
+ * Text inside one block keeps the menu on the block, which is the same block, except that
+ * the block's own path takes a list item whole where the selection's would take only a
+ * line nested in it.
+ */
+export function selectionHoldsBlock(state: EditorState, pos: number): boolean {
+  const { doc, selection } = state;
+  const block = doc.nodeAt(pos);
+  if (block === null) return false;
+  if (selection instanceof AllSelection) return true;
+  const own = selectedBlock(selection);
+  const blocks = own === undefined ? blocksBetween(doc, selection.from, selection.to) : [own];
+  const first = blocks[0];
+  const last = blocks.at(-1);
+  if (first === undefined || last === undefined) return false;
+  if (own === undefined && blocks.length < 2) return false;
+  const end = last + (doc.nodeAt(last)?.nodeSize ?? 0);
+  return pos < end && pos + block.nodeSize > first;
+}
+
+/**
  * blocksBetween, or when the selection has no text in it (a caret, which may sit at the
  * start of a line or in an empty one) the block it is in.
  */
@@ -736,6 +763,47 @@ export const duplicateSelectedBlocks: Command = (state, dispatch) => {
     const kept = keepSelection(tr, state.selection, split, run.range, (pos) => after.map(pos, -1));
     dispatch(kept.scrollIntoView());
   }
+  return true;
+};
+
+/**
+ * The block menus' Delete for a selection: every block it is in goes whole, lines it only
+ * partly covers included, as one change. A block selected whole goes as Backspace takes it.
+ *
+ * Taking every item of a list takes the list, so no empty bullet is left, and two lists of
+ * a kind that only the deleted blocks kept apart are one list again, numbered on.
+ *
+ * Everything selected clears the page to one empty line, dividers at either end included,
+ * which the run of lines with text would leave behind.
+ *
+ * A line inside an item or an open toggle takes the whole item or toggle with it, the
+ * lines above it included, as Ctrl+D copies and Ctrl+Shift+Up moves them.
+ */
+export const deleteSelectedBlocks: Command = (state, dispatch) => {
+  if (state.selection instanceof AllSelection) {
+    if (dispatch) {
+      const tr = state.tr.replaceWith(0, state.doc.content.size, node('paragraph').create());
+      dispatch(tr.setSelection(TextSelection.create(tr.doc, 1)).scrollIntoView());
+    }
+    return true;
+  }
+  const own = selectedBlock(state.selection);
+  if (own !== undefined) return deleteBlock(own)(state, dispatch);
+  const tr = state.tr;
+  const run = selectedRun(tr, state.selection);
+  if (run === undefined) return false;
+  if (!dispatch) return true;
+  const { range } = run;
+  const list = LISTS.has(range.parent.type.name) ? range.parent : undefined;
+  const whole = list !== undefined && range.startIndex === 0 && range.endIndex === list.childCount;
+  const gap = whole ? range.start - 1 : range.start;
+  tr.delete(gap, whole ? range.end + 1 : range.end);
+  if (joinsLists(tr.doc, gap)) tr.join(gap);
+  // A document must keep one block to type into.
+  if (tr.doc.childCount === 0) tr.insert(0, node('paragraph').create());
+  const caret = Math.min(gap, tr.doc.content.size);
+  tr.setSelection(TextSelection.near(tr.doc.resolve(caret)));
+  dispatch(tr.scrollIntoView());
   return true;
 };
 

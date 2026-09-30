@@ -249,10 +249,16 @@ export function PageBody({
           // comes once the menu has focus, the editor ignores it, and Paste would replace
           // the old selection. Sent now, it has the editor read the caret first.
           document.dispatchEvent(new Event('selectionchange'));
+          // Inside a selection Chromium keeps it, and the block entries then act on every
+          // block it is in; outside one the caret moved, so they act on this block alone.
+          const under = live.blockAt(e.clientY);
           setContext({
             anchor: pointBox(e.clientX, e.clientY),
             target: {
-              spot: live.blockAt(e.clientY),
+              spot:
+                under === undefined
+                  ? undefined
+                  : { ...under, selection: live.selectionHolds(under.pos) },
               hasSelection: !live.view.state.selection.empty,
               editable: live.unknown.length === 0,
             },

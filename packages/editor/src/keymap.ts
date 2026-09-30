@@ -62,8 +62,11 @@ export function knowtionInputRules(): Plugin {
   });
 }
 
-/** What Notion's number keys turn a line into: 0 is text, 1 to 3 headings, and so on. */
-const NUMBERED_BLOCKS = [
+/**
+ * What Notion's number keys turn a line into: 0 is text, 1 to 3 headings, and so on. The
+ * block menus read their key hints from here, so the hints cannot drift from the keys.
+ */
+export const NUMBERED_BLOCKS: readonly string[] = [
   'text',
   'heading1',
   'heading2',
@@ -73,7 +76,7 @@ const NUMBERED_BLOCKS = [
   'numbered',
   'toggle',
   'code',
-] as const;
+];
 
 /**
  * Ctrl+Alt and Ctrl+Shift with 0 to 8 (Cmd+Option and Cmd+Shift on a Mac), both of which

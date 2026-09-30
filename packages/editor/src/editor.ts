@@ -17,7 +17,7 @@
 
 import { dropCursor } from 'prosemirror-dropcursor';
 import { Node } from 'prosemirror-model';
-import { EditorState, Selection, type Command } from 'prosemirror-state';
+import { EditorState, NodeSelection, Selection, type Command } from 'prosemirror-state';
 import { EditorView } from 'prosemirror-view';
 
 import { blockSelect } from './block-select.js';
@@ -26,11 +26,15 @@ import {
   blockPosAt,
   canTurnInto,
   deleteBlock,
+  deleteSelectedBlocks,
   duplicateBlock,
+  duplicateSelectedBlocks,
   endBlockDrag,
   insertBlockAfter,
+  selectionHoldsBlock,
   startBlockDrag,
   turnBlockInto,
+  turnSelectionInto,
 } from './handle.js';
 import { knowtionInputRules, knowtionKeymap } from './keymap.js';
 import { focusEnd } from './leave-block.js';
@@ -120,6 +124,18 @@ export interface PageEditor {
   deleteBlock(pos: number): void;
   duplicateBlock(pos: number): void;
   turnBlockInto(pos: number, choice: BlockChoice): void;
+  /**
+   * Whether a block menu opened on the block at `pos` acts on the selection, every block
+   * it is in, rather than on that block alone. Always false on a read-only page, and for a
+   * text selection the page no longer shows, as after a click elsewhere.
+   */
+  selectionHolds(pos: number): boolean;
+  /** Ctrl+D: a copy of every block the selection is in, just below them. */
+  duplicateSelectedBlocks(): void;
+  /** Every block the selection is in, deleted whole. */
+  deleteSelectedBlocks(): void;
+  /** Every block the selection is in turned into `choice`, as the toolbar turns them. */
+  turnSelectedBlocksInto(choice: BlockChoice): void;
   startBlockDrag(pos: number, event: DragEvent): void;
   endBlockDrag(): void;
   /** Put the caret on an empty line at the end of the page, adding one if needed. */
@@ -151,6 +167,24 @@ function linkCommand(options: PageEditorOptions): Command | undefined {
     });
     return true;
   };
+}
+
+/**
+ * Whether the page still shows the selection. ProseMirror keeps a text selection when the
+ * editor loses focus, but the browser stops drawing it once a click lands elsewhere, and
+ * the block menus must not act on lines nothing marks. A grip click or a right-click keeps
+ * the browser's selection, so it is still in the editor then. A block selected with Esc
+ * stays tinted whatever has focus.
+ */
+function selectionShown(view: EditorView): boolean {
+  if (view.state.selection instanceof NodeSelection) return true;
+  const shown = view.dom.ownerDocument.getSelection();
+  return (
+    shown !== null &&
+    !shown.isCollapsed &&
+    shown.anchorNode !== null &&
+    view.dom.contains(shown.anchorNode)
+  );
 }
 
 export async function mountPageEditor(options: PageEditorOptions): Promise<PageEditor> {
@@ -319,6 +353,17 @@ export async function mountPageEditor(options: PageEditorOptions): Promise<PageE
       if (readOnly) return;
       turnBlockInto(view, pos, choice);
       view.focus();
+    },
+    selectionHolds: (pos) =>
+      !readOnly && selectionShown(view) && selectionHoldsBlock(view.state, pos),
+    duplicateSelectedBlocks: () => {
+      run(duplicateSelectedBlocks);
+    },
+    deleteSelectedBlocks: () => {
+      run(deleteSelectedBlocks);
+    },
+    turnSelectedBlocksInto: (choice) => {
+      run(turnSelectionInto(choice));
     },
     startBlockDrag: (pos, event) => {
       if (readOnly) return;

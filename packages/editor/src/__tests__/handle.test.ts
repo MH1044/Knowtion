@@ -2,16 +2,25 @@
  * The block handle's actions, on editor states: which block a position belongs to, and
  * what add, delete, duplicate and turn-into do to it.
  */
-import { EditorState, TextSelection, type Command, type Transaction } from 'prosemirror-state';
+import {
+  AllSelection,
+  EditorState,
+  NodeSelection,
+  TextSelection,
+  type Command,
+  type Transaction,
+} from 'prosemirror-state';
 import type { Node } from 'prosemirror-model';
 import { describe, expect, it } from 'vitest';
 
 import {
   blockPosAt,
   deleteBlock,
+  deleteSelectedBlocks,
   duplicateBlock,
   insertBlockAfter,
   moveBlock,
+  selectionHoldsBlock,
   turnBlockInto,
 } from '../handle.js';
 import { schema } from '../schema.js';
@@ -272,5 +281,194 @@ describe('dropping a dragged block', () => {
     const state = stateOf(p('one'), p('two'));
     expect(moveBlock(state, 0, 0)).toBeNull();
     expect(moveBlock(state, 0, 5)).toBeNull();
+  });
+});
+
+/** Where `text` first starts in the document. */
+function find(doc: Node, text: string): number {
+  let found: number | undefined;
+  doc.descendants((child, pos) => {
+    const at = child.text?.indexOf(text) ?? -1;
+    if (found === undefined && at >= 0) found = pos + at;
+    return found === undefined;
+  });
+  if (found === undefined) throw new Error(`no "${text}" in the document`);
+  return found;
+}
+
+/** `state` with the text from `from` into `to` selected, each end so many characters in. */
+function selecting(state: EditorState, from: [string, number], to: [string, number]) {
+  const anchor = find(state.doc, from[0]) + from[1];
+  const head = find(state.doc, to[0]) + to[1];
+  return state.apply(state.tr.setSelection(TextSelection.create(state.doc, anchor, head)));
+}
+
+function withSelection(state: EditorState, make: (doc: Node) => AllSelection | NodeSelection) {
+  return state.apply(state.tr.setSelection(make(state.doc)));
+}
+
+const docOf = (...blocks: Node[]) => schema.node('doc', null, blocks).toString();
+const item = (...content: Node[]) => schema.node('list_item', null, content);
+const ul = (...items: (string | Node)[]) =>
+  schema.node(
+    'bullet_list',
+    null,
+    items.map((t) => (typeof t === 'string' ? li(t) : t)),
+  );
+const ol = (...items: string[]) => schema.node('ordered_list', null, items.map(li));
+const h1 = (text: string) => schema.node('heading', { level: 1 }, [schema.text(text)]);
+const hr = () => schema.node('divider');
+
+describe('what a block menu acts on', () => {
+  /** Whether a menu opened on the block holding `text` acts on the selection. */
+  const holds = (state: EditorState, text: string) => {
+    const pos = blockPosAt(state.doc, find(state.doc, text));
+    if (pos === undefined) throw new Error(`no block holds "${text}"`);
+    return selectionHoldsBlock(state, pos);
+  };
+  const four = stateOf(p('one'), p('two'), p('three'), p('four'));
+
+  it('is the block alone for a caret, and for text inside one line', () => {
+    const caret = four.apply(four.tr.setSelection(TextSelection.create(four.doc, 3)));
+    expect(holds(caret, 'one')).toBe(false);
+    expect(holds(selecting(four, ['two', 0], ['two', 3]), 'two')).toBe(false);
+    // Past the last block there is no block to hold.
+    const all = withSelection(four, (doc) => new AllSelection(doc));
+    expect(selectionHoldsBlock(all, all.doc.content.size)).toBe(false);
+  });
+
+  it('is the selection for every line it has text in, and not for the lines past it', () => {
+    const state = selecting(four, ['one', 1], ['three', 2]);
+    expect(['one', 'two', 'three', 'four'].map((t) => holds(state, t))).toEqual([
+      true,
+      true,
+      true,
+      false,
+    ]);
+    // Dragged down to the very start of a line, the selection has nothing in it.
+    const toStart = selecting(four, ['one', 1], ['four', 0]);
+    expect(holds(toStart, 'three')).toBe(true);
+    expect(holds(toStart, 'four')).toBe(false);
+  });
+
+  it('holds a divider between two selected lines', () => {
+    const state = selecting(stateOf(p('one'), hr(), p('two')), ['one', 0], ['two', 3]);
+    expect(selectionHoldsBlock(state, p('one').nodeSize)).toBe(true);
+  });
+
+  it('holds a heading and the first bullet under it, and not the other bullets', () => {
+    const base = stateOf(h1('head'), ul('one', 'two', 'three'));
+    const state = selecting(base, ['head', 2], ['one', 1]);
+    expect(['head', 'one', 'two', 'three'].map((t) => holds(state, t))).toEqual([
+      true,
+      true,
+      false,
+      false,
+    ]);
+  });
+
+  it('holds a list item selected whole and an item nested in it, not the items beside it', () => {
+    const base = stateOf(ul('a', item(p('b'), ul('b1')), 'c'));
+    const b = blockPosAt(base.doc, find(base.doc, 'b'));
+    if (b === undefined) throw new Error('no block holds "b"');
+    const state = withSelection(base, (doc) => NodeSelection.create(doc, b));
+    expect(['a', 'b', 'b1', 'c'].map((t) => holds(state, t))).toEqual([false, true, true, false]);
+  });
+
+  it('holds a toggle whose first line is selected with the line after it', () => {
+    const toggle = schema.node('toggle', null, [p('sum'), p('in')]);
+    const state = selecting(stateOf(toggle, p('after')), ['sum', 1], ['in', 1]);
+    expect(selectionHoldsBlock(state, 0)).toBe(true);
+    expect(holds(state, 'after')).toBe(false);
+  });
+
+  it('holds every block when everything is selected, dividers at either end included', () => {
+    const base = stateOf(hr(), p('one'), hr(), ul('a', 'b'), p('end'), hr());
+    const state = withSelection(base, (doc) => new AllSelection(doc));
+    expect(['one', 'a', 'b', 'end'].map((t) => holds(state, t))).toEqual([true, true, true, true]);
+    const dividers = [0, 1 + p('one').nodeSize, state.doc.content.size - 1];
+    expect(dividers.map((pos) => state.doc.nodeAt(pos)?.type.name)).toEqual([
+      'divider',
+      'divider',
+      'divider',
+    ]);
+    expect(dividers.map((pos) => selectionHoldsBlock(state, pos))).toEqual([true, true, true]);
+  });
+
+  it('holds an open toggle whose later line is selected, but not the line above it', () => {
+    // The toggle is what the run commands take, so its menu acts on the selection, while
+    // the line above the selected one, which the highlight does not reach, keeps its own.
+    const toggle = schema.node('toggle', null, [p('sum'), p('first'), p('second')]);
+    const state = selecting(stateOf(toggle, p('after')), ['second', 1], ['after', 2]);
+    expect(selectionHoldsBlock(state, 0)).toBe(true);
+    expect(['sum', 'first', 'second', 'after'].map((t) => holds(state, t))).toEqual([
+      true,
+      false,
+      true,
+      true,
+    ]);
+  });
+
+  it('is the line alone when a date chip in it is selected', () => {
+    const date = schema.node('date', { date: '2026-10-03' });
+    const base = stateOf(p('x'), schema.node('paragraph', null, [schema.text('on '), date]));
+    const state = withSelection(base, (doc) => NodeSelection.create(doc, find(doc, 'on') + 3));
+    expect(holds(state, 'on')).toBe(false);
+  });
+});
+
+describe('deleting the selected blocks', () => {
+  /** deleteSelectedBlocks on `state`, which it must change in one transaction. */
+  const deleted = (state: EditorState) => {
+    const trs: Transaction[] = [];
+    expect(deleteSelectedBlocks(state, (tr) => trs.push(tr))).toBe(true);
+    expect(trs).toHaveLength(1);
+    const [tr] = trs;
+    if (tr === undefined) throw new Error('nothing dispatched');
+    return state.apply(tr);
+  };
+
+  it('takes every line the selection is in whole, and leaves the caret in the next', () => {
+    const four = stateOf(p('one'), p('two'), p('three'), p('four'));
+    const next = deleted(selecting(four, ['one', 1], ['three', 2]));
+    expect(next.doc.toString()).toBe(docOf(p('four')));
+    expect(next.selection.empty).toBe(true);
+    expect(next.selection.$head.parent.textContent).toBe('four');
+  });
+
+  it('takes a heading and the first two bullets, leaving the third alone in its list', () => {
+    const state = selecting(stateOf(h1('head'), ul('a', 'b', 'c')), ['head', 1], ['b', 1]);
+    expect(deleted(state).doc.toString()).toBe(docOf(ul('c')));
+  });
+
+  it('takes the list with every item of it', () => {
+    const state = selecting(stateOf(p('x'), ul('a', 'b'), p('y')), ['a', 0], ['b', 1]);
+    expect(deleted(state).doc.toString()).toBe(docOf(p('x'), p('y')));
+  });
+
+  it('joins the two lists the deleted line kept apart', () => {
+    const state = selecting(stateOf(ol('a', 'b'), p('mid'), ol('c')), ['mid', 0], ['mid', 3]);
+    expect(deleted(state).doc.toString()).toBe(docOf(ol('a', 'b', 'c')));
+  });
+
+  it('leaves one empty line when everything was selected, dividers at either end included', () => {
+    const base = stateOf(hr(), h1('head'), ul('a', 'b'), p('end'), hr());
+    const next = deleted(withSelection(base, (doc) => new AllSelection(doc)));
+    expect(next.doc.toString()).toBe(docOf(p('')));
+    expect(next.selection.empty).toBe(true);
+    expect(next.selection.from).toBe(1);
+    // Without the dividers too.
+    const plain = deleted(withSelection(stateOf(p('one'), p('two')), (d) => new AllSelection(d)));
+    expect(plain.doc.toString()).toBe(docOf(p('')));
+  });
+
+  it('takes an open toggle whole when the selection starts on a later line of it', () => {
+    // The lines above the selected one go too, as Ctrl+D copies and Ctrl+Shift+Up moves
+    // the whole toggle. One undo brings them back.
+    const toggle = schema.node('toggle', null, [p('sum'), p('first'), p('second')]);
+    const state = selecting(stateOf(toggle, p('after'), p('kept')), ['second', 1], ['after', 2]);
+    const next = deleted(state);
+    expect(next.doc.toString()).toBe(docOf(p('kept')));
+    expect(next.selection.$head.parent.textContent).toBe('kept');
   });
 });

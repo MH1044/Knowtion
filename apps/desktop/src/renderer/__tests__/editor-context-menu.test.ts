@@ -24,6 +24,11 @@ function fakes() {
       turnBlockInto: (pos: number, choice: BlockChoice) => {
         calls.push(`turn ${String(pos)} into ${choice.id}`);
       },
+      duplicateSelectedBlocks: record('duplicate selection'),
+      deleteSelectedBlocks: record('delete selection'),
+      turnSelectedBlocksInto: (choice: BlockChoice) => {
+        calls.push(`turn selection into ${choice.id}`);
+      },
     },
     clipboard: { cut: record('cut'), copy: record('copy'), paste: record('paste') },
     done: record('done'),
@@ -31,7 +36,7 @@ function fakes() {
 }
 
 const onText: EditTarget = {
-  spot: { pos: 7, canTurnInto: true },
+  spot: { pos: 7, canTurnInto: true, selection: false },
   hasSelection: false,
   editable: true,
 };
@@ -114,7 +119,7 @@ describe('the right-click menu in a page', () => {
     const { editor, clipboard, done } = fakes();
     const nowhere = editorMenuItems(editor, { ...onText, spot: undefined }, clipboard, done);
     expect(labels(nowhere)).toEqual(['Cut', 'Copy', 'Paste']);
-    const divider = { ...onText, spot: { pos: 3, canTurnInto: false } };
+    const divider = { ...onText, spot: { pos: 3, canTurnInto: false, selection: false } };
     expect(labels(editorMenuItems(editor, divider, clipboard, done))).toEqual([
       'Cut',
       'Copy',
@@ -125,11 +130,15 @@ describe('the right-click menu in a page', () => {
     ]);
   });
 
-  it('has the ⋮⋮ menu’s own block entries', () => {
+  it('has the ⋮⋮ menu’s own block entries, with their keys', () => {
     const { editor, clipboard, done } = fakes();
     const items = editorMenuItems(editor, onText, clipboard, done);
-    const own = blockMenuItems(editor, { pos: 7, canTurnInto: true }, done);
+    const own = blockMenuItems(editor, { pos: 7, canTurnInto: true, selection: false }, done);
     expect(shape(items.slice(4))).toEqual(shape(own));
+    expect(item(items, 'duplicate').hint).toBe('Ctrl+D');
+    const turnInto = items.find((e) => e.id === 'turn-into');
+    if (turnInto?.kind !== 'submenu') throw new Error('no Turn into');
+    expect(item(turnInto.items, 'bullet').hint).toBe('Ctrl+Shift+5');
   });
 
   it('acts on the block it was opened on, then says it is done', () => {
@@ -146,6 +155,25 @@ describe('the right-click menu in a page', () => {
       'delete 7',
       'done',
       'turn 7 into heading1',
+      'done',
+    ]);
+  });
+
+  it('acts on every selected block when the selection holds the one clicked', () => {
+    const { editor, clipboard, done, calls } = fakes();
+    const onSelection = { ...onText, spot: { pos: 7, canTurnInto: true, selection: true } };
+    const items = editorMenuItems(editor, onSelection, clipboard, done);
+    item(items, 'duplicate').onSelect();
+    item(items, 'delete').onSelect();
+    const turnInto = items.find((e) => e.id === 'turn-into');
+    if (turnInto?.kind !== 'submenu') throw new Error('no Turn into');
+    item(turnInto.items, 'bullet').onSelect();
+    expect(calls).toEqual([
+      'duplicate selection',
+      'done',
+      'delete selection',
+      'done',
+      'turn selection into bullet',
       'done',
     ]);
   });

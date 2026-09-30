@@ -1,6 +1,11 @@
 import { useState } from 'react';
 
-import { BLOCK_CHOICES, type BlockSpot, type PageEditor } from '@knowtion/editor';
+import {
+  NUMBERED_BLOCKS,
+  TURN_INTO_CHOICES,
+  type BlockSpot,
+  type PageEditor,
+} from '@knowtion/editor';
 
 import { Menu, type MenuEntry } from './ui/Menu.js';
 
@@ -8,23 +13,43 @@ import { Menu, type MenuEntry } from './ui/Menu.js';
 export const HANDLE_GUTTER = 46;
 
 /**
- * What a block can be turned into: every kind of block, but not the divider, which has no
- * text to keep, nor a date, which sits in a line rather than being a kind of block.
+ * What a block menu acts on: the block it was opened on, or with `selection` every block
+ * the selection is in, which that block was one of when the menu opened.
  */
-export const TURN_INTO = BLOCK_CHOICES.filter((c) => c.id !== 'divider' && c.id !== 'date');
+export type MenuTarget = Pick<BlockSpot, 'pos' | 'canTurnInto'> & { selection: boolean };
 
-/** The grip's menu for the block at `spot`. `done` runs after any of its actions. */
+/**
+ * The key that turns a line into the block type `id`, from the editor's own table, or
+ * undefined for a type no key makes, such as a callout.
+ */
+export function turnIntoHint(id: string): string | undefined {
+  const digit = NUMBERED_BLOCKS.indexOf(id);
+  // Ctrl+Shift rather than Ctrl+Alt, which is AltGr on some keyboards; both are bound.
+  return digit < 0 ? undefined : `Ctrl+Shift+${String(digit)}`;
+}
+
+/** The grip's menu for `target`. `done` runs after any of its actions. */
 export function blockMenuItems(
-  editor: Pick<PageEditor, 'duplicateBlock' | 'deleteBlock' | 'turnBlockInto'>,
-  spot: Pick<BlockSpot, 'pos' | 'canTurnInto'>,
+  editor: Pick<
+    PageEditor,
+    | 'duplicateBlock'
+    | 'deleteBlock'
+    | 'turnBlockInto'
+    | 'duplicateSelectedBlocks'
+    | 'deleteSelectedBlocks'
+    | 'turnSelectedBlocksInto'
+  >,
+  target: MenuTarget,
   done: () => void,
 ): MenuEntry[] {
   const items: MenuEntry[] = [
     {
       id: 'duplicate',
       label: 'Duplicate',
+      hint: 'Ctrl+D',
       onSelect: () => {
-        editor.duplicateBlock(spot.pos);
+        if (target.selection) editor.duplicateSelectedBlocks();
+        else editor.duplicateBlock(target.pos);
         done();
       },
     },
@@ -33,22 +58,24 @@ export function blockMenuItems(
       label: 'Delete',
       danger: true,
       onSelect: () => {
-        editor.deleteBlock(spot.pos);
+        if (target.selection) editor.deleteSelectedBlocks();
+        else editor.deleteBlock(target.pos);
         done();
       },
     },
   ];
-  if (spot.canTurnInto) {
+  if (target.canTurnInto) {
     items.push({
       kind: 'submenu',
       id: 'turn-into',
       label: 'Turn into',
-      items: TURN_INTO.map((choice) => ({
+      items: TURN_INTO_CHOICES.map((choice) => ({
         id: choice.id,
         label: choice.label,
-        hint: choice.hint,
+        hint: turnIntoHint(choice.id),
         onSelect: () => {
-          editor.turnBlockInto(spot.pos, choice);
+          if (target.selection) editor.turnSelectedBlocksInto(choice);
+          else editor.turnBlockInto(target.pos, choice);
           done();
         },
       })),
@@ -74,7 +101,11 @@ export function BlockHandle({
   /** The handle's job is over: the block moved, changed or went away. */
   onDone: () => void;
 }): React.JSX.Element {
-  const [menu, setMenu] = useState<{ grip: HTMLElement; fromKeyboard: boolean } | null>(null);
+  const [menu, setMenu] = useState<{
+    grip: HTMLElement;
+    fromKeyboard: boolean;
+    selection: boolean;
+  } | null>(null);
   const lineMiddle = (spot.top + spot.bottom) / 2;
 
   return (
@@ -117,8 +148,17 @@ export function BlockHandle({
           onDone();
         }}
         onClick={(e) => {
-          // A click from Enter or Space has no pointer behind it (detail 0).
-          setMenu(menu === null ? { grip: e.currentTarget, fromKeyboard: e.detail === 0 } : null);
+          // A click from Enter or Space has no pointer behind it (detail 0). What the menu
+          // acts on is settled now, as the right-click menu's target is.
+          setMenu(
+            menu === null
+              ? {
+                  grip: e.currentTarget,
+                  fromKeyboard: e.detail === 0,
+                  selection: editor.selectionHolds(spot.pos),
+                }
+              : null,
+          );
         }}
       >
         ⋮⋮
@@ -129,7 +169,7 @@ export function BlockHandle({
           label="Block options"
           // PageBody holds the handle still while an element of this class is open.
           className="block-handle-menu"
-          items={blockMenuItems(editor, spot, onDone)}
+          items={blockMenuItems(editor, { ...spot, selection: menu.selection }, onDone)}
           initialActive={menu.fromKeyboard ? 'first' : 'none'}
           onClose={() => {
             setMenu(null);

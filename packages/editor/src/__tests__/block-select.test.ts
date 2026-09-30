@@ -7,6 +7,7 @@ import type { Node } from 'prosemirror-model';
 import { describe, expect, it } from 'vitest';
 
 import { blockSelect } from '../block-select.js';
+import { deleteSelectedBlocks } from '../handle.js';
 import { knowtionKeymap } from '../keymap.js';
 import { schema } from '../schema.js';
 import { slashKey, slashMenu } from '../slash.js';
@@ -369,5 +370,30 @@ describe('with a block selected', () => {
     press(box, '1', { mod: true, alt: true });
     expect(box.state.doc.toString()).toBe(docOf(h1('l1'), h1('l2')));
     expect(selected(box)).toBe('heading:l1');
+  });
+
+  it('the block menus’ Delete removes it exactly as the Delete key does', () => {
+    const cases: { blocks: () => Node[]; text: string; down?: boolean }[] = [
+      { blocks: () => [p('one'), p('two'), p('three')], text: 'two' },
+      { blocks: () => [ul('a', 'b', 'c')], text: 'b' },
+      { blocks: () => [p('x'), ul('a'), p('y')], text: 'a' },
+      { blocks: () => [p('x'), toggle(p('sum'), p('in')), p('y')], text: 'sum' },
+      // Esc on the line above, then Down onto the divider, which has no text to start in.
+      { blocks: () => [p('x'), hr(), p('y')], text: 'x', down: true },
+    ];
+    for (const { blocks, text, down } of cases) {
+      const [menu, key] = [editor(blocks(), text), editor(blocks(), text)];
+      for (const view of [menu, key]) {
+        press(view, 'Escape');
+        if (down === true) press(view, 'ArrowDown');
+      }
+      const taken = deleteSelectedBlocks(menu.state, (tr) => {
+        menu.dispatch(tr);
+      });
+      expect(taken, text).toBe(true);
+      press(key, 'Delete');
+      expect(menu.state.doc.toString(), text).toBe(key.state.doc.toString());
+      expect(menu.state.selection.eq(key.state.selection), text).toBe(true);
+    }
   });
 });
