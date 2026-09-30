@@ -76,14 +76,19 @@ export function Calendar({
       if (anchor?.contains(target)) return;
       if (!container.current?.contains(target)) onClose();
     };
+    // Before anything on the page sees the key, and marked as handled: a date chip's
+    // calendar leaves the editor focused, and the editor would otherwise also take this
+    // Escape and select the chip's block.
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onClose();
+      if (event.key !== 'Escape') return;
+      event.preventDefault();
+      onClose();
     };
     document.addEventListener('pointerdown', onPointerDown);
-    document.addEventListener('keydown', onKey);
+    document.addEventListener('keydown', onKey, true);
     return () => {
       document.removeEventListener('pointerdown', onPointerDown);
-      document.removeEventListener('keydown', onKey);
+      document.removeEventListener('keydown', onKey, true);
     };
   }, [onClose, anchor]);
 

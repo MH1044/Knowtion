@@ -20,6 +20,7 @@ import { Node } from 'prosemirror-model';
 import { EditorState, Selection, type Command } from 'prosemirror-state';
 import { EditorView } from 'prosemirror-view';
 
+import { blockSelect } from './block-select.js';
 import {
   blockDrop,
   blockPosAt,
@@ -217,6 +218,10 @@ export async function mountPageEditor(options: PageEditorOptions): Promise<PageE
             (options.dates === undefined && options.pages === undefined)
               ? []
               : [mentionMenu({ dates: options.dates, pages: options.pages }, options.onSlashMenu)]),
+            // After the menus, so an open one still closes on Escape rather than it
+            // selecting the block, and before the input rules and the keymap, so the keys
+            // act on a selected block rather than on the text beside it.
+            blockSelect(),
             knowtionInputRules(),
             knowtionKeymap(undo, redo, linkCommand(options)),
             knowtionPlaceholder(),

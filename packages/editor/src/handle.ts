@@ -16,9 +16,9 @@ import {
   NodeSelection,
   Plugin,
   PluginKey,
+  Selection,
   TextSelection,
   type Command,
-  type Selection,
   type Transaction,
 } from 'prosemirror-state';
 import {
@@ -59,6 +59,17 @@ export function blockPosAt(doc: Node, pos: number): number | undefined {
 
 function blockAt(state: EditorState, pos: number): Node | undefined {
   return state.doc.nodeAt(pos) ?? undefined;
+}
+
+/**
+ * Where the block a selection of one whole block starts, as Esc selects one, or undefined
+ * for any other selection. A chip selected in a line is not a block: it is in its line's.
+ *
+ * The block keys go by this rather than by blockPosAt of the selection, which on the
+ * position just before a selected list item would find the whole list.
+ */
+export function selectedBlock(selection: Selection): number | undefined {
+  return selection instanceof NodeSelection && selection.node.isBlock ? selection.from : undefined;
 }
 
 /** A kind of block, named by the id of the block choice that makes one. */
@@ -200,7 +211,8 @@ interface Run {
  */
 function selectedRun(tr: Transaction, selection: Selection): Run | undefined {
   const { doc } = tr;
-  const blocks = blocksAt(doc, selection.from, selection.to);
+  const own = selectedBlock(selection);
+  const blocks = own === undefined ? blocksAt(doc, selection.from, selection.to) : [own];
   const first = blocks[0];
   const last = blocks.at(-1);
   if (first === undefined || last === undefined) return undefined;
@@ -252,10 +264,16 @@ export function deleteBlock(pos: number): Command {
     const block = blockAt(state, pos);
     if (block === undefined) return false;
     if (!dispatch) return true;
-    const tr = state.tr.delete(pos, pos + block.nodeSize);
+    // A list's only item takes its list with it, where deleting the item alone would leave
+    // an empty bullet behind. Only that far: a callout or a quote left with nothing keeps
+    // an empty line, which the delete fills in, as moving the item out of it does.
+    const onlyItem =
+      block.type === node('list_item') && state.doc.resolve(pos).parent.childCount === 1;
+    const from = onlyItem ? pos - 1 : pos;
+    const tr = state.tr.delete(from, onlyItem ? pos + block.nodeSize + 1 : pos + block.nodeSize);
     // A document must keep one block to type into.
     if (tr.doc.childCount === 0) tr.insert(0, node('paragraph').create());
-    const caret = Math.min(pos, tr.doc.content.size);
+    const caret = Math.min(from, tr.doc.content.size);
     tr.setSelection(TextSelection.near(tr.doc.resolve(caret)));
     dispatch(tr.scrollIntoView());
     return true;
@@ -518,12 +536,19 @@ function posAtTextPoint(doc: Node, point: TextPoint): number | undefined {
  *
  * Lists made side by side are joined, so three lines turned into a numbered list read
  * 1, 2, 3 rather than being three lists that each start at 1.
+ *
+ * A block selected whole (see selectedBlock) is turned whole, nested lines and all, and
+ * what it became is selected after: the block its first line is now part of.
  */
 export function turnSelectionInto(choice: BlockChoice): Command {
   return (state, dispatch) => {
     const { selection } = state;
-    if (blocksAt(state.doc, selection.from, selection.to).length === 0) return false;
+    const own = selectedBlock(selection);
+    if (own === undefined && blocksAt(state.doc, selection.from, selection.to).length === 0) {
+      return false;
+    }
     if (!dispatch) return true;
+    const ownLine = own === undefined ? undefined : firstLineOf(state.doc, own);
 
     const tr = state.tr;
     const kept = (pos: number): ((doc: Node) => number) => {
@@ -552,12 +577,15 @@ export function turnSelectionInto(choice: BlockChoice): Command {
     // every line that came out of it, selected or not. Last block first, and each position
     // mapped through what this round has done so far, which may have joined lists above.
     let spilled: { from: number; to: number; steps: number }[] = [];
+    // A selected block is chosen in the first round only; after that, what it spilled.
+    const chosen = (round: number, from: number, to: number): number[] => {
+      if (own !== undefined) return round === 0 ? [own] : [];
+      return selection.empty ? caretBlocks(tr.doc, from) : blocksAt(tr.doc, from, to);
+    };
     for (let round = 0; round < 4; round++) {
       const steps = tr.steps.length;
       const [from, to] = range(tr.doc);
-      const blocks = new Set(
-        selection.empty ? caretBlocks(tr.doc, from) : blocksAt(tr.doc, from, to),
-      );
+      const blocks = new Set(chosen(round, from, to));
       for (const box of spilled) {
         const after = tr.mapping.slice(box.steps);
         for (const pos of blocksBetween(tr.doc, after.map(box.from), after.map(box.to, -1))) {
@@ -585,9 +613,20 @@ export function turnSelectionInto(choice: BlockChoice): Command {
     if (selection instanceof TextSelection) {
       tr.setSelection(TextSelection.create(tr.doc, anchor(tr.doc), head(tr.doc)));
     }
+    const line = ownLine === undefined ? undefined : posAtTextPoint(tr.doc, ownLine);
+    const turned = line === undefined ? undefined : blockPosAt(tr.doc, line);
+    if (turned !== undefined) tr.setSelection(NodeSelection.create(tr.doc, turned));
     dispatch(tr);
     return true;
   };
+}
+
+/** The first line of the block at `pos` as a text point, or undefined when it has none. */
+function firstLineOf(doc: Node, pos: number): TextPoint | undefined {
+  const block = doc.nodeAt(pos);
+  const first = Selection.findFrom(doc.resolve(pos), 1, true);
+  if (block === null || first === null || first.from >= pos + block.nodeSize) return undefined;
+  return textPointAt(doc, first.from);
 }
 
 const LISTS = new Set(['bullet_list', 'ordered_list']);
@@ -701,7 +740,7 @@ export const duplicateSelectedBlocks: Command = (state, dispatch) => {
 };
 
 /** Containers whose first line is their own: nothing inside one can move above that line. */
-const OWN_FIRST_LINE = new Set(['list_item', 'todo_item', 'toggle']);
+export const OWN_FIRST_LINE: ReadonlySet<string> = new Set(['list_item', 'todo_item', 'toggle']);
 
 /**
  * Where the sibling blocks from `start` to `end` go when moved one place up (`dir` -1) or

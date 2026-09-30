@@ -6,6 +6,7 @@
   --text: #e8e8ea;
   --muted: #9a9aa5;
   --accent: #6c8cff;
+  --block-selected: color-mix(in srgb, var(--accent) 20%, transparent);
   --danger: #ff6b6b;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   font-size: 14px;
@@ -216,8 +217,29 @@ input:focus-visible {
   background: transparent;
 }
 
-.editor .ProseMirror-selectednode {
-  outline: 2px solid var(--accent);
+/* A selected block, as Esc selects one: a pale tint over it and no outline, as Notion
+   shows it. An image rather than a colour, so it lies over a code block's or a callout's
+   own background instead of replacing it; the extra .ProseMirror is so it outranks the
+   callout's own rule, whose background shorthand would reset the image. The chips in a
+   line keep their own outline. */
+.editor .ProseMirror .ProseMirror-selectednode:not(.date-chip, .page-mention) {
+  background-image: linear-gradient(var(--block-selected), var(--block-selected));
+}
+
+/* Softened corners for the blocks with square ones; a code block and a callout keep their
+   own. */
+.editor .ProseMirror :is(p, h1, h2, h3, li, blockquote, .toggle).ProseMirror-selectednode {
+  border-radius: 4px;
+}
+
+/* A list item's bullet or number sits outside its box, and is part of the block too. */
+.editor .ProseMirror li.ProseMirror-selectednode:not([data-todo]) {
+  box-shadow: -1.6em 0 0 0 var(--block-selected);
+}
+
+/* A divider is a line with no height to tint, so the tint is a band around it. */
+.editor .ProseMirror hr.ProseMirror-selectednode {
+  box-shadow: 0 0 0 6px var(--block-selected);
 }
 
 /* Every block starts from no margin; the space between lines is each block's padding. */
