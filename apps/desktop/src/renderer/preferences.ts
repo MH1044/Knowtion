@@ -1,6 +1,6 @@
 /**
  * Per-device display state: which view a database was left on, where a control is drawn,
- * which pages were opened lately.
+ * whether the sidebar is hidden, which pages were opened lately.
  *
  * None of this belongs in the operation log. FORMAT.md section 10 keeps ephemera local,
  * and it means it: syncing "which tab I had open" would make every glance at a table an
@@ -28,6 +28,11 @@ export const COLUMN_TOGGLES_KEY = 'knowtion.pref.columnToggles';
 export const UPDATE_CHECKS = ['on', 'off'] as const;
 export type UpdateChecks = (typeof UPDATE_CHECKS)[number];
 export const UPDATE_CHECK_KEY = 'knowtion.pref.updateChecks';
+
+/** Whether the sidebar is drawn; Ctrl+\ and the buttons beside it switch it. */
+export const SIDEBAR_STATES = ['shown', 'hidden'] as const;
+export type SidebarState = (typeof SIDEBAR_STATES)[number];
+export const SIDEBAR_KEY = 'knowtion.pref.sidebar';
 
 type Listener = (key: string) => void;
 const listeners = new Set<Listener>();

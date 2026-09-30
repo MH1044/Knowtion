@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 
 import {
   api,
@@ -19,12 +19,23 @@ import { UpdateBanner } from './UpdateBanner.js';
 import { PageBody } from './PageBody.js';
 import { PageTree, useTreeDrag } from './PageTree.js';
 import { Search } from './Search.js';
+import {
+  EMPTY_HISTORY,
+  canStep,
+  currentEntry,
+  step,
+  stepCandidates,
+  visit,
+  type Direction,
+  type History,
+} from './history.js';
 import { Breadcrumb, ChildPages } from './PageNav.js';
 import { usePageHost } from './pageHost.js';
-import { rememberRecentPage } from './preferences.js';
-import { QuickFind } from './QuickFind.js';
-import { inEditor, matchShortcut, type ShortcutAction } from './shortcuts.js';
+import { SIDEBAR_KEY, SIDEBAR_STATES, rememberRecentPage, usePreference } from './preferences.js';
+import { QuickFind, pageLookup, stillThere } from './QuickFind.js';
+import { inEditor, matchShortcut, mouseNavigation, type ShortcutAction } from './shortcuts.js';
 import { SyncPanel } from './SyncPanel.js';
+import './nav.css';
 
 /** Find a page anywhere in the tree, since the sidebar only holds the nested shape. */
 function findPage(nodes: PageNode[], id: string): PageNode | undefined {
@@ -34,6 +45,30 @@ function findPage(nodes: PageNode[], id: string): PageNode | undefined {
     if (found) return found;
   }
   return undefined;
+}
+
+/**
+ * Whether a page Back or Forward would open is still there: in the tree, or, for a database
+ * row, which the tree leaves out, not trashed and not inside something trashed. That takes
+ * asking for the row and the pages above it, as Quick Find does for a recent page.
+ */
+async function isOpenable(id: string, tree: readonly PageNode[]): Promise<boolean> {
+  const inTree = pageLookup(tree);
+  const fetched = new Map<string, Page | null>();
+  for (;;) {
+    const status = stillThere(id, inTree, fetched);
+    if (status === 'live') return true;
+    if (status === 'gone') return false;
+    fetched.set(status.fetch, await api.page(status.fetch).catch(() => null));
+  }
+}
+
+const NO_IDS: ReadonlySet<string> = new Set();
+
+function blurFocused(): void {
+  // What is being typed in a title or a cell is saved when it loses focus, and the page it
+  // is on is about to go away without that happening.
+  if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
 }
 
 export function App(): React.JSX.Element {
@@ -53,6 +88,26 @@ export function App(): React.JSX.Element {
    * on purpose, so a row opened from a table is fetched by id instead.
    */
   const [selected, setSelected] = useState<Page>();
+  // The pages opened, for Back and Forward. Held in a ref as well, so a step that waited
+  // on the engine can tell whether a page was opened in the meantime.
+  const [history, setHistoryState] = useState<History>(EMPTY_HISTORY);
+  const historyRef = useRef(history);
+  const setHistory = useCallback((next: History) => {
+    historyRef.current = next;
+    setHistoryState(next);
+  }, []);
+  // Pages Back or Forward found were gone, until the tree next changes: a row the tree
+  // leaves out cannot be told apart from a live one without asking, so the buttons guess
+  // until a step has asked.
+  const [unopenable, setUnopenable] = useState<ReadonlySet<string>>(NO_IDS);
+  const [sidebar, setSidebar] = usePreference(SIDEBAR_KEY, SIDEBAR_STATES, 'shown');
+  const sidebarHidden = sidebar === 'hidden';
+  const sidebarRef = useRef<HTMLElement>(null);
+  const showSidebarRef = useRef<HTMLButtonElement>(null);
+  const hideSidebarRef = useRef<HTMLButtonElement>(null);
+  // The button to focus once the sidebar is drawn or hidden, when focus was on something
+  // that the change hides.
+  const refocus = useRef<'show' | 'hide'>(undefined);
 
   const loadKeyStatus = useCallback(async () => {
     try {
@@ -67,6 +122,8 @@ export function App(): React.JSX.Element {
       const [nextTree, nextTrash] = await Promise.all([api.tree(), api.trash()]);
       setTree(nextTree);
       setTrash(nextTrash);
+      // A page restored, or arriving from another device, can be opened again.
+      setUnopenable(NO_IDS);
       setError(undefined);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));
@@ -117,7 +174,8 @@ export function App(): React.JSX.Element {
     api
       .page(selectedId)
       .then((page) => {
-        if (!cancelled) setSelected(page);
+        // A trashed page is still there to fetch, but not to open.
+        if (!cancelled) setSelected(page.archivedAt === undefined ? page : undefined);
       })
       .catch(() => {
         if (!cancelled) setSelected(undefined);
@@ -133,10 +191,62 @@ export function App(): React.JSX.Element {
     if (selectedId !== undefined) rememberRecentPage(selectedId);
   }, [selectedId]);
 
-  const openPage = useCallback((id: string) => {
-    setSelectedId(id);
+  // Every way of opening a page comes here — the sidebar, search, Quick Find, the
+  // breadcrumb, the pages inside a page, a mention, a row — so each goes into history.
+  const openPage = useCallback(
+    (id: string) => {
+      setHistory(visit(historyRef.current, id));
+      setSelectedId(id);
+      setShowTrash(false);
+    },
+    [setHistory],
+  );
+
+  /** Back or Forward: the nearest page that way still there, without adding to history. */
+  const go = async (direction: Direction): Promise<void> => {
+    const from = historyRef.current;
+    let found: string | undefined;
+    for (const id of stepCandidates(from, direction)) {
+      if (await isOpenable(id, tree)) {
+        found = id;
+        break;
+      }
+      setUnopenable((known) => new Set(known).add(id));
+    }
+    const next = step(from, direction, (id) => id === found);
+    // A page opened while the engine was being asked is where the user went instead.
+    if (next === undefined || historyRef.current !== from) return;
+    blurFocused();
+    setHistory(next);
+    setSelectedId(currentEntry(next));
     setShowTrash(false);
-  }, []);
+    setFinding(false);
+  };
+
+  // For drawing the buttons, which cannot wait: a page in the tree is there, one in the
+  // trash is not, and anything else is most likely a database row, which is.
+  const inTree = useMemo(() => pageLookup(tree), [tree]);
+  const trashed = useMemo(() => new Set(trash.map((page) => page.id)), [trash]);
+  const mayOpen = (id: string): boolean =>
+    inTree.has(id) || (!trashed.has(id) && !unopenable.has(id));
+  const canGoBack = canStep(history, 'back', mayOpen);
+  const canGoForward = canStep(history, 'forward', mayOpen);
+
+  const toggleSidebar = (): void => {
+    const focused = document.activeElement;
+    if (!sidebarHidden && sidebarRef.current?.contains(focused) === true) {
+      refocus.current = 'show';
+    } else if (sidebarHidden && focused === showSidebarRef.current) {
+      refocus.current = 'hide';
+    }
+    setSidebar(sidebarHidden ? 'shown' : 'hidden');
+  };
+  useLayoutEffect(() => {
+    const target = refocus.current;
+    refocus.current = undefined;
+    if (target === 'show') showSidebarRef.current?.focus();
+    if (target === 'hide') hideSidebarRef.current?.focus();
+  }, [sidebarHidden]);
 
   /** The New page button and Ctrl+N: a top-level page, opened with the caret in its title. */
   const newPage = useCallback(
@@ -162,14 +272,22 @@ export function App(): React.JSX.Element {
   useLayoutEffect(() => {
     shortcut.current = (action) => {
       if (!ready) return false;
-      if (action === 'quickFind') {
-        setFinding(true);
-      } else {
-        setFinding(false);
-        // What is being typed in a title or a cell is saved when it loses focus, and the
-        // page it is on is about to go away without that happening.
-        if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
-        void newPage();
+      switch (action) {
+        case 'quickFind':
+          setFinding(true);
+          break;
+        case 'newPage':
+          setFinding(false);
+          blurFocused();
+          void newPage();
+          break;
+        case 'back':
+        case 'forward':
+          void go(action);
+          break;
+        case 'toggleSidebar':
+          toggleSidebar();
+          break;
       }
       return true;
     };
@@ -179,9 +297,17 @@ export function App(): React.JSX.Element {
       const action = matchShortcut(event, { inEditor: inEditor(event.target) });
       if (action !== undefined && shortcut.current(action)) event.preventDefault();
     };
+    // A mouse's side buttons, as in a browser. Released rather than pressed, which is when
+    // Chromium itself would act on them.
+    const onMouseUp = (event: MouseEvent): void => {
+      const action = mouseNavigation(event.button);
+      if (action !== undefined && shortcut.current(action)) event.preventDefault();
+    };
     window.addEventListener('keydown', onKeyDown);
+    window.addEventListener('mouseup', onMouseUp);
     return () => {
       window.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener('mouseup', onMouseUp);
     };
   }, []);
 
@@ -191,13 +317,27 @@ export function App(): React.JSX.Element {
   }
 
   return (
-    <div className="app">
-      <aside className="sidebar">
+    <div className={sidebarHidden ? 'app sidebar-hidden' : 'app'}>
+      {/* Hidden by the stylesheet rather than left out, so what is typed in its search and
+          which pages are expanded are still there when it comes back. */}
+      <aside className="sidebar" ref={sidebarRef}>
         <header className="sidebar-header">
           <span className="brand">Knowtion</span>
-          <button type="button" title="Ctrl+N" onClick={() => void newPage()}>
-            New page
-          </button>
+          <span className="sidebar-header-actions">
+            <button type="button" title="Ctrl+N" onClick={() => void newPage()}>
+              New page
+            </button>
+            <button
+              ref={hideSidebarRef}
+              type="button"
+              className="nav-button"
+              aria-label="Hide sidebar"
+              title="Hide sidebar (Ctrl+\)"
+              onClick={toggleSidebar}
+            >
+              «
+            </button>
+          </span>
         </header>
 
         <Search onOpen={openPage} />
@@ -266,6 +406,40 @@ export function App(): React.JSX.Element {
       </aside>
 
       <main className="content">
+        <nav className="top-bar" aria-label="Page history">
+          {sidebarHidden && (
+            <button
+              ref={showSidebarRef}
+              type="button"
+              className="nav-button"
+              aria-label="Show sidebar"
+              title="Show sidebar (Ctrl+\)"
+              onClick={toggleSidebar}
+            >
+              »
+            </button>
+          )}
+          <button
+            type="button"
+            className="nav-button"
+            aria-label="Back"
+            title="Back (Ctrl+[)"
+            disabled={!canGoBack}
+            onClick={() => void go('back')}
+          >
+            ←
+          </button>
+          <button
+            type="button"
+            className="nav-button"
+            aria-label="Forward"
+            title="Forward (Ctrl+])"
+            disabled={!canGoForward}
+            onClick={() => void go('forward')}
+          >
+            →
+          </button>
+        </nav>
         <UpdateBanner />
         {error !== undefined && <div className="error">{error}</div>}
 
